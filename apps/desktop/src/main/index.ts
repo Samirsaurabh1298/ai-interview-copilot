@@ -12,6 +12,8 @@ function createWindow() {
     minHeight: 700,
     title: "AI Coding Interview Copilot",
     backgroundColor: "#090d16",
+    show: true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -21,10 +23,28 @@ function createWindow() {
   });
 
   const isDev = process.env.NODE_ENV === "development";
-  if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+  const devUrl = process.env.VITE_DEV_SERVER_URL;
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    console.log("[Main] Window content loaded successfully");
+    mainWindow?.setTitle("AI Coding Interview Copilot");
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
+
+  mainWindow.webContents.on("did-fail-load", (_event, code, desc, url) => {
+    console.error(`[Main] Failed to load url: ${url} (code ${code}, desc: ${desc})`);
+  });
+
+  if (isDev && devUrl) {
+    console.log(`[Main] Loading dev server: ${devUrl}`);
+    mainWindow.loadURL(devUrl);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+    const indexPath = path.join(__dirname, "../../dist/index.html");
+    console.log(`[Main] Loading window file: ${indexPath}`);
+    mainWindow.loadFile(indexPath).catch((err) => {
+      console.error("[Main] Error during loadFile:", err);
+    });
   }
 
   mainWindow.on("closed", () => {

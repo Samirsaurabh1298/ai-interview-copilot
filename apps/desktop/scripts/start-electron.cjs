@@ -1,9 +1,11 @@
 const { spawn } = require("node:child_process");
 const electronPath = require("electron");
 
-// Ensure ELECTRON_RUN_AS_NODE is stripped so Electron runs in GUI app mode
+// Ensure ELECTRON_RUN_AS_NODE is stripped so Electron runs in full GUI mode
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+env.VITE_DEV_SERVER_URL = "http://localhost:5173";
+env.NODE_ENV = "development";
 
 const child = spawn(electronPath, ["."], {
   cwd: process.cwd(),
