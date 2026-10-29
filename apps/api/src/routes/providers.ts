@@ -1,30 +1,36 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AIOrchestrationService } from "@ai-copilot/ai-core";
+import type { AnthropicProvider } from "@ai-copilot/ai-provider-anthropic";
 import type { AppConfig } from "../config.js";
 
 export const providersRoutes: FastifyPluginAsync<{
   orchestrator: AIOrchestrationService;
   config: AppConfig;
+  anthropicProvider?: AnthropicProvider | undefined;
 }> = async (fastify, opts) => {
-  const { orchestrator, config } = opts;
+  const { orchestrator, config, anthropicProvider } = opts;
 
   fastify.get("/", async (_request, reply) => {
     const mockProvider = orchestrator.getProvider("mock");
     const mockCaps = await mockProvider.getCapabilities();
 
+    const anthropicCaps = anthropicProvider
+      ? await anthropicProvider.getCapabilities()
+      : [];
+
     return reply.status(200).send({
       providers: [
         {
-          id: "mock",
-          name: "Mock Provider (Development / Offline)",
-          isConfigured: true,
-          availableModels: mockCaps,
-        },
-        {
           id: "anthropic",
           name: "Anthropic Claude",
-          isConfigured: Boolean(config.ANTHROPIC_API_KEY),
-          availableModels: [],
+          isConfigured: Boolean(anthropicProvider),
+          availableModels: anthropicCaps,
+        },
+        {
+          id: "mock",
+          name: "Mock Deterministic Provider",
+          isConfigured: true,
+          availableModels: mockCaps,
         },
         {
           id: "openai",
@@ -44,4 +50,3 @@ export const providersRoutes: FastifyPluginAsync<{
     });
   });
 };
-

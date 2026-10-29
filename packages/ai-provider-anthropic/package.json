@@ -1,0 +1,32 @@
+{
+  "name": "@ai-copilot/ai-provider-anthropic",
+  "version": "0.1.0",
+  "description": "Anthropic Claude 3.5 Sonnet adapter for AI Coding Interview Copilot",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-copilot/ai-core": "workspace:*",
+    "@ai-copilot/contracts": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

@@ -1,6 +1,7 @@
 import fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { AIOrchestrationService, MockAIProvider } from "@ai-copilot/ai-core";
+import { AnthropicProvider } from "@ai-copilot/ai-provider-anthropic";
 import { answersRoutes } from "./routes/answers.js";
 import { providersRoutes } from "./routes/providers.js";
 import { extractionRoutes } from "./routes/extraction.js";
@@ -26,17 +27,30 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const orchestrator = new AIOrchestrationService({
     defaultProviderId: config.DEFAULT_AI_PROVIDER as "openai" | "anthropic" | "google" | "mock",
     maxRetries: 2,
-    timeoutMs: 30000,
+    timeoutMs: 35000,
   });
 
-  // Register providers (Mock provider is always registered for local testing)
+  // 1. Always register Mock provider for testing and fallback
   orchestrator.registerProvider(new MockAIProvider());
+
+  // 2. Register Anthropic Claude if API key is supplied
+  let anthropicProvider: AnthropicProvider | undefined;
+  if (config.ANTHROPIC_API_KEY) {
+    try {
+      anthropicProvider = new AnthropicProvider(config.ANTHROPIC_API_KEY);
+      orchestrator.registerProvider(anthropicProvider);
+      app.log.info("Anthropic Claude 3.5 Sonnet provider registered.");
+    } catch (err) {
+      app.log.error({ err }, "Failed to initialize Anthropic provider.");
+    }
+  }
 
   // Health check
   app.get("/health", async () => ({
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "0.1.0",
+    defaultProvider: config.DEFAULT_AI_PROVIDER,
   }));
 
   // Route registration
@@ -49,12 +63,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: "/api/v1/providers",
     orchestrator,
     config,
+    anthropicProvider,
   });
 
   await app.register(extractionRoutes, {
     prefix: "/api/v1/questions",
+    anthropicProvider,
   });
 
   return app;
 }
-
