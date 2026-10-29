@@ -15,7 +15,12 @@
   "dependencies": {
     "@ai-copilot/ai-core": "workspace:*",
     "@ai-copilot/ai-provider-anthropic": "workspace:*",
+    "@ai-copilot/ai-provider-google": "workspace:*",
+    "@ai-copilot/ai-provider-openai": "workspace:*",
+    "@ai-copilot/code-runner": "workspace:*",
+    "@ai-copilot/context-engine": "workspace:*",
     "@ai-copilot/contracts": "workspace:*",
+    "@ai-copilot/scoring-engine": "workspace:*",
     "@fastify/cors": "^10.1.0",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",

@@ -1,0 +1,20 @@
+{
+  "name": "@task/frontend-ticket-queue",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standard 60-Minute React/TypeScript Assessment: Support Ticket Queue Filtering Regression",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

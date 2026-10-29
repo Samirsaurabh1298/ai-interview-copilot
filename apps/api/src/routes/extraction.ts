@@ -5,11 +5,17 @@ import {
 } from "@ai-copilot/contracts";
 import type { AnthropicProvider } from "@ai-copilot/ai-provider-anthropic";
 import { extractQuestionWithClaude } from "@ai-copilot/ai-provider-anthropic";
+import type { GoogleGeminiProvider } from "@ai-copilot/ai-provider-google";
+import { extractQuestionWithGemini } from "@ai-copilot/ai-provider-google";
+import type { OpenAIProvider } from "@ai-copilot/ai-provider-openai";
+import { extractQuestionWithOpenAI } from "@ai-copilot/ai-provider-openai";
 
 export const extractionRoutes: FastifyPluginAsync<{
   anthropicProvider?: AnthropicProvider | undefined;
+  googleProvider?: GoogleGeminiProvider | undefined;
+  openaiProvider?: OpenAIProvider | undefined;
 }> = async (fastify, opts) => {
-  const { anthropicProvider } = opts;
+  const { anthropicProvider, googleProvider, openaiProvider } = opts;
 
   fastify.post("/extract", async (request, reply) => {
     const parseResult = QuestionExtractionRequestSchema.safeParse(request.body);
@@ -20,7 +26,20 @@ export const extractionRoutes: FastifyPluginAsync<{
       });
     }
 
-    // 1. If Anthropic is configured, use Claude 3.5 Sonnet Vision
+    // 1. Prefer Google Gemini Flash for vision if configured (Fastest & lowest token cost)
+    if (googleProvider) {
+      try {
+        const result = await extractQuestionWithGemini(
+          googleProvider.getRawClient(),
+          parseResult.data
+        );
+        return reply.status(200).send(result);
+      } catch (err: unknown) {
+        request.log.warn({ err }, "Gemini vision failed, trying fallback");
+      }
+    }
+
+    // 2. Fallback to Claude 3.5 Sonnet Vision if configured
     if (anthropicProvider) {
       try {
         const result = await extractQuestionWithClaude(
@@ -29,11 +48,24 @@ export const extractionRoutes: FastifyPluginAsync<{
         );
         return reply.status(200).send(result);
       } catch (err: unknown) {
-        request.log.warn({ err }, "Claude vision extraction failed, falling back to mock");
+        request.log.warn({ err }, "Claude vision failed, trying fallback");
       }
     }
 
-    // 2. Fallback deterministic extraction for local dev/testing
+    // 3. Fallback to OpenAI GPT-4o Vision if configured
+    if (openaiProvider) {
+      try {
+        const result = await extractQuestionWithOpenAI(
+          openaiProvider.getRawClient(),
+          parseResult.data
+        );
+        return reply.status(200).send(result);
+      } catch (err: unknown) {
+        request.log.warn({ err }, "OpenAI vision failed, falling back to mock");
+      }
+    }
+
+    // 4. Offline / test mock extraction fallback
     const response: QuestionExtractionResponse = {
       rawText: "Sample extracted question from image context",
       cleanedQuestion:

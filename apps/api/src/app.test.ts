@@ -73,5 +73,43 @@ describe("API Integration Tests", () => {
     const body = JSON.parse(res.body);
     expect(body.error).toBe("Validation failed");
   });
+
+  it("retrieves assessment policy on GET /api/v1/assessment/policy", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/assessment/policy",
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.maxBudgetUsd).toBe(0.25);
+    expect(body.warningThresholdPercent).toBe(80);
+    expect(body.timeLimitSeconds).toBe(3600);
+  });
+
+  it("evaluates candidate submission on POST /api/v1/assessment/evaluate", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/assessment/evaluate",
+      payload: {
+        sessionId: "sess_integration_test",
+        candidateId: "cand_test_42",
+        finalCode: "export const solve = () => 42;",
+        diff: "--- a/src/index.ts\n+++ b/src/index.ts\n@@ -1,1 +1,1 @@\n- return 0;\n+ return 42;",
+        explanation: "Identified the hardcoded zero root cause and substituted the computed solution cleanly.",
+        testResults: [
+          { name: "test-1", passed: true, durationMs: 10 },
+          { name: "test-2", passed: true, durationMs: 15 },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.sessionId).toBe("sess_integration_test");
+    expect(body.scoringMethod).toBe("ai_draft");
+    expect(body.weightedTotalScore).toBeGreaterThanOrEqual(80);
+    expect(body.dimensions).toHaveLength(7);
+  });
 });
 

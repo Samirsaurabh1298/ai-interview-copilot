@@ -39,7 +39,7 @@ export class AIOrchestrationService {
 
   public async generateAnswer(
     rawRequest: unknown,
-    options?: { providerId?: string; modelOverride?: string }
+    options?: { providerId?: string | undefined; modelOverride?: string | undefined }
   ): Promise<AIResponse> {
     // 1. Strict runtime schema validation of incoming request
     const parseResult = AIRequestSchema.safeParse(rawRequest);

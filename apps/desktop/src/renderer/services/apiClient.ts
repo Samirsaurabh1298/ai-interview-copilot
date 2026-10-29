@@ -3,6 +3,8 @@ import type {
   AIResponse,
   ProvidersResponse,
   QuestionExtractionResponse,
+  CodeValidationRequest,
+  CodeValidationResponse,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -43,8 +45,15 @@ export class ApiClient {
     return (await res.json()) as QuestionExtractionResponse;
   }
 
-  public static async generateAnswer(request: AIRequest): Promise<AIResponse> {
-    const res = await fetch(`${API_BASE_URL}/answers/generate`, {
+  public static async generateAnswer(
+    request: AIRequest,
+    providerId?: string
+  ): Promise<AIResponse> {
+    const url = providerId
+      ? `${API_BASE_URL}/answers/generate?provider=${providerId}`
+      : `${API_BASE_URL}/answers/generate`;
+
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
@@ -61,6 +70,28 @@ export class ApiClient {
     }
 
     return (await res.json()) as AIResponse;
+  }
+
+  public static async validateCode(
+    request: CodeValidationRequest
+  ): Promise<CodeValidationResponse> {
+    const res = await fetch(`${API_BASE_URL}/code/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+
+    if (!res.ok) {
+      const errorData = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(
+        errorData.message || errorData.error || `Validation failed: ${res.statusText}`
+      );
+    }
+
+    return (await res.json()) as CodeValidationResponse;
   }
 }
 
