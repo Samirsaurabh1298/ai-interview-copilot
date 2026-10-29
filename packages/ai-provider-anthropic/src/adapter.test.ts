@@ -24,3 +24,4 @@ describe("AnthropicProvider Adapter", () => {
     expect(caps[0]?.costPerMillionOutputTokensUsd).toBe(15.0);
   });
 });
+

@@ -7,11 +7,11 @@
   "main": "./dist-electron/main/index.cjs",
   "scripts": {
     "dev:renderer": "vite",
-    "build:electron": "tsup src/main/index.ts src/preload/index.ts --format cjs --out-dir dist-electron",
+    "build:electron": "tsup src/main/index.ts src/preload/index.ts --format cjs --out-dir dist-electron --external electron",
     "build:renderer": "vite build",
     "build": "pnpm build:electron && pnpm build:renderer",
     "typecheck": "tsc --noEmit",
-    "start": "electron ."
+    "start": "node scripts/start-electron.cjs"
   },
   "dependencies": {
     "@ai-copilot/contracts": "workspace:*",
