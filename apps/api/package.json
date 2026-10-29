@@ -1,0 +1,31 @@
+{
+  "name": "@ai-copilot/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend API service for AI Coding Interview Copilot",
+  "main": "./dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsup src/server.ts --format esm",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-copilot/ai-core": "workspace:*",
+    "@ai-copilot/contracts": "workspace:*",
+    "@fastify/cors": "^10.1.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}
+

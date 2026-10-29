@@ -1,0 +1,38 @@
+{
+  "name": "@ai-copilot/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop-first AI Coding Interview Copilot client",
+  "main": "./dist-electron/main/index.cjs",
+  "scripts": {
+    "dev:renderer": "vite",
+    "build:electron": "tsup src/main/index.ts src/preload/index.ts --format cjs --out-dir dist-electron",
+    "build:renderer": "vite build",
+    "build": "pnpm build:electron && pnpm build:renderer",
+    "typecheck": "tsc --noEmit",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@ai-copilot/contracts": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.477.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.3.0",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  }
+}
+

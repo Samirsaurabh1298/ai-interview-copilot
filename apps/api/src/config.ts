@@ -1,0 +1,27 @@
+import { z } from "zod";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const EnvSchema = z.object({
+  PORT: z.coerce.number().default(4000),
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  DEFAULT_AI_PROVIDER: z.enum(["openai", "anthropic", "google", "mock"]).default("mock"),
+  DEFAULT_AI_MODEL: z.string().default("mock-model-v1"),
+  OPENAI_API_KEY: z.string().optional(),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  CODE_RUNNER_URL: z.string().url().default("http://localhost:4100"),
+});
+
+export type AppConfig = z.infer<typeof EnvSchema>;
+
+export function loadConfig(): AppConfig {
+  const result = EnvSchema.safeParse(process.env);
+  if (!result.success) {
+    console.error("Configuration validation failed:", result.error.format());
+    throw new Error("Invalid environment configuration");
+  }
+  return result.data;
+}
+

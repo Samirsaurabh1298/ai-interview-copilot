@@ -1,0 +1,19 @@
+{
+  "name": "ai-interview-copilot-root",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop-first AI Coding Interview Copilot",
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "build": "pnpm --recursive run build",
+    "test": "pnpm --recursive run test",
+    "typecheck": "pnpm --recursive run typecheck",
+    "lint": "pnpm --recursive run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2"
+  }
+}
+
