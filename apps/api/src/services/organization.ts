@@ -227,3 +227,4 @@ export class OrganizationService {
     return base || "org-" + Math.random().toString(36).substring(2, 6);
   }
 }
+
