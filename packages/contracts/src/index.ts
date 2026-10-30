@@ -6,4 +6,5 @@ export * from "./validation.js";
 export * from "./provider.js";
 export * from "./database.js";
 export * from "./assessment.js";
+export * from "./organization.js";
 

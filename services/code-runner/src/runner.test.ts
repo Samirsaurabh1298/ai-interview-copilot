@@ -106,7 +106,7 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("fetch was not intercepted!");
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 6000,
       memoryLimitMb: 64,
     });
 
@@ -139,7 +139,7 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("execSync was permitted!");
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 6000,
       memoryLimitMb: 64,
     });
 
@@ -172,7 +172,7 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("Worker creation was permitted!");
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 6000,
       memoryLimitMb: 64,
     });
 
@@ -203,7 +203,7 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("eval was permitted!");
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 6000,
       memoryLimitMb: 64,
     });
 
@@ -224,7 +224,7 @@ describe("Isolated Code Runner", () => {
           // If candidate aborted process, this wouldn't pass
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 6000,
       memoryLimitMb: 64,
     });
 

@@ -12,8 +12,10 @@ import { validationRoutes } from "./routes/validation.js";
 import { contextRoutes } from "./routes/context.js";
 import { usageRoutes } from "./routes/usage.js";
 import { assessmentRoutes } from "./routes/assessment.js";
+import { organizationsRoutes } from "./routes/organizations.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
+import { OrganizationService } from "./services/organization.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -108,8 +110,14 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
 
   const ledger = new UsageLedgerService();
   const gateway = new AIUsageGatewayService();
+  const orgService = new OrganizationService();
 
   // Route registration
+  await app.register(organizationsRoutes, {
+    prefix: "/api/v1/organizations",
+    orgService,
+  });
+
   await app.register(answersRoutes, {
     prefix: "/api/v1/answers",
     orchestrator,
