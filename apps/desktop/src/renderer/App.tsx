@@ -3,11 +3,13 @@ import { Header } from "./components/Header.js";
 import { CaptureModal } from "./components/CaptureModal.js";
 import { QuestionConfirmation } from "./components/QuestionConfirmation.js";
 import { AnswerView } from "./components/AnswerView.js";
+import { AssessmentWorkspace } from "./components/AssessmentWorkspace.js";
 import { ApiClient } from "./services/apiClient.js";
 import type { AIRequest, AIResponse } from "@ai-copilot/contracts";
 import { Camera, Terminal, ShieldAlert, Sparkles, AlertCircle } from "lucide-react";
 
 export const App: React.FC = () => {
+  const [activeView, setActiveView] = useState<"copilot" | "assessment">("assessment");
   const [apiConnected, setApiConnected] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [stage, setStage] = useState<"idle" | "confirming" | "answered">("idle");
@@ -92,10 +94,15 @@ export const App: React.FC = () => {
         apiConnected={apiConnected}
         onOpenCapture={() => setIsCaptureModalOpen(true)}
         isGenerating={isGenerating}
+        activeView={activeView}
+        onSelectView={setActiveView}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto">
+      {activeView === "assessment" ? (
+        <AssessmentWorkspace />
+      ) : (
+        /* Main Practice Content Area */
+        <main className="flex-1 overflow-y-auto">
         {errorMessage && (
           <div className="max-w-4xl mx-auto mt-4 px-4">
             <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 text-xs text-rose-800 flex items-center justify-between shadow-xs dark:border-rose-500/30 dark:bg-rose-950/20 dark:text-rose-300">
@@ -188,6 +195,7 @@ export const App: React.FC = () => {
           <AnswerView answer={currentAnswer} onReset={handleReset} />
         )}
       </main>
+      )}
 
       <CaptureModal
         isOpen={isCaptureModalOpen}
