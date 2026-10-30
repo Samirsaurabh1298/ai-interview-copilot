@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   Terminal,
   Loader2,
+  Eye,
+  Copy,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
@@ -156,7 +158,8 @@ interface AssessmentChatMessage {
   role: "candidate" | "copilot";
   text: string;
   code?: string | undefined;
-  applied?: boolean | undefined;
+  diff?: string | undefined;
+  patchStatus?: "proposed" | "accepted" | "rejected" | undefined;
 }
 
 export const AssessmentWorkspace: React.FC = () => {
@@ -165,6 +168,13 @@ export const AssessmentWorkspace: React.FC = () => {
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(3600); // 60 mins
   const [code, setCode] = useState(STARTER_CODE);
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
+
+  // Proposed Patch Review Modal State (Architectural Decision #7)
+  const [reviewingPatch, setReviewingPatch] = useState<{
+    code: string;
+    diff?: string | undefined;
+    messageIdx?: number | undefined;
+  } | null>(null);
 
   // Budget state
   const [budgetStatus, setBudgetStatus] = useState<SessionBudgetStatus>({
@@ -261,25 +271,37 @@ export const AssessmentWorkspace: React.FC = () => {
     }
   };
 
-  // Apply AI code to the editor
-  const handleApplyCode = (newCode: string, messageIdx?: number) => {
-    setCode(newCode);
-    setAppliedNotice("⚡ AI corrected code applied to src/useTicketQueue.ts and executed in sandbox!");
+  // Architectural Decision #7: Candidate Explicit Review Actions on Proposed AI Patch
+  const handleAcceptPatch = (patchCode: string, messageIdx?: number) => {
+    setCode(patchCode);
+    setAppliedNotice("✓ Proposed patch accepted and applied to src/useTicketQueue.ts. Click 'Run Tests' to verify.");
     setTimeout(() => setAppliedNotice(null), 6000);
 
     if (messageIdx !== undefined) {
       setAiHistory((prev) =>
-        prev.map((msg, i) => (i === messageIdx ? { ...msg, applied: true } : msg))
+        prev.map((msg, i) => (i === messageIdx ? { ...msg, patchStatus: "accepted" } : msg))
       );
     }
-    handleRunVerification(newCode);
+    setReviewingPatch(null);
   };
 
-  // 1-Click Auto-Fix with AI
-  const handleAutoFixWithAI = async () => {
+  const handleRejectPatch = (messageIdx?: number) => {
+    setAppliedNotice("Proposed patch rejected. Editor buffer was preserved untouched.");
+    setTimeout(() => setAppliedNotice(null), 4000);
+
+    if (messageIdx !== undefined) {
+      setAiHistory((prev) =>
+        prev.map((msg, i) => (i === messageIdx ? { ...msg, patchStatus: "rejected" } : msg))
+      );
+    }
+    setReviewingPatch(null);
+  };
+
+  // Request Solution Proposal from AI without auto-modifying editor buffer
+  const handleRequestSolutionProposal = async () => {
     if (isAskingAI || budgetStatus.isExhausted) return;
     setLeftTab("ai");
-    const promptText = "Please write the complete corrected TypeScript code for filterAndSortTickets to fix descending priority sorting, array mutation in place, and missing tags errors.";
+    const promptText = "Please propose a complete corrected TypeScript solution for filterAndSortTickets to fix descending priority sorting, array mutation in place, and missing tags errors.";
     setAiHistory((prev) => [...prev, { role: "candidate", text: promptText }]);
     setIsAskingAI(true);
 
@@ -298,22 +320,28 @@ export const AssessmentWorkspace: React.FC = () => {
       );
 
       const correctedCode = answer.code;
-      if (correctedCode) {
-        setCode(correctedCode);
-        handleRunVerification(correctedCode);
-        setAppliedNotice("⚡ AI fix applied directly to src/useTicketQueue.ts and verified!");
-        setTimeout(() => setAppliedNotice(null), 6000);
-      }
+      const patchDiff = answer.codeChanges?.[0]?.diff;
+      const targetIdx = aiHistory.length + 1;
 
       setAiHistory((prev) => [
         ...prev,
         {
           role: "copilot",
-          text: `⚡ Corrected code was written directly to src/useTicketQueue.ts and verified against sandbox tests!\n\n${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
+          text: `Proposed Solution Patch Generated.\n\n${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
           code: correctedCode,
-          applied: Boolean(correctedCode),
+          diff: patchDiff,
+          patchStatus: correctedCode ? "proposed" : undefined,
         },
       ]);
+
+      if (correctedCode) {
+        setReviewingPatch({
+          code: correctedCode,
+          diff: patchDiff,
+          messageIdx: targetIdx,
+        });
+      }
+
       await refreshBudget();
     } catch (err: unknown) {
       setAiHistory((prev) => [
@@ -328,7 +356,7 @@ export const AssessmentWorkspace: React.FC = () => {
     }
   };
 
-  // Send query to AI via gateway
+  // Send query to AI via gateway (Candidate reviewed; never auto-replaces editor code)
   const handleAskAI = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!aiQuestion.trim() || isAskingAI) return;
@@ -339,7 +367,6 @@ export const AssessmentWorkspace: React.FC = () => {
     }
 
     const q = aiQuestion.trim();
-    const isFixIntent = /write|fix|correct|replace|apply|solve|generate/i.test(q);
     setAiQuestion("");
     setAiHistory((prev) => [...prev, { role: "candidate", text: q }]);
     setIsAskingAI(true);
@@ -359,24 +386,16 @@ export const AssessmentWorkspace: React.FC = () => {
       );
 
       const correctedCode = answer.code;
-      const shouldAutoApply = Boolean(correctedCode && isFixIntent);
-
-      if (shouldAutoApply && correctedCode) {
-        setCode(correctedCode);
-        handleRunVerification(correctedCode);
-        setAppliedNotice("⚡ AI corrected code automatically written to src/useTicketQueue.ts and verified!");
-        setTimeout(() => setAppliedNotice(null), 6000);
-      }
+      const patchDiff = answer.codeChanges?.[0]?.diff;
 
       setAiHistory((prev) => [
         ...prev,
         {
           role: "copilot",
-          text: shouldAutoApply
-            ? `⚡ Corrected code was written directly to src/useTicketQueue.ts and verified against sandbox tests!\n\n${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`
-            : `${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
+          text: `${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
           code: correctedCode,
-          applied: shouldAutoApply,
+          diff: patchDiff,
+          patchStatus: correctedCode ? "proposed" : undefined,
         },
       ]);
       await refreshBudget();
@@ -653,29 +672,68 @@ export const AssessmentWorkspace: React.FC = () => {
                           <div className="px-3 py-1.5 bg-slate-100 dark:bg-gray-800/90 border-b border-slate-200 dark:border-gray-700 flex items-center justify-between text-[11px]">
                             <span className="font-mono font-medium text-slate-700 dark:text-gray-300 flex items-center gap-1.5">
                               <FileCode className="w-3.5 h-3.5 text-indigo-500" />
-                              <span>AI Corrected Solution</span>
+                              <span>Proposed Solution Patch</span>
                             </span>
                             <div className="flex items-center gap-1.5">
-                              {msg.applied ? (
+                              {msg.patchStatus === "accepted" ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
                                   <Check className="w-3 h-3 text-emerald-600" />
-                                  <span>Applied to Editor</span>
+                                  <span>✓ Accepted & Applied</span>
+                                </span>
+                              ) : msg.patchStatus === "rejected" ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 flex items-center gap-1">
+                                  <XCircle className="w-3 h-3 text-rose-600" />
+                                  <span>✕ Rejected</span>
                                 </span>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplyCode(msg.code!, idx)}
-                                  className="px-2.5 py-1 rounded font-semibold bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] transition-colors flex items-center gap-1 shadow-xs"
-                                >
-                                  <Sparkles className="w-3 h-3" />
-                                  <span>Apply Fix to Editor</span>
-                                </button>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                  Pending Review
+                                </span>
                               )}
                             </div>
                           </div>
-                          <pre className="p-3 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-48 text-slate-800 dark:text-gray-200 bg-slate-50 dark:bg-gray-950/60">
-                            <code>{msg.code}</code>
-                          </pre>
+
+                          <div className="p-3 bg-slate-50 dark:bg-gray-950/60 space-y-2">
+                            <pre className="font-mono text-[11px] leading-relaxed overflow-x-auto max-h-32 text-slate-800 dark:text-gray-200">
+                              <code>{msg.code}</code>
+                            </pre>
+
+                            <div className="pt-2 border-t border-slate-200 dark:border-gray-800 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setReviewingPatch({
+                                    code: msg.code!,
+                                    diff: msg.diff,
+                                    messageIdx: idx,
+                                  })
+                                }
+                                className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-[11px] flex items-center gap-1 shadow-xs transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>Inspect & Review Patch</span>
+                              </button>
+
+                              {msg.patchStatus !== "accepted" && (
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectPatch(idx)}
+                                    className="px-2 py-1 rounded border border-slate-300 hover:bg-slate-200 text-slate-700 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-[11px] transition-colors"
+                                  >
+                                    Reject
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAcceptPatch(msg.code!, idx)}
+                                    className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-[11px] transition-colors"
+                                  >
+                                    Accept
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -698,7 +756,7 @@ export const AssessmentWorkspace: React.FC = () => {
                     placeholder={
                       budgetStatus.isExhausted
                         ? "AI Quota Exhausted"
-                        : "Ask AI to write code, explain algorithms, or fix bugs..."
+                        : "Ask AI for explanation, edge cases, or code proposals..."
                     }
                     className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                   />
@@ -727,13 +785,13 @@ export const AssessmentWorkspace: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleAutoFixWithAI}
+                onClick={handleRequestSolutionProposal}
                 disabled={isAskingAI || budgetStatus.isExhausted}
                 className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
-                title="Ask AI to write and apply corrected TypeScript code directly"
+                title="Ask AI for a solution proposal to inspect and review"
               >
                 <Sparkles className="w-3 h-3" />
-                <span>Auto-Fix with AI</span>
+                <span>Propose Solution with AI</span>
               </button>
 
               <button
@@ -838,6 +896,105 @@ export const AssessmentWorkspace: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Proposed Solution Patch Review Inspector Modal (Decision #7) */}
+      {reviewingPatch && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/75 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#111827] overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Review Proposed Solution Patch
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Untrusted AI output. Review the proposed modifications before explicitly accepting or rejecting.
+                  </p>
+                </div>
+              </div>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-semibold border border-amber-300 dark:border-amber-700">
+                Decision Required
+              </span>
+            </div>
+
+            {/* Modal Body - Code Diff / Code Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
+              {reviewingPatch.diff && (
+                <div>
+                  <div className="font-semibold text-slate-800 dark:text-gray-200 mb-1.5 flex items-center gap-1.5">
+                    <FileCode className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Proposed Patch Unified Diff:</span>
+                  </div>
+                  <pre className="p-3 rounded-xl bg-slate-950 font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed border border-slate-800 max-h-48">
+                    {reviewingPatch.diff}
+                  </pre>
+                </div>
+              )}
+
+              <div>
+                <div className="font-semibold text-slate-800 dark:text-gray-200 mb-1.5 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Complete Proposed Implementation:</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(reviewingPatch.code);
+                      setAppliedNotice("Proposed patch code copied to clipboard.");
+                      setTimeout(() => setAppliedNotice(null), 3000);
+                    }}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 flex items-center gap-1"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>Copy Code</span>
+                  </button>
+                </div>
+                <pre className="p-4 rounded-xl bg-[#090d16] font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed border border-slate-800 max-h-72">
+                  <code>{reviewingPatch.code}</code>
+                </pre>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 dark:bg-gray-900/60 dark:border-gray-800 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => handleRejectPatch(reviewingPatch.messageIdx)}
+                className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 flex items-center gap-1.5 transition-colors"
+              >
+                <XCircle className="w-4 h-4 text-rose-500" />
+                <span>Reject Patch (Keep Current Code)</span>
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReviewingPatch(null)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white"
+                >
+                  Close & Decide Later
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleAcceptPatch(reviewingPatch.code, reviewingPatch.messageIdx)}
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-colors"
+                >
+                  <CheckCircle2 className="w-4 h-4 fill-white text-emerald-600" />
+                  <span>Accept & Apply Patch to Editor</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Final Submission Dialog */}
       {isSubmitModalOpen && (
