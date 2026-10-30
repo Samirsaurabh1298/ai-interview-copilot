@@ -40,3 +40,4 @@ export const PublishVersionRequestSchema = z.object({
   changelogNotes: z.string().min(3, "Changelog description is required for audit trail"),
 });
 export type PublishVersionRequest = z.infer<typeof PublishVersionRequestSchema>;
+

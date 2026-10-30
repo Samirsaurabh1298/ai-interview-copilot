@@ -25,6 +25,9 @@ import {
   Mail,
   UserPlus,
   X,
+  Send,
+  User,
+  ArrowRight,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -34,21 +37,29 @@ import type {
   CreateTemplateRequest,
   AssessmentVersion,
   InviteMemberRequest,
+  CandidateInvitation,
+  CreateInvitationRequest,
   AuthUserContext,
   MembershipRole,
 } from "@ai-copilot/contracts";
 
 interface CompanyDashboardProps {
   onLaunchCandidateView?: () => void;
+  onOpenInvitation?: (token: string) => void;
 }
 
-export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({ onLaunchCandidateView }) => {
+export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
+  onLaunchCandidateView,
+  onOpenInvitation,
+}) => {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [templates, setTemplates] = useState<AssessmentTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<AssessmentTemplate | null>(null);
   const [versions, setVersions] = useState<AssessmentVersion[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [invitations, setInvitations] = useState<CandidateInvitation[]>([]);
+
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
   const [activeJwtToken, setActiveJwtToken] = useState<string | null>(null);
@@ -59,12 +70,13 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({ onLaunchCand
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"templates" | "audit" | "rbac">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "rbac" | "audit" | "invitations">("templates");
   const [activeTemplateTab, setActiveTemplateTab] = useState<"brief" | "starter" | "tests" | "rubric">("brief");
 
   // Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isCandidateInviteModalOpen, setIsCandidateInviteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Template Form State
@@ -82,16 +94,23 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({ onLaunchCand
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<MembershipRole>("interviewer");
 
+  // Candidate Invitation Form State
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateEmail, setCandidateEmail] = useState("");
+  const [candidateExpiresDays, setCandidateExpiresDays] = useState(7);
+  const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(null);
+
   // Load organizations on mount
   useEffect(() => {
     loadOrganizations();
   }, []);
 
-  // When selectedOrg changes, load its templates and members
+  // When selectedOrg changes, load its data
   useEffect(() => {
     if (selectedOrg) {
       loadTemplates(selectedOrg.id);
       loadMembers(selectedOrg.id);
+      loadInvitations(selectedOrg.id);
     }
   }, [selectedOrg]);
 
@@ -141,10 +160,18 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({ onLaunchCand
       const data = await ApiClient.getMembers(orgId);
       setMembers(data.members);
       if (data.members.length > 0 && !activeAuthUser) {
-        // Auto-login first member (owner) to demonstrate active JWT
         const owner = data.members[0]!;
         handleSelectPersona(owner);
       }
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  const loadInvitations = async (orgId: string) => {
+    try {
+      const data = await ApiClient.listInvitations(orgId);
+      setInvitations(data.invitations);
     } catch {
       // Non-blocking
     }
@@ -181,9 +208,8 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({ onLaunchCand
   };
 
   const handleOpenCreateModal = () => {
-    // RBAC Pre-Check: Only Owner or Admin can create templates
     if (activeAuthUser && !["owner", "admin"].includes(activeAuthUser.role)) {
-      setError(`Permission Denied: Your current role '${activeAuthUser.role}' lacks permission to author challenge templates. Switch to an Owner or Admin persona to continue.`);
+      setError(`Permission Denied: Your current role '${activeAuthUser.role}' lacks permission to author challenge templates.`);
       return;
     }
 
@@ -251,7 +277,6 @@ describe("useDebouncedFetch verification suite", () => {
   const handlePublishVersion = async (template: AssessmentTemplate) => {
     if (!selectedOrg) return;
 
-    // RBAC Pre-Check
     if (activeAuthUser && !["owner", "admin"].includes(activeAuthUser.role)) {
       setError(`Permission Denied: Your current role '${activeAuthUser.role}' lacks permission to publish immutable versions.`);
       return;
@@ -308,6 +333,50 @@ describe("useDebouncedFetch verification suite", () => {
     }
   };
 
+  const handleOpenCandidateInvite = (tmpl?: AssessmentTemplate) => {
+    if (activeAuthUser && !["owner", "admin", "interviewer"].includes(activeAuthUser.role)) {
+      setError(`Permission Denied: Role '${activeAuthUser.role}' is not authorized to issue candidate invitations.`);
+      return;
+    }
+
+    if (tmpl) {
+      setSelectedTemplate(tmpl);
+    }
+    setCandidateName("Jordan Lee");
+    setCandidateEmail("jordan.lee@example.com");
+    setCandidateExpiresDays(7);
+    setGeneratedInviteUrl(null);
+    setIsCandidateInviteModalOpen(true);
+  };
+
+  const handleCreateCandidateInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrg || !selectedTemplate) return;
+
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      const req: CreateInvitationRequest = {
+        organizationId: selectedOrg.id,
+        templateId: selectedTemplate.id,
+        candidateName: candidateName.trim(),
+        candidateEmail: candidateEmail.trim(),
+        expiresInDays: candidateExpiresDays,
+      };
+
+      const inv = await ApiClient.createInvitation(req, activeJwtToken || undefined);
+      setInvitations((prev) => [inv, ...prev]);
+      const url = `${window.location.origin}/?invite=${inv.invitationToken}`;
+      setGeneratedInviteUrl(url);
+      setSuccessMessage(`Invitation link generated for candidate ${inv.candidateName}!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to issue candidate invitation");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getRoleBadgeClass = (role: string) => {
     switch (role) {
       case "owner":
@@ -344,7 +413,7 @@ describe("useDebouncedFetch verification suite", () => {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400">
-              Enterprise AI Assessment Library, Cryptographic Audit Trail & RBAC Matrix
+              Enterprise AI Assessment Library, Candidate Invitations, Cryptographic Audit & RBAC
             </p>
           </div>
         </div>
@@ -362,6 +431,17 @@ describe("useDebouncedFetch verification suite", () => {
             >
               <FileCode className="w-3.5 h-3.5" />
               <span>Challenge Templates ({templates.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("invitations")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "invitations"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Send className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Candidates ({invitations.length})</span>
             </button>
             <button
               onClick={() => setActiveTab("rbac")}
@@ -394,6 +474,16 @@ describe("useDebouncedFetch verification suite", () => {
             >
               <Plus className="w-4 h-4" />
               <span>Create Template</span>
+            </button>
+          )}
+
+          {activeTab === "invitations" && (
+            <button
+              onClick={() => handleOpenCandidateInvite(selectedTemplate || undefined)}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 font-semibold text-xs text-white shadow-md shadow-emerald-600/20 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+              <Send className="w-4 h-4" />
+              <span>Invite Candidate</span>
             </button>
           )}
 
@@ -451,49 +541,6 @@ describe("useDebouncedFetch verification suite", () => {
               {m.role.toUpperCase()}
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* KPI Highlights Bar */}
-      <div className="grid grid-cols-4 gap-4 px-6 py-3 border-b border-slate-200 dark:border-gray-800 bg-slate-100/50 dark:bg-[#0b101c]/50 text-xs shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-            {templates.length}
-          </div>
-          <div>
-            <div className="font-semibold text-slate-800 dark:text-gray-200">Active Templates</div>
-            <div className="text-[11px] text-slate-500 dark:text-gray-400">Standardized challenge library</div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-            <Shield className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-semibold text-slate-800 dark:text-gray-200">RBAC Enforced</div>
-            <div className="text-[11px] text-slate-500 dark:text-gray-400">Owner, Admin, Interviewer, Reviewer</div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-            <ShieldCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-semibold text-slate-800 dark:text-gray-200">Node 22 Sandbox</div>
-            <div className="text-[11px] text-slate-500 dark:text-gray-400">Hardware & network isolated</div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-            <Lock className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-semibold text-slate-800 dark:text-gray-200">SHA-256 Immutability</div>
-            <div className="text-[11px] text-slate-500 dark:text-gray-400">Auditable code & rubric hashes</div>
-          </div>
         </div>
       </div>
 
@@ -613,6 +660,14 @@ describe("useDebouncedFetch verification suite", () => {
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => handleOpenCandidateInvite(selectedTemplate)}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-all"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Invite Candidate</span>
+                    </button>
+
+                    <button
                       onClick={() => handlePublishVersion(selectedTemplate)}
                       className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-200 text-xs font-semibold transition-all border border-slate-200 dark:border-gray-700"
                     >
@@ -623,10 +678,10 @@ describe("useDebouncedFetch verification suite", () => {
                     {onLaunchCandidateView && (
                       <button
                         onClick={onLaunchCandidateView}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-all"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-200 text-xs font-semibold transition-all border border-slate-200 dark:border-gray-700"
                       >
-                        <Play className="w-3.5 h-3.5" />
-                        <span>Launch Candidate Session</span>
+                        <Play className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Workspace Preview</span>
                       </button>
                     )}
                   </div>
@@ -815,11 +870,110 @@ describe("useDebouncedFetch verification suite", () => {
               </div>
             )}
           </>
+        ) : activeTab === "invitations" ? (
+          /* Candidate Invitations & Pipeline (Task 10) */
+          <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Send className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Candidate Assessment Invitations & Onboarding (Task 10)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    Issue signed, cryptographically random invitation tokens. Candidates review rules of engagement and code integrity policies before bootstrapping their isolated workspace.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleOpenCandidateInvite(selectedTemplate || undefined)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Issue New Invitation</span>
+                </button>
+              </div>
+
+              {/* Invitations Table */}
+              <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-5 shadow-xs">
+                {invitations.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                    <Mail className="w-8 h-8 mx-auto text-slate-300 dark:text-gray-600" />
+                    <p className="font-semibold text-slate-700 dark:text-gray-300">
+                      No candidate invitations issued yet
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Click "Issue New Invitation" to generate a signed assessment onboarding link.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-gray-800/60">
+                    {invitations.map((inv) => {
+                      const inviteUrl = `${window.location.origin}/?invite=${inv.invitationToken}`;
+                      return (
+                        <div key={inv.id} className="py-4 flex items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                {inv.candidateName}
+                              </span>
+                              <span className="text-xs text-slate-500 dark:text-gray-400 font-mono">
+                                ({inv.candidateEmail})
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  inv.status === "started"
+                                    ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                    : inv.status === "pending"
+                                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                    : "bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-400"
+                                }`}
+                              >
+                                {inv.status}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-3">
+                              <span>Expires: {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                              <span className="font-mono text-[10px] truncate max-w-xs">
+                                Token: {inv.invitationToken.substring(0, 16)}...
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleCopy(inviteUrl, inv.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-gray-700 hover:bg-slate-50 dark:hover:bg-gray-800 text-xs text-slate-700 dark:text-gray-300 font-medium"
+                            >
+                              {copiedKey === inv.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                              <span>{copiedKey === inv.id ? "Copied!" : "Copy Link"}</span>
+                            </button>
+
+                            {onOpenInvitation && (
+                              <button
+                                onClick={() => onOpenInvitation(inv.invitationToken)}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-semibold border border-indigo-200 dark:border-indigo-800"
+                              >
+                                <span>Preview Flow</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         ) : activeTab === "rbac" ? (
           /* Authentication & RBAC Management View (Task 6 & 7) */
           <div className="flex-1 p-6 overflow-y-auto space-y-6">
             <div className="max-w-5xl mx-auto space-y-6">
-              {/* Header */}
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -922,7 +1076,7 @@ describe("useDebouncedFetch verification suite", () => {
                         <td className="text-center text-slate-400 font-bold">✕</td>
                       </tr>
                       <tr>
-                        <td className="py-2.5 pr-4 font-medium">Issue Candidate Assessment Sessions</td>
+                        <td className="py-2.5 pr-4 font-medium">Issue Candidate Assessment Invites</td>
                         <td className="text-center text-emerald-600 font-bold">✓</td>
                         <td className="text-center text-emerald-600 font-bold">✓</td>
                         <td className="text-center text-emerald-600 font-bold">✓</td>
@@ -1092,6 +1246,151 @@ describe("useDebouncedFetch verification suite", () => {
           </div>
         )}
       </div>
+
+      {/* Candidate Invitation Modal */}
+      {isCandidateInviteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Issue Candidate Invitation
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400">
+                  Generate signed assessment link for {selectedTemplate?.title}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsCandidateInviteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {generatedInviteUrl ? (
+              <div className="p-6 space-y-4 text-xs">
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Invitation Link Generated!</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    Share this unique link with the candidate. It will take them to their onboarding & integrity verification screen.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700 dark:text-gray-300">
+                    Candidate Link (Expires in {candidateExpiresDays} days)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={generatedInviteUrl}
+                      className="flex-1 px-3 py-2 font-mono text-[11px] rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-50 dark:bg-gray-900 select-all"
+                    />
+                    <button
+                      onClick={() => handleCopy(generatedInviteUrl, "invite-url")}
+                      className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center gap-1"
+                    >
+                      {copiedKey === "invite-url" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedKey === "invite-url" ? "Copied" : "Copy"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                  {onOpenInvitation && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const token = new URL(generatedInviteUrl).searchParams.get("invite");
+                        if (token) {
+                          setIsCandidateInviteModalOpen(false);
+                          onOpenInvitation(token);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 text-slate-700 dark:text-gray-300 font-semibold"
+                    >
+                      Preview Onboarding Flow
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsCandidateInviteModalOpen(false)}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateCandidateInvite} className="p-5 space-y-4 text-xs">
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                    Candidate Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Jordan Lee"
+                    value={candidateName}
+                    onChange={(e) => setCandidateName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                    Candidate Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. jordan.lee@example.com"
+                    value={candidateEmail}
+                    onChange={(e) => setCandidateEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                    Expiration (Days)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={candidateExpiresDays}
+                    onChange={(e) => setCandidateExpiresDays(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCandidateInviteModalOpen(false)}
+                    className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-xs"
+                  >
+                    {isSubmitting ? "Generating..." : "Generate Invitation Link"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Member Invite Modal */}
       {isInviteModalOpen && (

@@ -10,4 +10,5 @@ export * from "./organization.js";
 export * from "./auth.js";
 export * from "./template.js";
 export * from "./version.js";
+export * from "./invitation.js";
 

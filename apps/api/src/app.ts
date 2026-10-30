@@ -16,12 +16,14 @@ import { organizationsRoutes } from "./routes/organizations.js";
 import { authRoutes } from "./routes/auth.js";
 import { templatesRoutes } from "./routes/templates.js";
 import { versionsRoutes } from "./routes/versions.js";
+import { invitationsRoutes } from "./routes/invitations.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
 import { AuthService } from "./services/auth.js";
 import { AssessmentTemplateService } from "./services/template.js";
 import { AssessmentVersioningService } from "./services/versioning.js";
+import { CandidateInvitationService } from "./services/invitation.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -120,6 +122,11 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const authService = new AuthService(config.JWT_SECRET);
   const templateService = new AssessmentTemplateService();
   const versioningService = new AssessmentVersioningService();
+  const invitationService = new CandidateInvitationService(
+    templateService,
+    orgService,
+    authService
+  );
 
   // Route registration
   await app.register(authRoutes, {
@@ -143,6 +150,12 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: "/api/v1",
     versioningService,
     templateService,
+    authService,
+  });
+
+  await app.register(invitationsRoutes, {
+    prefix: "/api/v1/invitations",
+    invitationService,
     authService,
   });
 

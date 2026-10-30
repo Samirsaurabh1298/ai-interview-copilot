@@ -5,12 +5,21 @@ import { QuestionConfirmation } from "./components/QuestionConfirmation.js";
 import { AnswerView } from "./components/AnswerView.js";
 import { AssessmentWorkspace } from "./components/AssessmentWorkspace.js";
 import { CompanyDashboard } from "./components/CompanyDashboard.js";
+import { CandidateOnboarding } from "./components/CandidateOnboarding.js";
 import { ApiClient } from "./services/apiClient.js";
-import type { AIRequest, AIResponse } from "@ai-copilot/contracts";
+import type { AIRequest, AIResponse, AcceptInvitationResponse } from "@ai-copilot/contracts";
 import { Camera, Terminal, ShieldAlert, Sparkles, AlertCircle } from "lucide-react";
 
 export const App: React.FC = () => {
   const [activeView, setActiveView] = useState<"copilot" | "assessment" | "company">("company");
+  const [activeInviteToken, setActiveInviteToken] = useState<string | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("invite");
+    } catch {
+      return null;
+    }
+  });
   const [apiConnected, setApiConnected] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [stage, setStage] = useState<"idle" | "confirming" | "answered">("idle");
@@ -89,6 +98,26 @@ export const App: React.FC = () => {
     setErrorMessage(null);
   };
 
+  if (activeInviteToken) {
+    return (
+      <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden font-sans">
+        <CandidateOnboarding
+          invitationToken={activeInviteToken}
+          onAssessmentStarted={() => {
+            setActiveInviteToken(null);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setActiveView("assessment");
+          }}
+          onCancel={() => {
+            setActiveInviteToken(null);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setActiveView("company");
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden select-none font-sans">
       <Header
@@ -100,7 +129,10 @@ export const App: React.FC = () => {
       />
 
       {activeView === "company" ? (
-        <CompanyDashboard onLaunchCandidateView={() => setActiveView("assessment")} />
+        <CompanyDashboard
+          onLaunchCandidateView={() => setActiveView("assessment")}
+          onOpenInvitation={(token) => setActiveInviteToken(token)}
+        />
       ) : activeView === "assessment" ? (
         <AssessmentWorkspace />
       ) : (

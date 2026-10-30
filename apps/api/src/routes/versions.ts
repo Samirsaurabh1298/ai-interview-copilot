@@ -102,3 +102,4 @@ export const versionsRoutes: FastifyPluginAsync<{
     }
   });
 };
+

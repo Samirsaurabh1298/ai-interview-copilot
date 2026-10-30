@@ -17,6 +17,10 @@ import type {
   CreateTemplateRequest,
   AssessmentVersion,
   PublishVersionRequest,
+  CandidateInvitation,
+  CreateInvitationRequest,
+  VerifyInvitationResponse,
+  AcceptInvitationResponse,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -289,6 +293,67 @@ export class ApiClient {
       throw new Error(`Invalid authentication token: ${res.statusText}`);
     }
     return (await res.json()) as { user: AuthUserContext };
+  }
+
+  public static async createInvitation(
+    req: CreateInvitationRequest,
+    token?: string
+  ): Promise<CandidateInvitation> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE_URL}/invitations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to create candidate invitation");
+    }
+    return (await res.json()) as CandidateInvitation;
+  }
+
+  public static async listInvitations(
+    organizationId: string
+  ): Promise<{ invitations: CandidateInvitation[]; total: number }> {
+    const res = await fetch(`${API_BASE_URL}/invitations?organizationId=${organizationId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch invitations: ${res.statusText}`);
+    }
+    return (await res.json()) as { invitations: CandidateInvitation[]; total: number };
+  }
+
+  public static async verifyInvitation(token: string): Promise<VerifyInvitationResponse> {
+    const res = await fetch(`${API_BASE_URL}/invitations/verify/${token}`);
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Invalid or expired invitation");
+    }
+    return (await res.json()) as VerifyInvitationResponse;
+  }
+
+  public static async acceptInvitation(token: string): Promise<AcceptInvitationResponse> {
+    const res = await fetch(`${API_BASE_URL}/invitations/accept/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agreedToIntegrityPolicy: true }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to accept invitation");
+    }
+    return (await res.json()) as AcceptInvitationResponse;
   }
 }
 

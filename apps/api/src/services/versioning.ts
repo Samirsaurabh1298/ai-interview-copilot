@@ -178,3 +178,4 @@ export class AssessmentVersioningService {
     return `${major}.${minor}.${patch}`;
   }
 }
+
