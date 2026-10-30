@@ -62,25 +62,55 @@ export class AssessmentEvaluator {
       framingCitations.push("Explanation lacked structured root-cause analysis or problem framing.");
     }
 
-    // 3. AI Collaboration (Weight: 15)
+    // 3. AI Collaboration & Inquiry Strategy (Weight: 15)
+    // Architectural Decision #4: Token expenditure is a company cost control, NOT a candidate performance score.
+    // Score purely on inquiry specificity, prompt intent, and iterative decomposition.
     let aiCollabRating: RubricRatingAnchor = 3;
     const aiCollabCitations: string[] = [];
-    if (promptCount >= 1 && promptCount <= 6 && totalCost <= 0.20) {
+
+    const prompts = options.prompts ?? [];
+    const hasStructuredPrompts = prompts.length > 0;
+    const targetedKeywords = ["root cause", "edge case", "type", "sort", "comparator", "tags", "mutation", "why", "explain"];
+    const highQualityInquiries = prompts.filter((p) =>
+      targetedKeywords.some((kw) => p.toLowerCase().includes(kw))
+    ).length;
+
+    if (hasStructuredPrompts) {
+      if (highQualityInquiries >= 2 || (prompts.length >= 2 && prompts.length <= 8 && highQualityInquiries >= 1)) {
+        aiCollabRating = 4;
+        aiCollabCitations.push(
+          `Strong AI collaboration: Candidate formulated ${prompts.length} focused prompt(s) targeting specific edge cases and architecture patterns.`
+        );
+      } else if (prompts.length > 8) {
+        aiCollabRating = 2;
+        aiCollabCitations.push(
+          `Developing AI collaboration: High prompt churn (${prompts.length} prompts) with low query specificity, suggesting trial-and-error.`
+        );
+      } else {
+        aiCollabRating = 3;
+        aiCollabCitations.push(
+          `Effective AI collaboration: Formulated ${prompts.length} clear prompt(s) to guide investigation.`
+        );
+      }
+    } else if (promptCount >= 1 && promptCount <= 8) {
+      // Fallback when only count telemetry is available
       aiCollabRating = 4;
       aiCollabCitations.push(
-        `Optimal AI efficiency: ${promptCount} prompt(s) used with $${totalCost.toFixed(3)} cost, staying well within pilot budget.`
+        `Effective query cadence: Candidate used ${promptCount} targeted inquiry iterations to advance task.`
       );
-    } else if (promptCount > 6 && totalCost <= 0.25) {
-      aiCollabRating = 3;
-      aiCollabCitations.push(
-        `Moderate AI query iteration (${promptCount} prompts, $${totalCost.toFixed(3)}), approaching threshold.`
-      );
-    } else if (totalCost > 0.25) {
+    } else if (promptCount > 8) {
       aiCollabRating = 2;
-      aiCollabCitations.push(`Exhausted standard token quota ($${totalCost.toFixed(3)} incurred).`);
+      aiCollabCitations.push(
+        `High query churn: ${promptCount} prompt iterations indicates excessive dependence on AI generation over structured reasoning.`
+      );
     } else {
       aiCollabRating = 3;
-      aiCollabCitations.push("Candidate completed work with minimal AI intervention.");
+      aiCollabCitations.push("Candidate completed engineering task autonomously with minimal AI assistance.");
+    }
+
+    // Append company budget audit telemetry strictly as non-scoring metadata
+    if (totalCost > 0) {
+      aiCollabCitations.push(`[Company Audit] Total AI compute cost incurred: $${totalCost.toFixed(4)} USD.`);
     }
 
     // 4. Critical Evaluation of AI (Weight: 15)
