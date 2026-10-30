@@ -6,11 +6,12 @@ dotenv.config();
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  DEFAULT_AI_PROVIDER: z.enum(["openai", "anthropic", "google", "mock"]).default("mock"),
-  DEFAULT_AI_MODEL: z.string().default("mock-model-v1"),
+  DEFAULT_AI_PROVIDER: z.enum(["openai", "anthropic", "google", "groq", "grok", "mock"]).default("groq"),
+  DEFAULT_AI_MODEL: z.string().default("qwen/qwen3.8-27b"),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
   CODE_RUNNER_URL: z.string().url().default("http://localhost:4100"),
 });
 

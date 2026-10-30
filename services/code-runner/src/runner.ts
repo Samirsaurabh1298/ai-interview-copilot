@@ -20,7 +20,8 @@ export async function executeCodeInSandbox(
     let args: string[];
 
     if (request.language === "javascript" || request.language === "typescript") {
-      scriptPath = path.join(tmpDir, "runner.mjs");
+      // Use runner.ts with Node's native strip-types support to seamlessly execute both TS and JS
+      scriptPath = path.join(tmpDir, "runner.ts");
       // Generate harness file combining solution and tests
       const harnessCode = `
 const __tests = [];
@@ -65,6 +66,8 @@ run().catch((err) => {
       fs.writeFileSync(scriptPath, harnessCode, "utf8");
       binary = process.execPath; // node
       args = [
+        "--no-warnings",
+        "--experimental-strip-types",
         `--max-old-space-size=${request.memoryLimitMb}`,
         "--no-addons",
         scriptPath,

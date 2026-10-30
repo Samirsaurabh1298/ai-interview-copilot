@@ -184,6 +184,9 @@ importers:
       '@ai-copilot/ai-provider-google':
         specifier: workspace:*
         version: link:../../packages/ai-provider-google
+      '@ai-copilot/ai-provider-groq':
+        specifier: workspace:*
+        version: link:../../packages/ai-provider-groq
       '@ai-copilot/ai-provider-openai':
         specifier: workspace:*
         version: link:../../packages/ai-provider-openai
@@ -344,6 +347,34 @@ importers:
       '@google/genai':
         specifier: ^2.32.0
         version: 2.32.0
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.10
+        version: 22.20.5
+      tsup:
+        specifier: ^8.4.0
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.32)(tsx@4.23.15)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.7(@types/node@22.20.5)(jiti@1.21.7)(tsx@4.23.15)
+
+  packages/ai-provider-groq:
+    dependencies:
+      '@ai-copilot/ai-core':
+        specifier: workspace:*
+        version: link:../ai-core
+      '@ai-copilot/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      openai:
+        specifier: ^4.86.1
+        version: 4.104.0(ws@8.22.0)(zod@3.25.76)
       zod:
         specifier: ^3.24.2
         version: 3.25.76

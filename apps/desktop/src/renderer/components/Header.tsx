@@ -55,16 +55,14 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Status badges */}
         <div className="flex items-center gap-2 text-xs">
           <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-colors ${
-              apiConnected
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-colors ${apiConnected
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20"
                 : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20"
-            }`}
+              }`}
           >
             <span
-              className={`w-2 h-2 rounded-full ${
-                apiConnected ? "bg-emerald-500 animate-pulse dark:bg-emerald-400" : "bg-amber-500 dark:bg-amber-400"
-              }`}
+              className={`w-2 h-2 rounded-full ${apiConnected ? "bg-emerald-500 animate-pulse dark:bg-emerald-400" : "bg-amber-500 dark:bg-amber-400"
+                }`}
             />
             {apiConnected ? "Backend Connected" : "Connecting..."}
           </div>

@@ -39,9 +39,22 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({
       )
       .join("\n\n");
 
+    const effectiveLanguage: "javascript" | "typescript" | "python" =
+      language === "python"
+        ? "python"
+        : (language === "typescript" ||
+           solutionCode.includes("interface ") ||
+           solutionCode.includes("private ") ||
+           solutionCode.includes("public ") ||
+           solutionCode.includes(": number") ||
+           solutionCode.includes(": string") ||
+           solutionCode.includes(": void"))
+        ? "typescript"
+        : "javascript";
+
     try {
       const result = await ApiClient.validateCode({
-        language: (language === "python" ? "python" : "javascript"),
+        language: effectiveLanguage,
         code: solutionCode,
         testCode: testCasesCode,
         timeoutMs: 4000,
@@ -93,20 +106,27 @@ export const TestCasesView: React.FC<TestCasesViewProps> = ({
               : "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/25 dark:text-rose-300"
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             {sandboxResult.passed ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             ) : (
-              <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+              <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
             )}
-            <span>
-              <strong>
-                {sandboxResult.passed ? "All Tests Passed" : "Sandbox Test Failure"}
-              </strong>{" "}
-              — {sandboxResult.tests.filter((t) => t.passed).length} of{" "}
-              {sandboxResult.tests.length || tests.length} verified in isolated sandbox (
-              {sandboxResult.durationMs}ms)
-            </span>
+            <div className="space-y-1">
+              <div>
+                <strong>
+                  {sandboxResult.passed ? "All Tests Passed" : "Sandbox Test Failure"}
+                </strong>{" "}
+                — {sandboxResult.tests.filter((t) => t.passed).length} of{" "}
+                {sandboxResult.tests.length || tests.length} verified in isolated sandbox (
+                {sandboxResult.durationMs}ms)
+              </div>
+              {sandboxResult.stderr && (
+                <div className="font-mono text-[11px] text-rose-700 dark:text-rose-300 max-h-24 overflow-y-auto whitespace-pre-wrap">
+                  {sandboxResult.stderr}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500 dark:text-gray-400">
             <Cpu className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />

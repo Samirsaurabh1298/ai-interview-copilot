@@ -13,6 +13,8 @@ export const PROVIDER_RATE_CARDS: Record<string, RateCard> = {
   "gpt-4o": { inputPerMillionUsd: 2.5, outputPerMillionUsd: 10.0 },
   "claude-3-5-sonnet-20241022": { inputPerMillionUsd: 3.0, outputPerMillionUsd: 15.0 },
   "gemini-2.0-flash": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.4 },
+  "qwen/qwen3.8-27b": { inputPerMillionUsd: 0.1, outputPerMillionUsd: 0.4 },
+  "openai/gpt-oss-120b": { inputPerMillionUsd: 0.2, outputPerMillionUsd: 0.8 },
   "mock-model-v1": { inputPerMillionUsd: 0.0, outputPerMillionUsd: 0.0 },
 };
 
@@ -24,8 +26,8 @@ export class AIUsageGatewayService {
       return this.sessionBudgets.get(sessionId)!.policy;
     }
     return {
-      allowedProvider: "openai",
-      allowedModel: "gpt-4o",
+      allowedProvider: "groq",
+      allowedModel: "qwen/qwen3.8-27b",
       maxBudgetUsd: 0.25,
       warningThresholdPercent: 80,
       timeLimitSeconds: 3600,
@@ -114,3 +116,4 @@ export class AIUsageGatewayService {
     };
   }
 }
+

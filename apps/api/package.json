@@ -16,6 +16,7 @@
     "@ai-copilot/ai-core": "workspace:*",
     "@ai-copilot/ai-provider-anthropic": "workspace:*",
     "@ai-copilot/ai-provider-google": "workspace:*",
+    "@ai-copilot/ai-provider-groq": "workspace:*",
     "@ai-copilot/ai-provider-openai": "workspace:*",
     "@ai-copilot/code-runner": "workspace:*",
     "@ai-copilot/context-engine": "workspace:*",

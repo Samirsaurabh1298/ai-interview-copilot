@@ -9,6 +9,7 @@ describe("API Integration Tests", () => {
   beforeAll(async () => {
     const config = loadConfig();
     config.NODE_ENV = "test";
+    config.DEFAULT_AI_PROVIDER = "mock";
     app = await buildApp(config);
     await app.ready();
   });

@@ -3,7 +3,7 @@ import { z } from "zod";
 export const ModelCapabilitySchema = z.object({
   id: z.string(),
   name: z.string(),
-  provider: z.enum(["openai", "anthropic", "google"]),
+  provider: z.enum(["openai", "anthropic", "google", "groq", "grok", "mock"]),
   supportsVision: z.boolean(),
   supportsStreaming: z.boolean(),
   supportsStructuredOutput: z.boolean(),
@@ -16,7 +16,7 @@ export const ModelCapabilitySchema = z.object({
 export type ModelCapability = z.infer<typeof ModelCapabilitySchema>;
 
 export const ProviderInfoSchema = z.object({
-  id: z.enum(["openai", "anthropic", "google"]),
+  id: z.enum(["openai", "anthropic", "google", "groq", "grok", "mock"]),
   name: z.string(),
   isConfigured: z.boolean(),
   availableModels: z.array(ModelCapabilitySchema),
@@ -26,7 +26,7 @@ export type ProviderInfo = z.infer<typeof ProviderInfoSchema>;
 
 export const ProvidersResponseSchema = z.object({
   providers: z.array(ProviderInfoSchema),
-  defaultProvider: z.enum(["openai", "anthropic", "google"]),
+  defaultProvider: z.enum(["openai", "anthropic", "google", "groq", "grok", "mock"]),
   defaultModel: z.string(),
 });
 

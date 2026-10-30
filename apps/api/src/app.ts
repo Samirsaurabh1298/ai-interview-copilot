@@ -4,6 +4,7 @@ import { AIOrchestrationService, MockAIProvider } from "@ai-copilot/ai-core";
 import { AnthropicProvider } from "@ai-copilot/ai-provider-anthropic";
 import { GoogleGeminiProvider } from "@ai-copilot/ai-provider-google";
 import { OpenAIProvider } from "@ai-copilot/ai-provider-openai";
+import { GroqProvider } from "@ai-copilot/ai-provider-groq";
 import { answersRoutes } from "./routes/answers.js";
 import { providersRoutes } from "./routes/providers.js";
 import { extractionRoutes } from "./routes/extraction.js";
@@ -33,7 +34,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
 
   // Initialize Orchestration Engine
   const orchestrator = new AIOrchestrationService({
-    defaultProviderId: config.DEFAULT_AI_PROVIDER as "openai" | "anthropic" | "google" | "mock",
+    defaultProviderId: config.DEFAULT_AI_PROVIDER,
     maxRetries: 2,
     timeoutMs: 35000,
   });
@@ -77,6 +78,26 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     }
   }
 
+  // 4. Groq LPU (Ultra-Fast)
+  let groqProvider: GroqProvider | undefined;
+  if (config.GROQ_API_KEY) {
+    try {
+      groqProvider = new GroqProvider(config.GROQ_API_KEY);
+      orchestrator.registerProvider(groqProvider);
+      // Register 'grok' alias for seamless user compatibility
+      orchestrator.registerProvider({
+        id: "grok",
+        name: "Groq LPU (Ultra-Fast)",
+        defaultModel: groqProvider.defaultModel,
+        getCapabilities: () => groqProvider!.getCapabilities(),
+        generate: (req, override) => groqProvider!.generate(req, override),
+      });
+      app.log.info("Groq LPU provider registered with grok alias.");
+    } catch (err) {
+      app.log.error({ err }, "Failed to initialize Groq provider.");
+    }
+  }
+
   // Health check
   app.get("/health", async () => ({
     status: "healthy",
@@ -102,6 +123,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     anthropicProvider,
     googleProvider,
     openaiProvider,
+    groqProvider,
   });
 
   await app.register(extractionRoutes, {

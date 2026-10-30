@@ -6,8 +6,8 @@ import { SingleTestResultSchema } from "./validation.js";
 // ==============================================================================
 
 export const ToolPolicySchema = z.object({
-  allowedProvider: z.enum(["openai", "anthropic", "google", "mock"]).default("openai"),
-  allowedModel: z.string().default("gpt-4o"),
+  allowedProvider: z.enum(["openai", "anthropic", "google", "groq", "grok", "mock"]).default("groq"),
+  allowedModel: z.string().default("qwen/qwen3.8-27b"),
   maxBudgetUsd: z.number().positive().default(0.25), // $0.25 pilot target
   warningThresholdPercent: z.number().min(50).max(95).default(80), // 80% warning
   timeLimitSeconds: z.number().int().positive().default(3600), // 60 minutes
@@ -94,3 +94,4 @@ export const CandidateSubmissionSchema = z.object({
 });
 
 export type CandidateSubmission = z.infer<typeof CandidateSubmissionSchema>;
+

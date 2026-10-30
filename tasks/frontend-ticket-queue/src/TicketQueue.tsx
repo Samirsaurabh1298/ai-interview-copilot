@@ -110,3 +110,4 @@ export const TicketQueue: React.FC<TicketQueueProps> = ({ initialTickets }) => {
     </div>
   );
 };
+

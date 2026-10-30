@@ -178,6 +178,13 @@ export const AnswerView: React.FC<AnswerViewProps> = ({ answer, onReset }) => {
             tests={answer.tests}
             edgeCases={answer.edgeCases}
             solutionCode={answer.code}
+            language={
+              answer.code?.includes("interface ") ||
+              answer.code?.includes(": ") ||
+              answer.code?.includes("private ")
+                ? "typescript"
+                : "javascript"
+            }
           />
         </div>
       )}

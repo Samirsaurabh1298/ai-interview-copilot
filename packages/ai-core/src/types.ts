@@ -1,7 +1,7 @@
 import type { AIRequest, AIResponse, ModelCapability } from "@ai-copilot/contracts";
 
 export interface AIProvider {
-  readonly id: "openai" | "anthropic" | "google" | "mock";
+  readonly id: "openai" | "anthropic" | "google" | "groq" | "grok" | "mock" | string;
   readonly name: string;
   readonly defaultModel: string;
   getCapabilities(): Promise<ModelCapability[]>;
@@ -9,7 +9,7 @@ export interface AIProvider {
 }
 
 export interface OrchestratorOptions {
-  defaultProviderId?: "openai" | "anthropic" | "google" | "mock";
+  defaultProviderId?: "openai" | "anthropic" | "google" | "groq" | "grok" | "mock" | string;
   maxRetries?: number;
   timeoutMs?: number;
 }

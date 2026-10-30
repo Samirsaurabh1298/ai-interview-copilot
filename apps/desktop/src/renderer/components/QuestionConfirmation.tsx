@@ -24,7 +24,7 @@ export const QuestionConfirmation: React.FC<QuestionConfirmationProps> = ({
   const [task, setTask] = useState<TaskType>("debug");
   const [language, setLanguage] = useState(initialLanguage);
   const [responseStyle, setResponseStyle] = useState<ResponseStyle>("concise");
-  const [selectedProvider, setSelectedProvider] = useState<string>("anthropic");
+  const [selectedProvider, setSelectedProvider] = useState<string>("groq");
 
   // Repository Context state
   const [repoPath, setRepoPath] = useState("");
@@ -120,6 +120,7 @@ export const QuestionConfirmation: React.FC<QuestionConfirmationProps> = ({
                   onChange={(e) => setSelectedProvider(e.target.value)}
                   className="rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                 >
+                  <option value="groq">Groq LPU (Ultra-Fast)</option>
                   <option value="anthropic">Claude 3.5 Sonnet</option>
                   <option value="google">Gemini 2.0 Flash</option>
                   <option value="openai">GPT-4o</option>

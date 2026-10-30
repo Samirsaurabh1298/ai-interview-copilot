@@ -69,3 +69,4 @@ In `src/useTicketQueue.ts`:
 | **AI Collaboration** | Asks targeted question: *"What is the standard comparator formula for descending numerical priority?"* | Pastes entire 100-line file into prompt repeatedly without context. |
 | **Critical Evaluation** | Rejects any AI suggestion that introduces external libraries (Lodash) for simple array sorting. | Accepts complex mutations or adds unnecessary re-renders. |
 | **Testing** | Adds or runs tests verifying that priority descending puts urgent first. | Submits without running `pnpm test`. |
+
