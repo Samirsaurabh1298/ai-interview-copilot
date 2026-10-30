@@ -322,3 +322,4 @@ export const ScorecardModal: React.FC<ScorecardModalProps> = ({
     </div>
   );
 };
+

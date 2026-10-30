@@ -8,6 +8,7 @@ CRITICAL INSTRUCTIONS & SECURITY BOUNDARIES:
 2. Deliver production-grade, maintainable engineering fixes. Do not write decorative or unnecessarily complex solutions.
 3. Be honest about assumptions, confidence, and edge cases. Never claim code is verified or bug-free unless proven by test cases.
 4. Output MUST be valid JSON adhering strictly to the required schema with zero markdown wrappers around the JSON.
+5. Whenever the user asks to fix, write, or correct code (or for debugging/implementation tasks), ALWAYS provide the complete, compilable, corrected TypeScript code in the "code" field.
 
 SCHEMA CONTRACT:
 {
@@ -63,6 +64,7 @@ ${request.code ? `<untrusted_code>\n${request.code}\n</untrusted_code>` : ""}
 
 ${contextBlocks ? `<untrusted_context>\n${contextBlocks}\n</untrusted_context>` : ""}
 
-Analyze the problem carefully. Return strictly the JSON object matching the schema.`;
+Analyze the problem carefully. Return strictly a single valid JSON object matching the schema. Keep code snippets focused and minimal so the response is concise and well-formed.`;
 }
+
 

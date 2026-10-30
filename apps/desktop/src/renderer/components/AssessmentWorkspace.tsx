@@ -152,11 +152,19 @@ test("Sorting does not mutate input array in place", () => {
 });
 `;
 
+interface AssessmentChatMessage {
+  role: "candidate" | "copilot";
+  text: string;
+  code?: string;
+  applied?: boolean;
+}
+
 export const AssessmentWorkspace: React.FC = () => {
   const [sessionId] = useState(() => `sess_${Date.now().toString(36)}`);
   const [candidateId] = useState("cand_frontend_pilot_1");
   const [timeLeftSeconds, setTimeLeftSeconds] = useState(3600); // 60 mins
   const [code, setCode] = useState(STARTER_CODE);
+  const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
 
   // Budget state
   const [budgetStatus, setBudgetStatus] = useState<SessionBudgetStatus>({
@@ -174,7 +182,7 @@ export const AssessmentWorkspace: React.FC = () => {
 
   // AI chat state
   const [aiQuestion, setAiQuestion] = useState("");
-  const [aiHistory, setAiHistory] = useState<Array<{ role: "candidate" | "copilot"; text: string }>>([
+  const [aiHistory, setAiHistory] = useState<AssessmentChatMessage[]>([
     {
       role: "copilot",
       text: "Hello! I am your AI assessment copilot. You can ask me to explain algorithms, clarify TypeScript patterns, or analyze edge cases. Keep queries focused to stay within your $0.25 session budget.",
@@ -224,13 +232,13 @@ export const AssessmentWorkspace: React.FC = () => {
   };
 
   // Run isolated tests
-  const handleRunVerification = async () => {
+  const handleRunVerification = async (codeToRun?: string) => {
     setIsRunningTests(true);
     setActiveBottomTab("tests");
     try {
       const result = await ApiClient.validateCode({
         language: "typescript",
-        code,
+        code: codeToRun ?? code,
         testCode: VERIFICATION_TESTS_CODE,
         timeoutMs: 4000,
         memoryLimitMb: 128,
@@ -252,6 +260,73 @@ export const AssessmentWorkspace: React.FC = () => {
     }
   };
 
+  // Apply AI code to the editor
+  const handleApplyCode = (newCode: string, messageIdx?: number) => {
+    setCode(newCode);
+    setAppliedNotice("⚡ AI corrected code applied to src/useTicketQueue.ts and executed in sandbox!");
+    setTimeout(() => setAppliedNotice(null), 6000);
+
+    if (messageIdx !== undefined) {
+      setAiHistory((prev) =>
+        prev.map((msg, i) => (i === messageIdx ? { ...msg, applied: true } : msg))
+      );
+    }
+    handleRunVerification(newCode);
+  };
+
+  // 1-Click Auto-Fix with AI
+  const handleAutoFixWithAI = async () => {
+    if (isAskingAI || budgetStatus.isExhausted) return;
+    setLeftTab("ai");
+    const promptText = "Please write the complete corrected TypeScript code for filterAndSortTickets to fix descending priority sorting, array mutation in place, and missing tags errors.";
+    setAiHistory((prev) => [...prev, { role: "candidate", text: promptText }]);
+    setIsAskingAI(true);
+
+    try {
+      const answer = await ApiClient.generateAnswer(
+        {
+          task: "debug",
+          question: promptText,
+          code,
+          language: "typescript",
+          responseStyle: "concise",
+          context: [],
+        },
+        "groq",
+        sessionId
+      );
+
+      const correctedCode = answer.code;
+      if (correctedCode) {
+        setCode(correctedCode);
+        handleRunVerification(correctedCode);
+        setAppliedNotice("⚡ AI fix applied directly to src/useTicketQueue.ts and verified!");
+        setTimeout(() => setAppliedNotice(null), 6000);
+      }
+
+      setAiHistory((prev) => [
+        ...prev,
+        {
+          role: "copilot",
+          text: `⚡ Corrected code was written directly to src/useTicketQueue.ts and verified against sandbox tests!\n\n${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
+          code: correctedCode,
+          applied: Boolean(correctedCode),
+        },
+      ]);
+      await refreshBudget();
+    } catch (err: unknown) {
+      setAiHistory((prev) => [
+        ...prev,
+        {
+          role: "copilot",
+          text: `AI Request Blocked or Failed: ${err instanceof Error ? err.message : "Network error"}`,
+        },
+      ]);
+    } finally {
+      setIsAskingAI(false);
+    }
+  };
+
   // Send query to AI via gateway
   const handleAskAI = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,6 +338,7 @@ export const AssessmentWorkspace: React.FC = () => {
     }
 
     const q = aiQuestion.trim();
+    const isFixIntent = /write|fix|correct|replace|apply|solve|generate/i.test(q);
     setAiQuestion("");
     setAiHistory((prev) => [...prev, { role: "candidate", text: q }]);
     setIsAskingAI(true);
@@ -281,11 +357,25 @@ export const AssessmentWorkspace: React.FC = () => {
         sessionId
       );
 
+      const correctedCode = answer.code;
+      const shouldAutoApply = Boolean(correctedCode && isFixIntent);
+
+      if (shouldAutoApply && correctedCode) {
+        setCode(correctedCode);
+        handleRunVerification(correctedCode);
+        setAppliedNotice("⚡ AI corrected code automatically written to src/useTicketQueue.ts and verified!");
+        setTimeout(() => setAppliedNotice(null), 6000);
+      }
+
       setAiHistory((prev) => [
         ...prev,
         {
           role: "copilot",
-          text: `${answer.explanation}\n\nKey Observation:\n${answer.approach?.join("\n") ?? ""}`,
+          text: shouldAutoApply
+            ? `⚡ Corrected code was written directly to src/useTicketQueue.ts and verified against sandbox tests!\n\n${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`
+            : `${answer.explanation}\n\nKey Observations:\n${answer.approach?.join("\n") ?? ""}`,
+          code: correctedCode,
+          applied: shouldAutoApply,
         },
       ]);
       await refreshBudget();
@@ -548,13 +638,45 @@ export const AssessmentWorkspace: React.FC = () => {
                       className={`p-3 rounded-xl text-xs leading-relaxed ${
                         msg.role === "candidate"
                           ? "bg-indigo-600 text-white ml-8 shadow-xs"
-                          : "bg-slate-100 text-slate-800 mr-8 border border-slate-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
+                          : "bg-slate-100 text-slate-800 mr-4 border border-slate-200 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
                       }`}
                     >
                       <div className="font-semibold text-[10px] uppercase tracking-wider mb-1 opacity-70">
                         {msg.role === "candidate" ? "Candidate" : "AI Copilot"}
                       </div>
                       <div className="whitespace-pre-wrap font-sans">{msg.text}</div>
+
+                      {/* If the AI provided code solution */}
+                      {msg.code && (
+                        <div className="mt-3 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900/90 overflow-hidden shadow-xs">
+                          <div className="px-3 py-1.5 bg-slate-100 dark:bg-gray-800/90 border-b border-slate-200 dark:border-gray-700 flex items-center justify-between text-[11px]">
+                            <span className="font-mono font-medium text-slate-700 dark:text-gray-300 flex items-center gap-1.5">
+                              <FileCode className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>AI Corrected Solution</span>
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {msg.applied ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>Applied to Editor</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyCode(msg.code!, idx)}
+                                  className="px-2.5 py-1 rounded font-semibold bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] transition-colors flex items-center gap-1 shadow-xs"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  <span>Apply Fix to Editor</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <pre className="p-3 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-48 text-slate-800 dark:text-gray-200 bg-slate-50 dark:bg-gray-950/60">
+                            <code>{msg.code}</code>
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {isAskingAI && (
@@ -575,7 +697,7 @@ export const AssessmentWorkspace: React.FC = () => {
                     placeholder={
                       budgetStatus.isExhausted
                         ? "AI Quota Exhausted"
-                        : "Ask AI for explanation or edge case clarification..."
+                        : "Ask AI to write code, explain algorithms, or fix bugs..."
                     }
                     className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                   />
@@ -601,18 +723,51 @@ export const AssessmentWorkspace: React.FC = () => {
               <span>src/useTicketQueue.ts</span>
             </span>
 
-            <button
-              onClick={() => {
-                if (confirm("Reset code back to original starter code?")) {
-                  setCode(STARTER_CODE);
-                }
-              }}
-              className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px]"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Reset Starter</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAutoFixWithAI}
+                disabled={isAskingAI || budgetStatus.isExhausted}
+                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
+                title="Ask AI to write and apply corrected TypeScript code directly"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Auto-Fix with AI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Reset code back to original starter code?")) {
+                    setCode(STARTER_CODE);
+                    setAppliedNotice("Starter code restored.");
+                    setTimeout(() => setAppliedNotice(null), 3000);
+                  }
+                }}
+                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px]"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Starter</span>
+              </button>
+            </div>
           </div>
+
+          {/* Applied Code Notice Banner */}
+          {appliedNotice && (
+            <div className="bg-emerald-500/10 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-emerald-400 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{appliedNotice}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => handleRunVerification()}
+                className="text-[11px] underline hover:text-emerald-300 font-semibold"
+              >
+                Run Tests
+              </button>
+            </div>
+          )}
 
           {/* Code Editor Area */}
           <div className="flex-1 overflow-hidden p-2">
