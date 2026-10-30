@@ -45,3 +45,4 @@ export const AuthTokenResponseSchema = z.object({
   user: AuthUserContextSchema,
 });
 export type AuthTokenResponse = z.infer<typeof AuthTokenResponseSchema>;
+

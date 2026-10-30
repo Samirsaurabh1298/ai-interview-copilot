@@ -198,8 +198,8 @@ All packages maintain passing automated test suites:
 | `packages/ai-provider-anthropic` | `adapter.test.ts` | 3 / 3 | PASS |
 | `packages/ai-provider-google` | `adapter.test.ts` | 3 / 3 | PASS |
 | `packages/scoring-engine` | `evaluator.test.ts` | 3 / 3 | PASS |
-| `apps/api` | `app.test.ts`, `organizations.test.ts`, `auth.test.ts` | 21 / 21 | PASS |
-| **Total Automated Tests** | **Across Monorepo** | **57 / 57** | **100% PASS** |
+| `apps/api` | `app.test.ts`, `organizations.test.ts`, `auth.test.ts`, `templates.test.ts` | 25 / 25 | PASS |
+| **Total Automated Tests** | **Across Monorepo** | **61 / 61** | **100% PASS** |
 
 ---
 
@@ -217,6 +217,7 @@ All packages maintain passing automated test suites:
 
 1. **Task 6: Organization & Membership Management (Completed)**: Delivered multi-tenant organization contracts, transactional tenant service with row-level tenant boundary isolation, team invitation workflows, role management (`owner`, `admin`, `interviewer`, `reviewer`, `candidate`), and sole-owner safety guards.
 2. **Task 7: Authentication & RBAC (Completed)**: Delivered stateless HMAC-SHA256 JWT tokens with timing-safe signature verification, role-based access control preHandler hooks, ephemeral candidate session tokens, tenant boundary validation (anti-IDOR), and candidate session scoping.
+3. **Task 8: Assessment Template Creation (Completed)**: Delivered challenge template schemas, pre-seeded production challenge library (*Frontend Engineer: Support Triage Queue*), custom challenge authoring with difficulty, duration, code stubs, test suites, tool policies, and multi-tenant scoping.
 
 ---
 
@@ -224,6 +225,7 @@ All packages maintain passing automated test suites:
 
 All features have been committed with conventional commit standards on the local `main` branch:
 
+- `71dcb50` — **feat(auth):** implement jwt token authentication, rbac hooks, and candidate session isolation
 - `4e68df4` — **feat(org):** implement multi-tenant organization and membership management
 - `9c04d20` — **feat(security):** harden code execution isolation and implement atomic budget reservation
 - `493726b` — **feat(assessment):** require explicit candidate review and acceptance for AI proposed patches

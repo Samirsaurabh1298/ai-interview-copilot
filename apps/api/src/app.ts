@@ -14,10 +14,12 @@ import { usageRoutes } from "./routes/usage.js";
 import { assessmentRoutes } from "./routes/assessment.js";
 import { organizationsRoutes } from "./routes/organizations.js";
 import { authRoutes } from "./routes/auth.js";
+import { templatesRoutes } from "./routes/templates.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
 import { AuthService } from "./services/auth.js";
+import { AssessmentTemplateService } from "./services/template.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -114,6 +116,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const gateway = new AIUsageGatewayService();
   const orgService = new OrganizationService();
   const authService = new AuthService(config.JWT_SECRET);
+  const templateService = new AssessmentTemplateService();
 
   // Route registration
   await app.register(authRoutes, {
@@ -125,6 +128,12 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await app.register(organizationsRoutes, {
     prefix: "/api/v1/organizations",
     orgService,
+  });
+
+  await app.register(templatesRoutes, {
+    prefix: "/api/v1/templates",
+    templateService,
+    authService,
   });
 
   await app.register(answersRoutes, {
