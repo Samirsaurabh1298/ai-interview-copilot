@@ -155,8 +155,8 @@ test("Sorting does not mutate input array in place", () => {
 interface AssessmentChatMessage {
   role: "candidate" | "copilot";
   text: string;
-  code?: string;
-  applied?: boolean;
+  code?: string | undefined;
+  applied?: boolean | undefined;
 }
 
 export const AssessmentWorkspace: React.FC = () => {
@@ -233,12 +233,13 @@ export const AssessmentWorkspace: React.FC = () => {
 
   // Run isolated tests
   const handleRunVerification = async (codeToRun?: string) => {
+    const targetCode = typeof codeToRun === "string" ? codeToRun : code;
     setIsRunningTests(true);
     setActiveBottomTab("tests");
     try {
       const result = await ApiClient.validateCode({
         language: "typescript",
-        code: codeToRun ?? code,
+        code: targetCode,
         testCode: VERIFICATION_TESTS_CODE,
         timeoutMs: 4000,
         memoryLimitMb: 128,
@@ -491,7 +492,7 @@ export const AssessmentWorkspace: React.FC = () => {
 
           {/* Verification runner button */}
           <button
-            onClick={handleRunVerification}
+            onClick={() => handleRunVerification()}
             disabled={isRunningTests}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors shadow-xs disabled:opacity-50"
           >
