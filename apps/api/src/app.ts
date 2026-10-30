@@ -15,11 +15,13 @@ import { assessmentRoutes } from "./routes/assessment.js";
 import { organizationsRoutes } from "./routes/organizations.js";
 import { authRoutes } from "./routes/auth.js";
 import { templatesRoutes } from "./routes/templates.js";
+import { versionsRoutes } from "./routes/versions.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
 import { AuthService } from "./services/auth.js";
 import { AssessmentTemplateService } from "./services/template.js";
+import { AssessmentVersioningService } from "./services/versioning.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -117,6 +119,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const orgService = new OrganizationService();
   const authService = new AuthService(config.JWT_SECRET);
   const templateService = new AssessmentTemplateService();
+  const versioningService = new AssessmentVersioningService();
 
   // Route registration
   await app.register(authRoutes, {
@@ -132,6 +135,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
 
   await app.register(templatesRoutes, {
     prefix: "/api/v1/templates",
+    templateService,
+    authService,
+  });
+
+  await app.register(versionsRoutes, {
+    prefix: "/api/v1",
+    versioningService,
     templateService,
     authService,
   });

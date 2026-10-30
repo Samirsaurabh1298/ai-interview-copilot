@@ -9,6 +9,14 @@ import type {
   SessionBudgetStatus,
   CandidateSubmission,
   AssessmentScorecard,
+  Organization,
+  OrganizationMember,
+  InviteMemberRequest,
+  AuthUserContext,
+  AssessmentTemplate,
+  CreateTemplateRequest,
+  AssessmentVersion,
+  PublishVersionRequest,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -141,6 +149,146 @@ export class ApiClient {
     }
 
     return (await res.json()) as AssessmentScorecard;
+  }
+
+  public static async getOrganizations(): Promise<{ organizations: Organization[]; total: number }> {
+    const res = await fetch(`${API_BASE_URL}/organizations`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch organizations: ${res.statusText}`);
+    }
+    return (await res.json()) as { organizations: Organization[]; total: number };
+  }
+
+  public static async getTemplates(
+    organizationId: string
+  ): Promise<{ templates: AssessmentTemplate[]; total: number }> {
+    const res = await fetch(`${API_BASE_URL}/templates?organizationId=${organizationId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch templates: ${res.statusText}`);
+    }
+    return (await res.json()) as { templates: AssessmentTemplate[]; total: number };
+  }
+
+  public static async createTemplate(req: CreateTemplateRequest): Promise<AssessmentTemplate> {
+    const res = await fetch(`${API_BASE_URL}/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const errorData = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(errorData.message || errorData.error || `Failed to create template`);
+    }
+    return (await res.json()) as AssessmentTemplate;
+  }
+
+  public static async publishTemplate(
+    organizationId: string,
+    templateId: string
+  ): Promise<AssessmentTemplate> {
+    const res = await fetch(
+      `${API_BASE_URL}/templates/${templateId}/publish?organizationId=${organizationId}`,
+      { method: "POST" }
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to publish template: ${res.statusText}`);
+    }
+    return (await res.json()) as AssessmentTemplate;
+  }
+
+  public static async getTemplateVersions(
+    organizationId: string,
+    templateId: string
+  ): Promise<{ versions: AssessmentVersion[]; total: number }> {
+    const res = await fetch(
+      `${API_BASE_URL}/templates/${templateId}/versions?organizationId=${organizationId}`
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch template versions: ${res.statusText}`);
+    }
+    return (await res.json()) as { versions: AssessmentVersion[]; total: number };
+  }
+
+  public static async publishVersion(
+    req: PublishVersionRequest
+  ): Promise<AssessmentVersion> {
+    const res = await fetch(
+      `${API_BASE_URL}/templates/${req.templateId}/versions?organizationId=${req.organizationId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req),
+      }
+    );
+    if (!res.ok) {
+      const errorData = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(errorData.message || errorData.error || `Failed to publish version`);
+    }
+    return (await res.json()) as AssessmentVersion;
+  }
+
+  public static async getMembers(
+    organizationId: string
+  ): Promise<{ members: OrganizationMember[]; total: number }> {
+    const res = await fetch(`${API_BASE_URL}/organizations/${organizationId}/members`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch organization members: ${res.statusText}`);
+    }
+    return (await res.json()) as { members: OrganizationMember[]; total: number };
+  }
+
+  public static async inviteMember(
+    organizationId: string,
+    req: InviteMemberRequest
+  ): Promise<OrganizationMember> {
+    const res = await fetch(`${API_BASE_URL}/organizations/${organizationId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to invite member");
+    }
+    return (await res.json()) as OrganizationMember;
+  }
+
+  public static async loginMember(
+    organizationId: string,
+    email: string
+  ): Promise<{ token: string; tokenType: string; user: AuthUserContext }> {
+    const res = await fetch(`${API_BASE_URL}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ organizationId, email }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Login token exchange failed");
+    }
+    return (await res.json()) as { token: string; tokenType: string; user: AuthUserContext };
+  }
+
+  public static async verifyToken(token: string): Promise<{ user: AuthUserContext }> {
+    const res = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      throw new Error(`Invalid authentication token: ${res.statusText}`);
+    }
+    return (await res.json()) as { user: AuthUserContext };
   }
 }
 

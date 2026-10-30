@@ -4,12 +4,13 @@ import { CaptureModal } from "./components/CaptureModal.js";
 import { QuestionConfirmation } from "./components/QuestionConfirmation.js";
 import { AnswerView } from "./components/AnswerView.js";
 import { AssessmentWorkspace } from "./components/AssessmentWorkspace.js";
+import { CompanyDashboard } from "./components/CompanyDashboard.js";
 import { ApiClient } from "./services/apiClient.js";
 import type { AIRequest, AIResponse } from "@ai-copilot/contracts";
 import { Camera, Terminal, ShieldAlert, Sparkles, AlertCircle } from "lucide-react";
 
 export const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<"copilot" | "assessment">("assessment");
+  const [activeView, setActiveView] = useState<"copilot" | "assessment" | "company">("company");
   const [apiConnected, setApiConnected] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [stage, setStage] = useState<"idle" | "confirming" | "answered">("idle");
@@ -98,7 +99,9 @@ export const App: React.FC = () => {
         onSelectView={setActiveView}
       />
 
-      {activeView === "assessment" ? (
+      {activeView === "company" ? (
+        <CompanyDashboard onLaunchCandidateView={() => setActiveView("assessment")} />
+      ) : activeView === "assessment" ? (
         <AssessmentWorkspace />
       ) : (
         /* Main Practice Content Area */

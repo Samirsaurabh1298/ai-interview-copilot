@@ -103,6 +103,31 @@ export class OrganizationService {
   }
 
   public listOrganizations(): Organization[] {
+    if (this.organizations.size === 0) {
+      const { organization } = this.createOrganization({
+        name: "Acme Corp (Engineering)",
+        slug: "acme-corp",
+        ownerEmail: "lead@acme.corp",
+        ownerName: "Engineering Hiring Lead",
+      });
+
+      // Seed team members across RBAC roles
+      this.inviteMember(organization.id, {
+        name: "Devon Vance (Platform Lead)",
+        email: "devon@acme.corp",
+        role: "admin",
+      });
+      this.inviteMember(organization.id, {
+        name: "Priya Sharma (Staff Interviewer)",
+        email: "priya@acme.corp",
+        role: "interviewer",
+      });
+      this.inviteMember(organization.id, {
+        name: "Marcus Chen (Code Reviewer)",
+        email: "marcus@acme.corp",
+        role: "reviewer",
+      });
+    }
     return Array.from(this.organizations.values());
   }
 

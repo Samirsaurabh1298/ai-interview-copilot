@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Camera, ShieldCheck, Terminal, Sun, Moon, Briefcase, Sparkles } from "lucide-react";
+import { Camera, ShieldCheck, Terminal, Sun, Moon, Briefcase, Sparkles, Building2 } from "lucide-react";
 
 interface HeaderProps {
   apiConnected: boolean;
   onOpenCapture: () => void;
   isGenerating: boolean;
-  activeView: "copilot" | "assessment";
-  onSelectView: (view: "copilot" | "assessment") => void;
+  activeView: "copilot" | "assessment" | "company";
+  onSelectView: (view: "copilot" | "assessment" | "company") => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -80,6 +80,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
             <span>60-Min Assessment Task</span>
+          </button>
+
+          <button
+            onClick={() => onSelectView("company")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              activeView === "company"
+                ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Company Admin & Templates</span>
           </button>
         </div>
       </div>

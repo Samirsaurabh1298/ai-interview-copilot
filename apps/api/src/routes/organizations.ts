@@ -17,6 +17,12 @@ export const organizationsRoutes: FastifyPluginAsync<{
 }> = async (fastify, opts) => {
   const { orgService } = opts;
 
+  // 0. List Organizations
+  fastify.get("/", async (_request, reply) => {
+    const list = orgService.listOrganizations();
+    return reply.status(200).send({ organizations: list, total: list.length });
+  });
+
   // 1. Create Organization
   fastify.post("/", async (request, reply) => {
     const parse = CreateOrganizationRequestSchema.safeParse(request.body);

@@ -87,3 +87,4 @@ export const UpdateTemplateRequestSchema = z.object({
   status: TemplateStatusSchema.optional(),
 });
 export type UpdateTemplateRequest = z.infer<typeof UpdateTemplateRequestSchema>;
+
