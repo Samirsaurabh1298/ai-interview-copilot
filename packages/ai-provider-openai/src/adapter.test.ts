@@ -14,13 +14,23 @@ describe("OpenAIProvider Adapter", () => {
     expect(provider.name).toContain("GPT-4o");
   });
 
-  it("reports GPT-4o capabilities and pricing", async () => {
+  it("reports GPT-4o and GPT-4o-mini capabilities and pricing", async () => {
     const provider = new OpenAIProvider("test-openai-key");
     const caps = await provider.getCapabilities();
-    expect(caps.length).toBe(1);
-    expect(caps[0]?.supportsVision).toBe(true);
-    expect(caps[0]?.supportsStructuredOutput).toBe(true);
-    expect(caps[0]?.costPerMillionInputTokensUsd).toBe(2.5);
-    expect(caps[0]?.costPerMillionOutputTokensUsd).toBe(10.0);
+    expect(caps.length).toBe(2);
+    
+    const mini = caps.find((c) => c.id === "gpt-4o-mini");
+    expect(mini).toBeDefined();
+    expect(mini?.supportsStructuredOutput).toBe(true);
+    expect(mini?.costPerMillionInputTokensUsd).toBe(0.15);
+    expect(mini?.costPerMillionOutputTokensUsd).toBe(0.60);
+    expect(mini?.isRecommended).toBe(true);
+
+    const gpt4o = caps.find((c) => c.id === "gpt-4o");
+    expect(gpt4o).toBeDefined();
+    expect(gpt4o?.supportsVision).toBe(true);
+    expect(gpt4o?.supportsStructuredOutput).toBe(true);
+    expect(gpt4o?.costPerMillionInputTokensUsd).toBe(2.5);
+    expect(gpt4o?.costPerMillionOutputTokensUsd).toBe(10.0);
   });
 });

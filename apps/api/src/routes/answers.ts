@@ -25,9 +25,11 @@ export const answersRoutes: FastifyPluginAsync<{
       sessionId?: string;
     } | undefined;
 
+    let reservationId: string | undefined;
+
     try {
       if (gateway && query?.sessionId) {
-        gateway.assertCanInvokeAI(query.sessionId);
+        reservationId = gateway.reserveBudget(query.sessionId, query?.model || "default");
       }
 
       const response = await orchestrator.generateAnswer(parseResult.data, {
@@ -35,10 +37,18 @@ export const answersRoutes: FastifyPluginAsync<{
         modelOverride: query?.model,
       });
 
-      if (gateway && query?.sessionId) {
+      if (gateway && query?.sessionId && reservationId) {
+        gateway.commitUsage(
+          query.sessionId,
+          reservationId,
+          response.model || query?.model || "default",
+          response.usage?.inputTokens ?? 250,
+          response.usage?.outputTokens ?? 350
+        );
+      } else if (gateway && query?.sessionId) {
         gateway.recordUsage(
           query.sessionId,
-          response.model || "default",
+          response.model || query?.model || "default",
           response.usage?.inputTokens ?? 250,
           response.usage?.outputTokens ?? 350
         );
@@ -46,9 +56,14 @@ export const answersRoutes: FastifyPluginAsync<{
 
       return reply.status(200).send(response);
     } catch (err: unknown) {
-      if (err instanceof AIProviderError && err.code === "QUOTA_EXHAUSTED") {
-        return reply.status(429).send({
-          error: "QUOTA_EXHAUSTED",
+      if (gateway && query?.sessionId && reservationId) {
+        gateway.releaseReservation(query.sessionId, reservationId);
+      }
+
+      if (err instanceof AIProviderError && (err.code === "QUOTA_EXHAUSTED" || err.code === "SESSION_EXPIRED")) {
+        const statusCode = err.code === "SESSION_EXPIRED" ? 403 : 429;
+        return reply.status(statusCode).send({
+          error: err.code,
           message: err.message,
         });
       }

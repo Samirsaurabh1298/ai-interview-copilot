@@ -20,6 +20,24 @@ export const assessmentRoutes: FastifyPluginAsync<{
     return reply.status(200).send(policy);
   });
 
+  fastify.post("/session", async (request, reply) => {
+    const body = request.body as {
+      sessionId: string;
+      policy?: Partial<ToolPolicy>;
+      createdAt?: string;
+    };
+    if (!body?.sessionId) {
+      return reply.status(400).send({ error: "sessionId is required" });
+    }
+    const createdDate = body.createdAt ? new Date(body.createdAt) : undefined;
+    gateway.initializeSession(body.sessionId, body.policy, createdDate);
+    return reply.status(201).send({
+      sessionId: body.sessionId,
+      policy: gateway.getPolicy(body.sessionId),
+      budget: gateway.getBudgetStatus(body.sessionId),
+    });
+  });
+
   fastify.get("/budget/:sessionId", async (request, reply) => {
     const params = request.params as { sessionId: string };
     const budget = gateway.getBudgetStatus(params.sessionId);

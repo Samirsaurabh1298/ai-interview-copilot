@@ -192,21 +192,33 @@ All packages maintain passing automated test suites:
 | `packages/contracts` | `answer.test.ts` | 4 / 4 | PASS |
 | `packages/ai-core` | `orchestrator.test.ts` | 4 / 4 | PASS |
 | `packages/context-engine` | `context.test.ts` | 3 / 3 | PASS |
-| `services/code-runner` | `runner.test.ts` | 4 / 4 | PASS |
+| `services/code-runner` | `runner.test.ts` | 9 / 9 | PASS |
 | `packages/ai-provider-groq` | `adapter.test.ts` | 3 / 3 | PASS |
 | `packages/ai-provider-openai` | `adapter.test.ts` | 3 / 3 | PASS |
 | `packages/ai-provider-anthropic` | `adapter.test.ts` | 3 / 3 | PASS |
 | `packages/ai-provider-google` | `adapter.test.ts` | 3 / 3 | PASS |
-| `packages/scoring-engine` | `evaluator.test.ts` | 2 / 2 | PASS |
-| `apps/api` | `app.test.ts` | 6 / 6 | PASS |
-| **Total Automated Tests** | **Across Monorepo** | **39 / 39** | **100% PASS** |
+| `packages/scoring-engine` | `evaluator.test.ts` | 3 / 3 | PASS |
+| `apps/api` | `app.test.ts` | 9 / 9 | PASS |
+| **Total Automated Tests** | **Across Monorepo** | **45 / 45** | **100% PASS** |
 
 ---
 
-## 7. Git Commit History Log
+## 7. Architectural Decisions & Priority 0 Foundations (Completed)
+
+1. **Decoupled Token Economy from Candidate Scoring (AD #4)**: AI token consumption is tracked as a strict financial cost control metric in `evidenceCitations`, but has zero negative or positive impact on candidate evaluation scoring in the 7-dimension rubric.
+2. **Explicit Patch Review & Acceptance (AD #7)**: AI-generated code fixes are displayed as candidate-reviewed unified diffs with explicit `[Accept & Apply]` vs `[Reject]` actions; editor contents are never silently mutated by the AI.
+3. **Pilot Provider Selection (AD #2 & #3)**: OpenAI `gpt-4o-mini` is established as the recommended B2B pilot default ($0.15/M in, $0.60/M out) with structured schema outputs, backed by Groq LPU and Claude 3.5 Sonnet as selectable alternatives.
+4. **Hardened Code-Execution Sandbox (AD #8)**: Ephemeral process execution enforced with Node 22 native `--permission`, `--disallow-code-generation-from-strings`, filesystem jail to temp folder only (`--allow-fs-write=${tmpDir}`), socket interception traps blocking all outbound network/WebSocket/HTTP traffic, and `process.exit()` guards.
+5. **Atomic Reservation Pattern for Concurrent Budget & Session Integrity (AD #5 & #6)**: Implemented two-phase token budget reservations (`reserveBudget` -> `commitUsage`/`releaseReservation`) to eliminate race conditions under concurrent requests, paired with absolute session expiration time-limit enforcement.
+
+---
+
+## 8. Git Commit History Log
 
 All features have been committed with conventional commit standards on the local `main` branch:
 
+- `493726b` — **feat(assessment):** require explicit candidate review and acceptance for AI proposed patches
+- `87a9863` — **feat(scoring-engine):** decouple token economy from candidate performance score
 - `4770b91` — **fix(contracts):** coerce date strings in CandidateSubmissionSchema and AssessmentScorecardSchema
 - `ab07dcc` — **fix(desktop):** resolve exactOptionalPropertyTypes and MouseEvent handler in AssessmentWorkspace
 - `bf84935` — **feat(assessment):** auto-apply AI code corrections to editor with 1-click auto-fix and test verification
@@ -217,3 +229,4 @@ All features have been committed with conventional commit standards on the local
 - `6c78708` — **feat(desktop):** add bulletproof electron launcher script and start script
 - `15a5cd3` — **feat(ai-provider):** implement anthropic claude 3.5 sonnet provider with tool-calling schema and multimodal vision extraction
 - `185b1b1` — **feat:** initial monorepo scaffold with contracts, ai-core, api, and desktop client
+

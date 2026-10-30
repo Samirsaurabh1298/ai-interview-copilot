@@ -13,11 +13,12 @@ import {
 } from "@ai-copilot/ai-core";
 
 const GPT_4O_MODEL = "gpt-4o";
+const GPT_4O_MINI_MODEL = "gpt-4o-mini";
 
 export class OpenAIProvider implements AIProvider {
   public readonly id = "openai" as const;
-  public readonly name = "OpenAI GPT-4o";
-  public readonly defaultModel = GPT_4O_MODEL;
+  public readonly name = "OpenAI GPT-4o & GPT-4o-mini";
+  public readonly defaultModel = GPT_4O_MINI_MODEL;
 
   private client: OpenAI;
 
@@ -38,8 +39,20 @@ export class OpenAIProvider implements AIProvider {
   public async getCapabilities(): Promise<ModelCapability[]> {
     return [
       {
+        id: GPT_4O_MINI_MODEL,
+        name: "GPT-4o Mini (Cost-Optimized Pilot Default)",
+        provider: "openai",
+        supportsVision: true,
+        supportsStreaming: true,
+        supportsStructuredOutput: true,
+        contextWindow: 128000,
+        costPerMillionInputTokensUsd: 0.15,
+        costPerMillionOutputTokensUsd: 0.60,
+        isRecommended: true,
+      },
+      {
         id: GPT_4O_MODEL,
-        name: "GPT-4o",
+        name: "GPT-4o (High-Capacity Reasoning)",
         provider: "openai",
         supportsVision: true,
         supportsStreaming: true,
@@ -47,7 +60,7 @@ export class OpenAIProvider implements AIProvider {
         contextWindow: 128000,
         costPerMillionInputTokensUsd: 2.5,
         costPerMillionOutputTokensUsd: 10.0,
-        isRecommended: true,
+        isRecommended: false,
       },
     ];
   }

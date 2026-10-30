@@ -41,4 +41,7 @@ coverage/
 *.tmp
 *.temp
 scratch/
+20261030/
+PowerShell_transcript*
+
 
