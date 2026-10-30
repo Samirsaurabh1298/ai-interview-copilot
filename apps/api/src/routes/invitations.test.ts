@@ -178,3 +178,4 @@ describe("Candidate Invitation & Onboarding Routes (Task 10)", () => {
     expect(session.invitation.status).toBe("started");
   });
 });
+

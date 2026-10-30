@@ -253,3 +253,4 @@ export const CandidateOnboarding: React.FC<CandidateOnboardingProps> = ({
     </div>
   );
 };
+

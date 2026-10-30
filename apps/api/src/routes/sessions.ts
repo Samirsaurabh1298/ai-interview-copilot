@@ -1,0 +1,215 @@
+import type { FastifyPluginAsync } from "fastify";
+import {
+  CreateSessionRequestSchema,
+  UpdateWorkspaceRequestSchema,
+  SubmitSessionRequestSchema,
+} from "@ai-copilot/contracts";
+import type { AssessmentSessionService } from "../services/session.js";
+import {
+  SessionNotFoundError,
+  SessionExpiredError,
+  SessionInvalidStateError,
+} from "../services/session.js";
+import type { AuthService } from "../services/auth.js";
+
+export const sessionsRoutes: FastifyPluginAsync<{
+  sessionService: AssessmentSessionService;
+  authService?: AuthService;
+}> = async (fastify, opts) => {
+  const { sessionService, authService } = opts;
+
+  // 1. Create Assessment Session
+  fastify.post("/", async (request, reply) => {
+    const parse = CreateSessionRequestSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        error: "VALIDATION_FAILED",
+        issues: parse.error.issues,
+      });
+    }
+
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, parse.data.organizationId);
+      }
+
+      const session = sessionService.createSession(parse.data);
+      return reply.status(201).send(session);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create assessment session";
+      return reply.status(400).send({ error: "SESSION_CREATION_FAILED", message });
+    }
+  });
+
+  // 2. Get Session by ID
+  fastify.get("/:sessionId", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    try {
+      const session = sessionService.getSession(sessionId);
+
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
+        // Candidate token scoping: candidate can only view their own session
+        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: "Candidate token is not authorized to access this session",
+          });
+        }
+      }
+
+      return reply.status(200).send(session);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 3. Candidate Session Heartbeat & Expiration Watchdog
+  fastify.get("/:sessionId/heartbeat", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    try {
+      const heartbeat = sessionService.heartbeat(sessionId);
+      return reply.status(200).send(heartbeat);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 4. Autosave Workspace Code
+  fastify.patch("/:sessionId/workspace", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    const parse = UpdateWorkspaceRequestSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        error: "VALIDATION_FAILED",
+        issues: parse.error.issues,
+      });
+    }
+
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: "Token not valid for this session" });
+        }
+      }
+
+      const updated = sessionService.updateWorkspaceCode(sessionId, parse.data);
+      return reply.status(200).send({
+        sessionId: updated.id,
+        lastSavedAt: updated.workspaceSnapshot.lastSavedAt,
+        status: updated.status,
+      });
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (err instanceof SessionExpiredError) {
+        return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
+      }
+      if (err instanceof SessionInvalidStateError) {
+        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 5. Submit Session Solution
+  fastify.post("/:sessionId/submit", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    const parse = SubmitSessionRequestSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        error: "VALIDATION_FAILED",
+        issues: parse.error.issues,
+      });
+    }
+
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: "Token not valid for this session" });
+        }
+      }
+
+      const submitted = sessionService.submitSession(sessionId, parse.data);
+      return reply.status(200).send({
+        sessionId: submitted.id,
+        status: submitted.status,
+        submittedAt: submitted.submittedAt,
+      });
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (err instanceof SessionExpiredError) {
+        return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
+      }
+      if (err instanceof SessionInvalidStateError) {
+        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 6. Terminate Session (Admin / Interviewer emergency control)
+  fastify.post("/:sessionId/terminate", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    const body = (request.body as { reason?: string }) || {};
+    const reason = body.reason || "Terminated by interviewer";
+
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        if (!["owner", "admin", "interviewer"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to terminate candidate sessions`,
+          });
+        }
+      }
+
+      const terminated = sessionService.terminateSession(sessionId, reason);
+      return reply.status(200).send(terminated);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 7. List Sessions for Organization
+  fastify.get("/", async (request, reply) => {
+    const query = request.query as { organizationId?: string };
+    let orgId = query?.organizationId;
+
+    if (!orgId && authService && request.headers.authorization) {
+      try {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        orgId = auth.organizationId;
+      } catch {
+        // Continue
+      }
+    }
+
+    if (!orgId) {
+      return reply.status(400).send({
+        error: "MISSING_ORGANIZATION_ID",
+        message: "Query parameter 'organizationId' or Authorization header is required",
+      });
+    }
+
+    const sessions = sessionService.listSessionsForOrg(orgId);
+    return reply.status(200).send({ sessions, total: sessions.length });
+  });
+};

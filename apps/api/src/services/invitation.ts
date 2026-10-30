@@ -215,3 +215,4 @@ export class CandidateInvitationService {
     return invitation;
   }
 }
+

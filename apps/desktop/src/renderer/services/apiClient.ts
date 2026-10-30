@@ -21,6 +21,11 @@ import type {
   CreateInvitationRequest,
   VerifyInvitationResponse,
   AcceptInvitationResponse,
+  AssessmentSession,
+  CreateSessionRequest,
+  SessionHeartbeatResponse,
+  UpdateWorkspaceRequest,
+  SubmitSessionRequest,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -354,6 +359,80 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to accept invitation");
     }
     return (await res.json()) as AcceptInvitationResponse;
+  }
+
+  public static async createSession(
+    req: CreateSessionRequest
+  ): Promise<AssessmentSession> {
+    const res = await fetch(`${API_BASE_URL}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to create assessment session");
+    }
+    return (await res.json()) as AssessmentSession;
+  }
+
+  public static async getSession(sessionId: string): Promise<AssessmentSession> {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch session: ${res.statusText}`);
+    }
+    return (await res.json()) as AssessmentSession;
+  }
+
+  public static async getSessionHeartbeat(
+    sessionId: string
+  ): Promise<SessionHeartbeatResponse> {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/heartbeat`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch session heartbeat: ${res.statusText}`);
+    }
+    return (await res.json()) as SessionHeartbeatResponse;
+  }
+
+  public static async autosaveWorkspace(
+    sessionId: string,
+    req: UpdateWorkspaceRequest
+  ): Promise<{ sessionId: string; lastSavedAt: Date; status: string }> {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/workspace`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to autosave workspace");
+    }
+    return (await res.json()) as { sessionId: string; lastSavedAt: Date; status: string };
+  }
+
+  public static async submitAssessmentSession(
+    sessionId: string,
+    req: SubmitSessionRequest
+  ): Promise<{ sessionId: string; status: string; submittedAt: Date }> {
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to submit assessment session");
+    }
+    return (await res.json()) as { sessionId: string; status: string; submittedAt: Date };
   }
 }
 

@@ -70,3 +70,4 @@ export const AcceptInvitationResponseSchema = z.object({
   durationMinutes: z.number(),
 });
 export type AcceptInvitationResponse = z.infer<typeof AcceptInvitationResponseSchema>;
+
