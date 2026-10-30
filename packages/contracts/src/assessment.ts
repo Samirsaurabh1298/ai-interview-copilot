@@ -74,7 +74,7 @@ export const AssessmentScorecardSchema = z.object({
   scoringMethod: z.enum(["ai_draft", "human_verified", "calibrated"]),
   reviewerId: z.string().optional(),
   summaryNotes: z.string(),
-  createdAt: z.date().default(() => new Date()),
+  createdAt: z.coerce.date().default(() => new Date()),
 });
 
 export type AssessmentScorecard = z.infer<typeof AssessmentScorecardSchema>;
@@ -90,7 +90,7 @@ export const CandidateSubmissionSchema = z.object({
   diff: z.string().optional(),
   explanation: z.string().min(1, "Candidate explanation is required"),
   testResults: z.array(SingleTestResultSchema).default([]),
-  submittedAt: z.date().default(() => new Date()),
+  submittedAt: z.coerce.date().default(() => new Date()),
 });
 
 export type CandidateSubmission = z.infer<typeof CandidateSubmissionSchema>;
