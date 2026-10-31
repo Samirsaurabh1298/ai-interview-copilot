@@ -30,6 +30,9 @@ import type {
   IngestEventsResponse,
   GetSessionEventsResponse,
   SessionEvent,
+  SubmissionArtifact,
+  SubmitAssessmentResponse,
+  GetSubmissionResponse,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -496,6 +499,49 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to fetch session events");
     }
     return (await res.json()) as GetSessionEventsResponse;
+  }
+
+  public static async submitAssessment(
+    sessionId: string,
+    req: { finalCode: string; technicalExplanation?: string },
+    token?: string
+  ): Promise<SubmitAssessmentResponse> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/submit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to submit assessment solution");
+    }
+    return (await res.json()) as SubmitAssessmentResponse;
+  }
+
+  public static async getSubmission(
+    sessionId: string,
+    token?: string
+  ): Promise<GetSubmissionResponse> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/submission`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to fetch submission artifact");
+    }
+    return (await res.json()) as GetSubmissionResponse;
   }
 }
 

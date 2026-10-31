@@ -20,6 +20,7 @@ import {
   Copy,
   LogOut,
   Award,
+  Hash,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
@@ -31,6 +32,7 @@ import type {
   AssessmentScorecard,
   AcceptInvitationResponse,
   AssessmentSessionStatus,
+  SubmitAssessmentResponse,
 } from "@ai-copilot/contracts";
 
 const STARTER_CODE = `export const PRIORITY_WEIGHTS: Record<string, number> = {
@@ -234,10 +236,13 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [isRunningTests, setIsRunningTests] = useState(false);
   const [testResult, setTestResult] = useState<CodeValidationResponse | null>(null);
 
-  // Submission State
+  // Submission & Cryptographic Receipt State (Task 14)
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [explanation, setExplanation] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionReceipt, setSubmissionReceipt] = useState<SubmitAssessmentResponse | null>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [copiedReceiptFp, setCopiedReceiptFp] = useState(false);
   const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
 
@@ -658,13 +663,18 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         tests = val.tests;
       }
 
-      // Submit to server-authoritative session record
+      // Submit to server-authoritative session record with immutable artifact bundling (Task 14)
       try {
-        await ApiClient.submitAssessmentSession(sessionId, {
-          finalCode: code,
-          explanation: explanation.trim(),
-          testResults: tests,
-        });
+        const receipt = await ApiClient.submitAssessment(
+          sessionId,
+          {
+            finalCode: code,
+            technicalExplanation: explanation.trim(),
+          },
+          sessionData?.candidateToken
+        );
+        setSubmissionReceipt(receipt);
+        setIsReceiptModalOpen(true);
       } catch (err) {
         console.warn("Server session submit warning:", err);
       }
@@ -679,23 +689,27 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         },
         true
       );
+      telemetryRef.current?.flush();
 
       const diff = `--- a/src/useTicketQueue.ts\n+++ b/src/useTicketQueue.ts\n@@ -1,50 +1,50 @@\n${code}`;
 
-      const card = await ApiClient.evaluateAssessment({
-        sessionId,
-        candidateId,
-        finalCode: code,
-        diff,
-        explanation: explanation.trim(),
-        testResults: tests,
-        submittedAt: new Date(),
-      });
+      try {
+        const card = await ApiClient.evaluateAssessment({
+          sessionId,
+          candidateId,
+          finalCode: code,
+          diff,
+          explanation: explanation.trim(),
+          testResults: tests,
+          submittedAt: new Date(),
+        });
+        setScorecard(card);
+      } catch (cardErr) {
+        console.warn("Scorecard evaluation notice:", cardErr);
+      }
 
-      setScorecard(card);
       setSessionStatus("submitted");
       setIsSubmitModalOpen(false);
-      setIsScorecardOpen(true);
     } catch (err: unknown) {
       alert(`Submission evaluation failed: ${err instanceof Error ? err.message : "Error"}`);
     } finally {
@@ -820,14 +834,24 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           </button>
 
           {/* Final Submit Assessment button */}
-          <button
-            onClick={() => setIsSubmitModalOpen(true)}
-            disabled={sessionStatus === "submitted"}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{sessionStatus === "submitted" ? "Submitted" : "Submit Solution"}</span>
-          </button>
+          {sessionStatus === "submitted" ? (
+            <button
+              onClick={() => setIsReceiptModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 font-semibold text-xs transition-colors shadow-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span>Receipt (SHA-256)</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsSubmitModalOpen(true)}
+              disabled={isExpired && !inGracePeriod}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Submit Solution</span>
+            </button>
+          )}
 
           {/* Optional Exit Button */}
           {onExitSession && (
@@ -1452,6 +1476,110 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                 {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>Generate Official Scorecard</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cryptographic Submission Receipt Modal (Task 14 / AD #9) */}
+      {isReceiptModalOpen && submissionReceipt && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 dark:border-gray-800 dark:bg-[#0d131f]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                    Assessment Submitted Successfully
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Your solution has been cryptographically signed and archived for evaluation.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Cryptographic SHA-256 Fingerprint */}
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-gray-900/70 border border-slate-200 dark:border-gray-800 space-y-2 font-mono text-xs">
+              <div className="flex items-center justify-between text-slate-500 dark:text-gray-400 font-sans text-[11px] font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Submission Fingerprint (SHA-256):</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(submissionReceipt.submissionFingerprint);
+                    setCopiedReceiptFp(true);
+                    setTimeout(() => setCopiedReceiptFp(false), 2000);
+                  }}
+                  className="text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 flex items-center gap-1 cursor-pointer"
+                >
+                  {copiedReceiptFp ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedReceiptFp ? "Copied" : "Copy Hash"}</span>
+                </button>
+              </div>
+              <div className="text-indigo-600 dark:text-indigo-400 break-all select-all font-bold">
+                {submissionReceipt.submissionFingerprint}
+              </div>
+            </div>
+
+            {/* Verification & Diff Highlights */}
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/50">
+                <span className="text-[11px] text-slate-500 dark:text-gray-400 block mb-0.5">Test Suite Pass:</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                  {submissionReceipt.artifact.testExecutionLog.passedCount} / {submissionReceipt.artifact.testExecutionLog.totalCount} Passed
+                </span>
+              </div>
+              <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/50">
+                <span className="text-[11px] text-slate-500 dark:text-gray-400 block mb-0.5">Code Changes:</span>
+                <span className="font-bold text-slate-900 dark:text-white text-sm">
+                  +{submissionReceipt.artifact.codeDiff.additions} / -{submissionReceipt.artifact.codeDiff.deletions} lines
+                </span>
+              </div>
+            </div>
+
+            {/* Candidate Technical Explanation */}
+            <div className="space-y-1.5 text-xs">
+              <span className="font-semibold text-slate-700 dark:text-gray-300">
+                Your Technical Explanation:
+              </span>
+              <p className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-300 italic text-[11px] leading-relaxed max-h-32 overflow-y-auto">
+                "{submissionReceipt.artifact.technicalExplanation}"
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-gray-800">
+              <span className="text-[11px] text-slate-400 font-mono">
+                Receipt ID: {submissionReceipt.submissionId.slice(0, 18)}...
+              </span>
+              <div className="flex items-center gap-2">
+                {scorecard && (
+                  <button
+                    onClick={() => {
+                      setIsReceiptModalOpen(false);
+                      setIsScorecardOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800 font-semibold text-xs transition-colors hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+                  >
+                    <Award className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>View Scorecard</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsReceiptModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                >
+                  Close Receipt
+                </button>
+              </div>
             </div>
           </div>
         </div>

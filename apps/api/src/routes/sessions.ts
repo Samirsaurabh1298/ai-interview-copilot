@@ -11,12 +11,15 @@ import {
   SessionInvalidStateError,
 } from "../services/session.js";
 import type { AuthService } from "../services/auth.js";
+import type { SubmissionService } from "../services/submission.js";
+import { SubmissionNotFoundError } from "../services/submission.js";
 
 export const sessionsRoutes: FastifyPluginAsync<{
   sessionService: AssessmentSessionService;
   authService?: AuthService;
+  submissionService?: SubmissionService;
 }> = async (fastify, opts) => {
-  const { sessionService, authService } = opts;
+  const { sessionService, authService, submissionService } = opts;
 
   // 1. Create Assessment Session
   fastify.post("/", async (request, reply) => {
@@ -122,10 +125,21 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 5. Submit Session Solution
+  // 5. Submit Session Solution & Immutable Artifact Bundling (Task 14)
   fastify.post("/:sessionId/submit", async (request, reply) => {
     const { sessionId } = request.params as { sessionId: string };
-    const parse = SubmitSessionRequestSchema.safeParse(request.body);
+    const rawBody = (request.body as Record<string, unknown>) || {};
+    const explanationText =
+      (typeof rawBody.technicalExplanation === "string" && rawBody.technicalExplanation) ||
+      (typeof rawBody.explanation === "string" && rawBody.explanation) ||
+      "";
+
+    const normalizedBody = {
+      ...rawBody,
+      explanation: explanationText || "Candidate submitted assessment solution.",
+    };
+
+    const parse = SubmitSessionRequestSchema.safeParse(normalizedBody);
     if (!parse.success) {
       return reply.status(400).send({
         error: "VALIDATION_FAILED",
@@ -139,6 +153,22 @@ export const sessionsRoutes: FastifyPluginAsync<{
         if (auth.role === "candidate" && auth.sessionId !== sessionId) {
           return reply.status(403).send({ error: "FORBIDDEN", message: "Token not valid for this session" });
         }
+      }
+
+      if (submissionService) {
+        const artifact = await submissionService.submitAssessment(sessionId, {
+          finalCode: parse.data.finalCode,
+          technicalExplanation: normalizedBody.explanation,
+        });
+
+        return reply.status(200).send({
+          submissionId: artifact.id,
+          sessionId: artifact.sessionId,
+          status: "submitted",
+          submittedAt: artifact.submittedAt,
+          submissionFingerprint: artifact.submissionFingerprint,
+          artifact,
+        });
       }
 
       const submitted = sessionService.submitSession(sessionId, parse.data);
@@ -156,6 +186,34 @@ export const sessionsRoutes: FastifyPluginAsync<{
       }
       if (err instanceof SessionInvalidStateError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 5b. Retrieve Immutable Submission Artifact (Task 14)
+  fastify.get("/:sessionId/submission", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    try {
+      const session = sessionService.getSession(sessionId);
+
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
+        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: "Candidate cannot inspect another session's submission" });
+        }
+      }
+
+      if (!submissionService) {
+        return reply.status(501).send({ error: "SUBMISSION_SERVICE_NOT_CONFIGURED" });
+      }
+
+      const artifact = submissionService.getSubmission(sessionId);
+      return reply.status(200).send({ artifact });
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError || err instanceof SubmissionNotFoundError) {
+        return reply.status(404).send({ error: "SUBMISSION_NOT_FOUND", message: err.message });
       }
       throw err;
     }

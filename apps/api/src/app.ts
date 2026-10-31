@@ -28,6 +28,7 @@ import { AssessmentVersioningService } from "./services/versioning.js";
 import { CandidateInvitationService } from "./services/invitation.js";
 import { AssessmentSessionService } from "./services/session.js";
 import { SessionEventsService } from "./services/session-events.js";
+import { SubmissionService } from "./services/submission.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -132,6 +133,11 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     gateway
   );
   const eventsService = new SessionEventsService(sessionService);
+  const submissionService = new SubmissionService(
+    sessionService,
+    templateService,
+    eventsService
+  );
   const invitationService = new CandidateInvitationService(
     templateService,
     orgService,
@@ -174,6 +180,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: "/api/v1/sessions",
     sessionService,
     authService,
+    submissionService,
   });
 
   await app.register(sessionEventsRoutes, {

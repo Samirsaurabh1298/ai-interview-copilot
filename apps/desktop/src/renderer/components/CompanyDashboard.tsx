@@ -47,6 +47,7 @@ import type {
   MembershipRole,
   AssessmentSession,
   SessionEvent,
+  SubmissionArtifact,
 } from "@ai-copilot/contracts";
 
 interface CompanyDashboardProps {
@@ -66,12 +67,14 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<CandidateInvitation[]>([]);
 
-  // Task 13: Session Telemetry & Audit Log State
+  // Task 13 & 14: Session Telemetry & Submission State
   const [sessions, setSessions] = useState<AssessmentSession[]>([]);
   const [selectedSessionForAudit, setSelectedSessionForAudit] = useState<AssessmentSession | null>(null);
   const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
   const [auditSubTab, setAuditSubTab] = useState<"timeline" | "versions">("timeline");
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [selectedSubmissionArtifact, setSelectedSubmissionArtifact] = useState<SubmissionArtifact | null>(null);
+  const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
 
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
@@ -222,6 +225,16 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setSessionEvents([]);
     } finally {
       setIsLoadingEvents(false);
+    }
+  };
+
+  const handleInspectSubmission = async (sessionId: string) => {
+    try {
+      const data = await ApiClient.getSubmission(sessionId, activeJwtToken || undefined);
+      setSelectedSubmissionArtifact(data.artifact);
+      setIsSubmissionModalOpen(true);
+    } catch {
+      alert("Submission artifact not available for this session yet.");
     }
   };
 
@@ -1341,14 +1354,25 @@ describe("useDebouncedFetch verification suite", () => {
                               {sessionEvents.length} telemetry checkpoints captured • AI Budget: ${selectedSessionForAudit.consumedAiBudgetUsd.toFixed(3)}
                             </p>
                           </div>
-                          <button
-                            onClick={() => handleSelectSessionForAudit(selectedSessionForAudit)}
-                            disabled={isLoadingEvents}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-gray-700 text-xs text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
-                          >
-                            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingEvents ? "animate-spin" : ""}`} />
-                            <span>Reload Events</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {selectedSessionForAudit.status === "submitted" && (
+                              <button
+                                onClick={() => handleInspectSubmission(selectedSessionForAudit.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors shadow-xs"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                <span>View Submission (SHA-256)</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleSelectSessionForAudit(selectedSessionForAudit)}
+                              disabled={isLoadingEvents}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-gray-700 text-xs text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingEvents ? "animate-spin" : ""}`} />
+                              <span>Reload Events</span>
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -1930,6 +1954,145 @@ describe("useDebouncedFetch verification suite", () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reviewer Submission Artifact Modal (Task 14 / AD #9) */}
+      {isSubmissionModalOpen && selectedSubmissionArtifact && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    Immutable Submission Package: {selectedSubmissionArtifact.candidateName}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    Verified Cryptographic Seal
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
+                  Submitted at {new Date(selectedSubmissionArtifact.submittedAt).toLocaleString()} • {selectedSubmissionArtifact.candidateEmail}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsSubmissionModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5 text-xs">
+              {/* SHA-256 Fingerprint */}
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 font-mono flex items-center justify-between">
+                <div className="flex items-center gap-2 truncate">
+                  <Hash className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <span className="text-slate-500 dark:text-gray-400">Canonical SHA-256:</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 truncate font-bold">
+                    {selectedSubmissionArtifact.submissionFingerprint}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleCopy(selectedSubmissionArtifact.submissionFingerprint, "submission_fp")}
+                  className="shrink-0 ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200"
+                >
+                  {copiedKey === "submission_fp" ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Sandbox Tests</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                    {selectedSubmissionArtifact.testExecutionLog.passedCount} / {selectedSubmissionArtifact.testExecutionLog.totalCount} Passed
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Diff Stats</span>
+                  <span className="font-bold text-slate-900 dark:text-white text-sm">
+                    +{selectedSubmissionArtifact.codeDiff.additions} / -{selectedSubmissionArtifact.codeDiff.deletions}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">AI Prompts & Budget</span>
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                    {selectedSubmissionArtifact.telemetrySummary.aiQueriesCount} queries (${selectedSubmissionArtifact.telemetrySummary.consumedAiBudgetUsd.toFixed(3)})
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Attention Signals</span>
+                  <span className="font-bold text-slate-900 dark:text-white text-sm">
+                    {selectedSubmissionArtifact.telemetrySummary.attentionMetrics.blurCount} blurs • {selectedSubmissionArtifact.telemetrySummary.attentionMetrics.pasteCount} pastes
+                  </span>
+                </div>
+              </div>
+
+              {/* Candidate Technical Explanation */}
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-900 dark:text-white text-xs">
+                  Candidate Architectural Explanation:
+                </span>
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 italic text-slate-700 dark:text-gray-300 leading-relaxed font-sans">
+                  "{selectedSubmissionArtifact.technicalExplanation}"
+                </div>
+              </div>
+
+              {/* Unified Code Diff */}
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-900 dark:text-white text-xs flex items-center justify-between">
+                  <span>Unified Code Diff (Starter vs Final):</span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {selectedSubmissionArtifact.codeDiff.totalChanges} changes
+                  </span>
+                </span>
+                <pre className="p-4 rounded-xl bg-[#090d16] font-mono text-[11px] text-slate-200 overflow-x-auto leading-relaxed border border-slate-800 max-h-64">
+                  {selectedSubmissionArtifact.codeDiff.unifiedDiff}
+                </pre>
+              </div>
+
+              {/* Sandbox Test Assertions Output */}
+              <div className="space-y-1.5">
+                <span className="font-semibold text-slate-900 dark:text-white text-xs">
+                  Isolated Sandbox Test Assertions:
+                </span>
+                <div className="space-y-1.5">
+                  {selectedSubmissionArtifact.testExecutionLog.tests.map((t, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827] flex items-center justify-between text-xs font-mono"
+                    >
+                      <div className="flex items-center gap-2">
+                        {t.passed ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        ) : (
+                          <X className="w-3.5 h-3.5 text-rose-500" />
+                        )}
+                        <span className={t.passed ? "text-slate-800 dark:text-gray-200" : "text-rose-600 dark:text-rose-400"}>
+                          {t.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">{t.durationMs}ms</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex justify-end">
+              <button
+                onClick={() => setIsSubmissionModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
+              >
+                Close Submission View
+              </button>
+            </div>
           </div>
         </div>
       )}
