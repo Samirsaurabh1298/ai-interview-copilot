@@ -68,10 +68,8 @@ export class SessionEventsService {
     // Keep events strictly sorted by sequenceNumber
     sessionEvents.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
-    const latestSeq =
-      sessionEvents.length > 0
-        ? sessionEvents[sessionEvents.length - 1].sequenceNumber
-        : 0;
+    const latestEvent = sessionEvents[sessionEvents.length - 1];
+    const latestSeq = latestEvent ? latestEvent.sequenceNumber : 0;
 
     return {
       acceptedCount,
@@ -99,10 +97,8 @@ export class SessionEventsService {
       this.eventsBySession.set(sessionId, sessionEvents);
     }
 
-    const nextSeq =
-      sessionEvents.length > 0
-        ? sessionEvents[sessionEvents.length - 1].sequenceNumber + 1
-        : 1;
+    const lastEvent = sessionEvents[sessionEvents.length - 1];
+    const nextSeq = lastEvent ? lastEvent.sequenceNumber + 1 : 1;
 
     const event: SessionEvent = {
       id: `evt_${crypto.randomBytes(6).toString("hex")}_${Date.now()}`,
@@ -117,3 +113,4 @@ export class SessionEventsService {
     return event;
   }
 }
+

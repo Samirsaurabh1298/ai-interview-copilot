@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../config.js";
 
 const testConfig: AppConfig = {
-  PORT: 4003,
+  PORT: 4006,
   HOST: "127.0.0.1",
   NODE_ENV: "test",
   DEFAULT_AI_PROVIDER: "mock",
@@ -23,14 +23,16 @@ describe("Session Event & Evidence Collection Routes (Task 13)", () => {
     // 1. Get seeded org and template
     const orgRes = await app.inject({ method: "GET", url: "/api/v1/organizations" });
     const { organizations } = JSON.parse(orgRes.body);
-    const orgId = organizations[0].id;
+    const orgId = organizations[0]?.id;
+    expect(orgId).toBeDefined();
 
     const tmplRes = await app.inject({
       method: "GET",
       url: `/api/v1/templates?organizationId=${orgId}`,
     });
     const { templates } = JSON.parse(tmplRes.body);
-    const templateId = templates[0].id;
+    const templateId = templates[0]?.id;
+    expect(templateId).toBeDefined();
 
     // 2. Create session
     const sessRes = await app.inject({
@@ -181,9 +183,9 @@ describe("Session Event & Evidence Collection Routes (Task 13)", () => {
     const auditLog = JSON.parse(getRes.body);
     expect(auditLog.sessionId).toBe(session.id);
     expect(auditLog.total).toBe(3);
-    expect(auditLog.events[0].type).toBe("session_started");
-    expect(auditLog.events[1].type).toBe("ai_query");
-    expect(auditLog.events[2].type).toBe("test_run");
+    expect(auditLog.events[0]?.type).toBe("session_started");
+    expect(auditLog.events[1]?.type).toBe("ai_query");
+    expect(auditLog.events[2]?.type).toBe("test_run");
   });
 
   it("prohibits candidate from posting events to another candidate's session (anti-IDOR)", async () => {
