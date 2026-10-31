@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 77 / 77 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 81 / 81 Automated Tests Passing (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
@@ -559,8 +559,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events | 41 / 41 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **77 / 77** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling | 45 / 45 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **81 / 81** | **100% PASS** |
 
 ---
 
@@ -568,6 +568,9 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
+- `afb44dc` — **feat(submission):** implement immutable artifact bundling with canonical sha256 fingerprint (Task 14)
+- `c85fe95` — **fix(telemetry):** resolve undefined array indexing and isolate test port in session events
+- `6174291` — **docs:** comprehensive feature inventory, architectural blueprint, and user workflows manual
 - `727b7ba` — **feat(telemetry):** implement session event and evidence collection audit trail (Task 13)
 - `2073260` — **feat(workspace):** candidate workspace session integration, autosave & favicon (Task 12)
 - `60609e9` — **feat(session):** server-authoritative session creation & absolute expiration enforcement (Task 11)

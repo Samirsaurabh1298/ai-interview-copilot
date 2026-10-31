@@ -1,6 +1,6 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen.svg)](https://github.com/ai-copilot/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-81%20passing-brightgreen.svg)](https://github.com/ai-copilot/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
 [![Accessibility](https://img.shields.io/badge/WCAG-2.2%20AA%20Compliant-purple.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
