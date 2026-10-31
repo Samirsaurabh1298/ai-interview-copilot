@@ -124,15 +124,16 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const authService = new AuthService(config.JWT_SECRET);
   const templateService = new AssessmentTemplateService();
   const versioningService = new AssessmentVersioningService();
-  const invitationService = new CandidateInvitationService(
-    templateService,
-    orgService,
-    authService
-  );
   const sessionService = new AssessmentSessionService(
     templateService,
     orgService,
     gateway
+  );
+  const invitationService = new CandidateInvitationService(
+    templateService,
+    orgService,
+    authService,
+    sessionService
   );
 
   // Route registration

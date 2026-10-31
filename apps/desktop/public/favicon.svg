@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366F1" />
+      <stop offset="50%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#3730A3" />
+    </linearGradient>
+    <linearGradient id="cursor-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#818CF8" />
+    </linearGradient>
+  </defs>
+  <!-- Background Container -->
+  <rect width="64" height="64" rx="14" fill="url(#brand-grad)" />
+  <rect x="1" y="1" width="62" height="62" rx="13" stroke="#818CF8" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+  
+  <!-- Terminal Prompt Chevron '>' -->
+  <path d="M16 22 L28 32 L16 42" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+  
+  <!-- Terminal Prompt Underscore Cursor '_' -->
+  <path d="M33 42 H46" stroke="url(#cursor-grad)" stroke-width="4.5" stroke-linecap="round" />
+
+  <!-- AI Sparkle Node in Top Right -->
+  <path d="M48 14 C48 18 51 20 55 20 C51 20 48 22 48 26 C48 22 45 20 41 20 C45 20 48 18 48 14 Z" fill="#FACC15" />
+</svg>

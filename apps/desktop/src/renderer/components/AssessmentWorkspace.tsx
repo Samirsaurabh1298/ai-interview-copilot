@@ -18,6 +18,8 @@ import {
   Loader2,
   Eye,
   Copy,
+  LogOut,
+  Award,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
@@ -26,6 +28,8 @@ import type {
   AIResponse,
   CodeValidationResponse,
   AssessmentScorecard,
+  AcceptInvitationResponse,
+  AssessmentSessionStatus,
 } from "@ai-copilot/contracts";
 
 const STARTER_CODE = `export const PRIORITY_WEIGHTS: Record<string, number> = {
@@ -162,12 +166,37 @@ interface AssessmentChatMessage {
   patchStatus?: "proposed" | "accepted" | "rejected" | undefined;
 }
 
-export const AssessmentWorkspace: React.FC = () => {
-  const [sessionId] = useState(() => `sess_${Date.now().toString(36)}`);
-  const [candidateId] = useState("cand_frontend_pilot_1");
-  const [timeLeftSeconds, setTimeLeftSeconds] = useState(3600); // 60 mins
-  const [code, setCode] = useState(STARTER_CODE);
+interface AssessmentWorkspaceProps {
+  sessionData?: AcceptInvitationResponse | null;
+  onExitSession?: () => void;
+}
+
+export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
+  sessionData,
+  onExitSession,
+}) => {
+  const [sessionId, setSessionId] = useState<string>(
+    () => sessionData?.sessionId || `sess_${Date.now().toString(36)}`
+  );
+  const [candidateId] = useState(
+    () => sessionData?.invitation.candidateName || "cand_frontend_pilot_1"
+  );
+  const [timeLeftSeconds, setTimeLeftSeconds] = useState(
+    () => (sessionData?.durationMinutes ?? 60) * 60
+  );
+  const [code, setCode] = useState(() => sessionData?.starterCode || STARTER_CODE);
+  const verificationTestCode = sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE;
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
+
+  // Server-Authoritative Session Lifecycle State
+  const [sessionStatus, setSessionStatus] = useState<AssessmentSessionStatus>("in_progress");
+  const [inGracePeriod, setInGracePeriod] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
+
+  // Autosave State
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isAutosaving, setIsAutosaving] = useState(false);
+  const lastSavedCodeRef = useRef<string>(sessionData?.starterCode || STARTER_CODE);
 
   // Proposed Patch Review Modal State (Architectural Decision #7)
   const [reviewingPatch, setReviewingPatch] = useState<{
@@ -178,9 +207,9 @@ export const AssessmentWorkspace: React.FC = () => {
 
   // Budget state
   const [budgetStatus, setBudgetStatus] = useState<SessionBudgetStatus>({
-    maxBudgetUsd: 0.25,
+    maxBudgetUsd: sessionData?.toolPolicy?.maxBudgetUsd ?? 0.25,
     consumedBudgetUsd: 0,
-    remainingBudgetUsd: 0.25,
+    remainingBudgetUsd: sessionData?.toolPolicy?.maxBudgetUsd ?? 0.25,
     percentUsed: 0,
     isWarningTriggered: false,
     isExhausted: false,
@@ -211,7 +240,61 @@ export const AssessmentWorkspace: React.FC = () => {
   const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
 
-  // Timer countdown
+  // Poll / Refresh budget helper
+  const refreshBudget = async () => {
+    try {
+      const hb = await ApiClient.getSessionHeartbeat(sessionId);
+      setBudgetStatus((prev) => ({
+        ...prev,
+        consumedBudgetUsd: hb.consumedBudgetUsd,
+        remainingBudgetUsd: hb.remainingBudgetUsd,
+        isWarningTriggered: hb.budgetWarning,
+        isExhausted: hb.remainingBudgetUsd <= 0,
+        percentUsed: Math.min(100, (hb.consumedBudgetUsd / (prev.maxBudgetUsd || 0.25)) * 100),
+      }));
+    } catch {
+      // Ignored
+    }
+  };
+
+  // Bootstrap backend session in dev mode if not launched via invite
+  useEffect(() => {
+    if (sessionData) return;
+
+    let isMounted = true;
+    const bootstrapDevSession = async () => {
+      try {
+        const { organizations } = await ApiClient.getOrganizations();
+        const orgId = organizations?.[0]?.id;
+        if (!orgId) return;
+
+        const { templates } = await ApiClient.getTemplates(orgId);
+        const templateId = templates?.[0]?.id;
+        if (!templateId) return;
+
+        const session = await ApiClient.createSession({
+          organizationId: orgId,
+          templateId,
+          candidateEmail: "candidate@demo.acme",
+          candidateName: "Alex Mercer",
+          durationMinutes: 60,
+        });
+
+        if (isMounted) {
+          setSessionId(session.id);
+        }
+      } catch (err) {
+        console.warn("Dev session bootstrap skipped:", err);
+      }
+    };
+
+    bootstrapDevSession();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionData]);
+
+  // Smooth local countdown timer
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeftSeconds((prev) => (prev > 0 ? prev - 1 : 0));
@@ -219,21 +302,71 @@ export const AssessmentWorkspace: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Poll budget status
-  const refreshBudget = async () => {
+  // Server-authoritative heartbeat every 5 seconds
+  useEffect(() => {
+    let isMounted = true;
+
+    const pollHeartbeat = async () => {
+      try {
+        const hb = await ApiClient.getSessionHeartbeat(sessionId);
+        if (!isMounted) return;
+
+        setTimeLeftSeconds(hb.remainingSeconds);
+        setIsExpired(hb.isExpired);
+        setInGracePeriod(hb.inGracePeriod);
+        setSessionStatus(hb.status);
+
+        setBudgetStatus((prev) => ({
+          ...prev,
+          consumedBudgetUsd: hb.consumedBudgetUsd,
+          remainingBudgetUsd: hb.remainingBudgetUsd,
+          isWarningTriggered: hb.budgetWarning,
+          isExhausted: hb.remainingBudgetUsd <= 0,
+          percentUsed: Math.min(100, (hb.consumedBudgetUsd / (prev.maxBudgetUsd || 0.25)) * 100),
+        }));
+      } catch {
+        // Dev offline or session not yet created on backend
+      }
+    };
+
+    pollHeartbeat();
+    const interval = setInterval(pollHeartbeat, 5000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [sessionId]);
+
+  // Autosave workspace code to backend
+  const performAutosave = async (
+    currentCode: string,
+    testResults?: CodeValidationResponse["tests"]
+  ) => {
+    if (sessionStatus === "submitted" || (isExpired && !inGracePeriod)) return;
     try {
-      const status = await ApiClient.getBudgetStatus(sessionId);
-      setBudgetStatus(status);
+      setIsAutosaving(true);
+      const res = await ApiClient.autosaveWorkspace(sessionId, {
+        code: currentCode,
+        testResults,
+      });
+      setLastSavedAt(new Date(res.lastSavedAt));
+      lastSavedCodeRef.current = currentCode;
     } catch {
-      // Session starts at $0.00
+      // Ignored for transient glitches
+    } finally {
+      setIsAutosaving(false);
     }
   };
 
+  // 20-second background autosave interval
   useEffect(() => {
-    refreshBudget();
-    const interval = setInterval(refreshBudget, 6000);
-    return () => clearInterval(interval);
-  }, [sessionId]);
+    const autosaveInterval = setInterval(() => {
+      if (code !== lastSavedCodeRef.current) {
+        performAutosave(code, testResult?.tests);
+      }
+    }, 20000);
+    return () => clearInterval(autosaveInterval);
+  }, [code, sessionId, sessionStatus, isExpired, inGracePeriod, testResult]);
 
   const formatTimer = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -250,11 +383,12 @@ export const AssessmentWorkspace: React.FC = () => {
       const result = await ApiClient.validateCode({
         language: "typescript",
         code: targetCode,
-        testCode: VERIFICATION_TESTS_CODE,
+        testCode: verificationTestCode,
         timeoutMs: 4000,
         memoryLimitMb: 128,
       });
       setTestResult(result);
+      performAutosave(targetCode, result.tests);
     } catch (err: unknown) {
       setTestResult({
         success: false,
@@ -427,11 +561,22 @@ export const AssessmentWorkspace: React.FC = () => {
         const val = await ApiClient.validateCode({
           language: "typescript",
           code,
-          testCode: VERIFICATION_TESTS_CODE,
+          testCode: verificationTestCode,
           timeoutMs: 4000,
           memoryLimitMb: 128,
         });
         tests = val.tests;
+      }
+
+      // Submit to server-authoritative session record
+      try {
+        await ApiClient.submitAssessmentSession(sessionId, {
+          finalCode: code,
+          explanation: explanation.trim(),
+          testResults: tests,
+        });
+      } catch (err) {
+        console.warn("Server session submit warning:", err);
       }
 
       const diff = `--- a/src/useTicketQueue.ts\n+++ b/src/useTicketQueue.ts\n@@ -1,50 +1,50 @@\n${code}`;
@@ -447,6 +592,7 @@ export const AssessmentWorkspace: React.FC = () => {
       });
 
       setScorecard(card);
+      setSessionStatus("submitted");
       setIsSubmitModalOpen(false);
       setIsScorecardOpen(true);
     } catch (err: unknown) {
@@ -465,18 +611,67 @@ export const AssessmentWorkspace: React.FC = () => {
             <span className="font-bold text-sm text-slate-900 dark:text-white">
               Frontend Engineer Challenge: Support Triage Queue
             </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300">
-              Session Active
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
+                sessionStatus === "submitted"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : inGracePeriod
+                  ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
+                  : isExpired
+                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
+                  : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300"
+              }`}
+            >
+              {sessionStatus === "submitted"
+                ? "Submitted"
+                : inGracePeriod
+                ? "Grace Period Active"
+                : isExpired
+                ? "Time Expired"
+                : "Session Active"}
             </span>
           </div>
+
+          {sessionData && (
+            <span className="text-xs text-slate-500 border-l border-slate-200 pl-3 dark:border-gray-700 dark:text-gray-400">
+              Candidate:{" "}
+              <strong className="text-slate-700 dark:text-gray-200">
+                {sessionData.invitation.candidateName}
+              </strong>
+            </span>
+          )}
         </div>
 
         {/* Center / Right Metrics & Action Controls */}
         <div className="flex items-center gap-4 text-xs">
+          {/* Autosave Status Indicator */}
+          <div className="flex items-center gap-1.5 text-slate-500 dark:text-gray-400">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isAutosaving
+                  ? "bg-amber-500 animate-ping"
+                  : lastSavedAt
+                  ? "bg-emerald-500"
+                  : "bg-slate-400"
+              }`}
+            />
+            <span className="text-[11px]">
+              {isAutosaving
+                ? "Autosaving..."
+                : lastSavedAt
+                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
+                : "Autosave ready"}
+            </span>
+          </div>
+
           {/* Timer Clock */}
           <div
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-mono font-bold transition-colors ${
-              timeLeftSeconds < 300
+              inGracePeriod
+                ? "bg-amber-50 text-amber-700 border-amber-300 animate-pulse dark:bg-amber-950/30 dark:text-amber-400"
+                : isExpired
+                ? "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/30 dark:text-rose-400"
+                : timeLeftSeconds < 300
                 ? "bg-rose-50 text-rose-700 border-rose-300 animate-pulse dark:bg-rose-950/30 dark:text-rose-400"
                 : timeLeftSeconds < 600
                 ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/30 dark:text-amber-400"
@@ -494,7 +689,7 @@ export const AssessmentWorkspace: React.FC = () => {
             <strong className="text-slate-800 dark:text-white">
               ${budgetStatus.consumedBudgetUsd.toFixed(3)}
             </strong>
-            <span className="text-slate-400">/ $0.25</span>
+            <span className="text-slate-400">/ ${budgetStatus.maxBudgetUsd.toFixed(2)}</span>
             <div className="w-16 h-2 rounded-full bg-slate-200 overflow-hidden dark:bg-gray-700">
               <div
                 className={`h-full transition-all ${
@@ -515,20 +710,108 @@ export const AssessmentWorkspace: React.FC = () => {
             disabled={isRunningTests}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors shadow-xs disabled:opacity-50"
           >
-            {isRunningTests ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-white" />}
+            {isRunningTests ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Play className="w-3.5 h-3.5 fill-white" />
+            )}
             <span>Run Tests</span>
           </button>
 
           {/* Final Submit Assessment button */}
           <button
             onClick={() => setIsSubmitModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            disabled={sessionStatus === "submitted"}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Submit Solution</span>
+            <span>{sessionStatus === "submitted" ? "Submitted" : "Submit Solution"}</span>
           </button>
+
+          {/* Optional Exit Button */}
+          {onExitSession && (
+            <button
+              onClick={onExitSession}
+              title="Exit Assessment Workspace"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-xs transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Exit</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Grace Period Active Banner */}
+      {inGracePeriod && (
+        <div className="bg-amber-50 border-b border-amber-300 px-6 py-2.5 flex items-center justify-between text-amber-900 text-xs dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
+            <span>
+              <strong>Grace Period Active:</strong> Standard duration elapsed. You have 60 seconds
+              to finalize and submit in-flight changes. AI generation is locked.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsSubmitModalOpen(true)}
+            className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded shadow-xs text-xs"
+          >
+            Submit Solution Now
+          </button>
+        </div>
+      )}
+
+      {/* Hard Expiration Cutoff Banner */}
+      {isExpired && !inGracePeriod && sessionStatus !== "submitted" && (
+        <div className="bg-rose-50 border-b border-rose-300 px-6 py-2.5 flex items-center justify-between text-rose-900 text-xs dark:bg-rose-950/40 dark:border-rose-700 dark:text-rose-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>
+              <strong>Assessment Window Closed:</strong> Time limit has expired. Editor is locked to
+              preserve evaluation integrity.
+            </span>
+          </div>
+          <button
+            onClick={() => setIsSubmitModalOpen(true)}
+            className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded shadow-xs text-xs"
+          >
+            Submit Final Attempt
+          </button>
+        </div>
+      )}
+
+      {/* Submitted Confirmation Banner */}
+      {sessionStatus === "submitted" && (
+        <div className="bg-emerald-50 border-b border-emerald-300 px-6 py-2.5 flex items-center justify-between text-emerald-900 text-xs dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              <strong>Assessment Submitted:</strong> Solution submitted successfully. Official
+              scorecard generated with human-in-the-loop calibration.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {scorecard && (
+              <button
+                onClick={() => setIsScorecardOpen(true)}
+                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded shadow-xs text-xs flex items-center gap-1"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>View Scorecard</span>
+              </button>
+            )}
+            {onExitSession && (
+              <button
+                onClick={onExitSession}
+                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded shadow-xs text-xs flex items-center gap-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Exit Assessment</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 80% Warning / Exhaustion Banner if active */}
       {budgetStatus.isWarningTriggered && !budgetStatus.isExhausted && (
@@ -752,17 +1035,32 @@ export const AssessmentWorkspace: React.FC = () => {
                     type="text"
                     value={aiQuestion}
                     onChange={(e) => setAiQuestion(e.target.value)}
-                    disabled={isAskingAI || budgetStatus.isExhausted}
+                    disabled={
+                      isAskingAI ||
+                      budgetStatus.isExhausted ||
+                      isExpired ||
+                      sessionStatus === "submitted"
+                    }
                     placeholder={
-                      budgetStatus.isExhausted
-                        ? "AI Quota Exhausted"
+                      sessionStatus === "submitted"
+                        ? "Assessment is submitted (AI locked)"
+                        : isExpired
+                        ? "Assessment time elapsed — AI assistance is locked"
+                        : budgetStatus.isExhausted
+                        ? "AI Quota Exhausted ($0.25 USD limit reached)"
                         : "Ask AI for explanation, edge cases, or code proposals..."
                     }
-                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50"
                   />
                   <button
                     type="submit"
-                    disabled={isAskingAI || !aiQuestion.trim() || budgetStatus.isExhausted}
+                    disabled={
+                      isAskingAI ||
+                      !aiQuestion.trim() ||
+                      budgetStatus.isExhausted ||
+                      isExpired ||
+                      sessionStatus === "submitted"
+                    }
                     className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors disabled:opacity-50"
                   >
                     <Send className="w-3.5 h-3.5" />
@@ -786,7 +1084,12 @@ export const AssessmentWorkspace: React.FC = () => {
               <button
                 type="button"
                 onClick={handleRequestSolutionProposal}
-                disabled={isAskingAI || budgetStatus.isExhausted}
+                disabled={
+                  isAskingAI ||
+                  budgetStatus.isExhausted ||
+                  isExpired ||
+                  sessionStatus === "submitted"
+                }
                 className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
                 title="Ask AI for a solution proposal to inspect and review"
               >
@@ -803,7 +1106,8 @@ export const AssessmentWorkspace: React.FC = () => {
                     setTimeout(() => setAppliedNotice(null), 3000);
                   }
                 }}
-                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px]"
+                disabled={sessionStatus === "submitted" || (isExpired && !inGracePeriod)}
+                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
               >
                 <RotateCcw className="w-3 h-3" />
                 <span>Reset Starter</span>
@@ -833,8 +1137,13 @@ export const AssessmentWorkspace: React.FC = () => {
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
+              readOnly={sessionStatus === "submitted" || (isExpired && !inGracePeriod)}
               spellCheck={false}
-              className="w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600"
+              className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
+                sessionStatus === "submitted" || (isExpired && !inGracePeriod)
+                  ? "opacity-75 cursor-not-allowed bg-slate-950/80"
+                  : ""
+              }`}
             />
           </div>
 

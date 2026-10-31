@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   CandidateSubmissionSchema,
   type CandidateSubmission,
+  type ToolPolicy,
 } from "@ai-copilot/contracts";
 import { AssessmentEvaluator } from "@ai-copilot/scoring-engine";
 import type { AIUsageGatewayService } from "../services/gateway.js";

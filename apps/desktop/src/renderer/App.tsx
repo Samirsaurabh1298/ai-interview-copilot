@@ -20,6 +20,7 @@ export const App: React.FC = () => {
       return null;
     }
   });
+  const [activeSessionData, setActiveSessionData] = useState<AcceptInvitationResponse | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [stage, setStage] = useState<"idle" | "confirming" | "answered">("idle");
@@ -103,8 +104,9 @@ export const App: React.FC = () => {
       <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden font-sans">
         <CandidateOnboarding
           invitationToken={activeInviteToken}
-          onAssessmentStarted={() => {
+          onAssessmentStarted={(sessionData) => {
             setActiveInviteToken(null);
+            setActiveSessionData(sessionData);
             window.history.replaceState({}, document.title, window.location.pathname);
             setActiveView("assessment");
           }}
@@ -134,7 +136,13 @@ export const App: React.FC = () => {
           onOpenInvitation={(token) => setActiveInviteToken(token)}
         />
       ) : activeView === "assessment" ? (
-        <AssessmentWorkspace />
+        <AssessmentWorkspace
+          sessionData={activeSessionData}
+          onExitSession={() => {
+            setActiveSessionData(null);
+            setActiveView("company");
+          }}
+        />
       ) : (
         /* Main Practice Content Area */
         <main className="flex-1 overflow-y-auto">

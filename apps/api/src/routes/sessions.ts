@@ -213,3 +213,4 @@ export const sessionsRoutes: FastifyPluginAsync<{
     return reply.status(200).send({ sessions, total: sessions.length });
   });
 };
+

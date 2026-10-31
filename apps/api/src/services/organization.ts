@@ -107,6 +107,7 @@ export class OrganizationService {
       const { organization } = this.createOrganization({
         name: "Acme Corp (Engineering)",
         slug: "acme-corp",
+        plan: "enterprise",
         ownerEmail: "lead@acme.corp",
         ownerName: "Engineering Hiring Lead",
       });
@@ -200,7 +201,7 @@ export class OrganizationService {
 
     const orgMembers = this.membersByOrg.get(orgId);
     const member = orgMembers?.get(memberId);
-    if (!member) {
+    if (!member || !orgMembers) {
       throw new MemberNotFoundError(`Member '${memberId}' not found in organization '${orgId}'`);
     }
 
@@ -227,7 +228,7 @@ export class OrganizationService {
 
     const orgMembers = this.membersByOrg.get(orgId);
     const member = orgMembers?.get(memberId);
-    if (!member) {
+    if (!member || !orgMembers) {
       throw new MemberNotFoundError(`Member '${memberId}' not found in organization '${orgId}'`);
     }
 

@@ -8,6 +8,7 @@ import type {
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AuthService } from "./auth.js";
+import type { AssessmentSessionService } from "./session.js";
 
 export class InvitationNotFoundError extends Error {
   constructor(message = "Candidate invitation not found") {
@@ -41,7 +42,8 @@ export class CandidateInvitationService {
   constructor(
     private templateService: AssessmentTemplateService,
     private orgService: OrganizationService,
-    private authService: AuthService
+    private authService: AuthService,
+    private sessionService?: AssessmentSessionService
   ) {}
 
   public createInvitation(
@@ -155,16 +157,31 @@ export class CandidateInvitationService {
       throw new InvitationNotFoundError("Assessment challenge template not found");
     }
 
-    // Provision candidate session ID if not already created
-    const sessionId =
-      invitation.sessionId ?? "sess_" + crypto.randomBytes(8).toString("hex") + "_" + Date.now();
+    // Provision candidate session if not already created
+    let sessionId = invitation.sessionId;
+    if (!sessionId) {
+      if (this.sessionService) {
+        const session = this.sessionService.createSession({
+          organizationId: invitation.organizationId,
+          templateId: invitation.templateId,
+          versionId: invitation.versionId,
+          invitationId: invitation.id,
+          candidateEmail: invitation.candidateEmail,
+          candidateName: invitation.candidateName,
+          durationMinutes: template.durationMinutes,
+        });
+        sessionId = session.id;
+      } else {
+        sessionId = "sess_" + crypto.randomBytes(8).toString("hex") + "_" + Date.now();
+      }
+    }
 
     const candidateToken = this.authService.createCandidateToken({
+      candidateId: invitation.candidateName,
       candidateEmail: invitation.candidateEmail,
-      candidateName: invitation.candidateName,
       organizationId: invitation.organizationId,
       sessionId,
-      durationMinutes: template.durationMinutes,
+      validitySeconds: template.durationMinutes * 60,
     });
 
     const now = new Date();
