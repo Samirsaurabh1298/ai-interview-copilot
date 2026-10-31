@@ -18,6 +18,7 @@ import { templatesRoutes } from "./routes/templates.js";
 import { versionsRoutes } from "./routes/versions.js";
 import { invitationsRoutes } from "./routes/invitations.js";
 import { sessionsRoutes } from "./routes/sessions.js";
+import { sessionEventsRoutes } from "./routes/session-events.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
@@ -26,6 +27,7 @@ import { AssessmentTemplateService } from "./services/template.js";
 import { AssessmentVersioningService } from "./services/versioning.js";
 import { CandidateInvitationService } from "./services/invitation.js";
 import { AssessmentSessionService } from "./services/session.js";
+import { SessionEventsService } from "./services/session-events.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -129,6 +131,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     orgService,
     gateway
   );
+  const eventsService = new SessionEventsService(sessionService);
   const invitationService = new CandidateInvitationService(
     templateService,
     orgService,
@@ -169,6 +172,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
 
   await app.register(sessionsRoutes, {
     prefix: "/api/v1/sessions",
+    sessionService,
+    authService,
+  });
+
+  await app.register(sessionEventsRoutes, {
+    prefix: "/api/v1/sessions",
+    eventsService,
     sessionService,
     authService,
   });

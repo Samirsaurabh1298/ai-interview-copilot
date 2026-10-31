@@ -28,6 +28,10 @@ import {
   Send,
   User,
   ArrowRight,
+  Activity,
+  Eye,
+  RefreshCw,
+  Terminal,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -41,6 +45,8 @@ import type {
   CreateInvitationRequest,
   AuthUserContext,
   MembershipRole,
+  AssessmentSession,
+  SessionEvent,
 } from "@ai-copilot/contracts";
 
 interface CompanyDashboardProps {
@@ -59,6 +65,13 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [versions, setVersions] = useState<AssessmentVersion[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<CandidateInvitation[]>([]);
+
+  // Task 13: Session Telemetry & Audit Log State
+  const [sessions, setSessions] = useState<AssessmentSession[]>([]);
+  const [selectedSessionForAudit, setSelectedSessionForAudit] = useState<AssessmentSession | null>(null);
+  const [sessionEvents, setSessionEvents] = useState<SessionEvent[]>([]);
+  const [auditSubTab, setAuditSubTab] = useState<"timeline" | "versions">("timeline");
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
 
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
@@ -111,6 +124,7 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       loadTemplates(selectedOrg.id);
       loadMembers(selectedOrg.id);
       loadInvitations(selectedOrg.id);
+      loadSessions(selectedOrg.id);
     }
   }, [selectedOrg]);
 
@@ -183,6 +197,31 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setVersions(data.versions);
     } catch {
       setVersions([]);
+    }
+  };
+
+  const loadSessions = async (orgId: string) => {
+    try {
+      const data = await ApiClient.listSessions(orgId, activeJwtToken || undefined);
+      setSessions(data.sessions);
+      if (data.sessions.length > 0 && !selectedSessionForAudit) {
+        handleSelectSessionForAudit(data.sessions[0]!);
+      }
+    } catch {
+      setSessions([]);
+    }
+  };
+
+  const handleSelectSessionForAudit = async (session: AssessmentSession) => {
+    setSelectedSessionForAudit(session);
+    try {
+      setIsLoadingEvents(true);
+      const data = await ApiClient.getSessionEvents(session.id, activeJwtToken || undefined);
+      setSessionEvents(data.events);
+    } catch {
+      setSessionEvents([]);
+    } finally {
+      setIsLoadingEvents(false);
     }
   };
 
@@ -455,15 +494,18 @@ describe("useDebouncedFetch verification suite", () => {
               <span>Auth & RBAC ({members.length})</span>
             </button>
             <button
-              onClick={() => setActiveTab("audit")}
+              onClick={() => {
+                setActiveTab("audit");
+                if (selectedOrg) loadSessions(selectedOrg.id);
+              }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
                 activeTab === "audit"
                   ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
                   : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
               }`}
             >
-              <Lock className="w-3.5 h-3.5 text-amber-500" />
-              <span>Audit Log ({versions.length})</span>
+              <Activity className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Evidence & Audit Log ({sessions.length})</span>
             </button>
           </div>
 
@@ -1173,74 +1215,334 @@ describe("useDebouncedFetch verification suite", () => {
             </div>
           </div>
         ) : (
-          /* Audit & Immutable Snapshots Tab (Task 9) */
+          /* Evidence & Audit Log Tab (Task 9 & Task 13) */
           <div className="flex-1 p-6 overflow-y-auto">
-            <div className="max-w-4xl mx-auto space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-amber-500" />
-                  <span>Immutable Assessment Versions & Cryptographic Audit Log</span>
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                  Once published, assessment versions lock starter code, test suites, and rubric dimension weights. Every version generates a canonical SHA-256 fingerprint ensuring score integrity.
-                </p>
-              </div>
-
-              {versions.length === 0 ? (
-                <div className="p-8 border border-dashed border-slate-300 dark:border-gray-700 rounded-2xl text-center space-y-2">
-                  <Hash className="w-8 h-8 text-slate-400 mx-auto" />
-                  <p className="text-xs font-semibold text-slate-700 dark:text-gray-300">
-                    No immutable versions published yet
-                  </p>
-                  <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                    Select a template and click "Lock Immutable Version" to freeze a verifiable baseline snapshot.
+            <div className="max-w-6xl mx-auto space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-500" />
+                    <span>Evidence, Telemetry & Cryptographic Audit Trails</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    Inspect the chronological event stream of candidate problem-solving, AI queries, test runs, and immutable assessment hashes.
                   </p>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {versions.map((ver) => (
-                    <div
-                      key={ver.id}
-                      className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] space-y-3 shadow-xs"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                            Version {ver.versionNumber}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-800 dark:text-gray-200">
-                            {ver.snapshot.title}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 dark:text-gray-500 font-mono">
-                          {new Date(ver.publishedAt).toLocaleString()}
-                        </span>
-                      </div>
 
-                      <div className="p-3 rounded-lg bg-slate-50 dark:bg-gray-900/60 font-mono text-[11px] flex items-center justify-between border border-slate-100 dark:border-gray-800">
-                        <div className="flex items-center gap-2 truncate">
-                          <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="text-slate-500 dark:text-gray-400">SHA-256:</span>
-                          <span className="text-indigo-600 dark:text-indigo-400 truncate">{ver.contentHash}</span>
-                        </div>
+                {/* Sub Tab Controls */}
+                <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-gray-800/80 border border-slate-200 dark:border-gray-700 text-xs font-semibold">
+                  <button
+                    onClick={() => setAuditSubTab("timeline")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                      auditSubTab === "timeline"
+                        ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                        : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Candidate Telemetry ({sessions.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setAuditSubTab("versions")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                      auditSubTab === "versions"
+                        ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                        : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Template Hashes ({versions.length})</span>
+                  </button>
+                </div>
+              </div>
+
+              {auditSubTab === "timeline" ? (
+                /* Task 13: Candidate Session Telemetry Stream */
+                sessions.length === 0 ? (
+                  <div className="p-8 border border-dashed border-slate-300 dark:border-gray-700 rounded-2xl text-center space-y-2">
+                    <Activity className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-gray-300">
+                      No candidate sessions recorded yet
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      Launch an assessment or invite a candidate to begin streaming telemetry events.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Left Column: Session Selector */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 dark:text-gray-300 uppercase tracking-wider">
+                          Candidate Sessions
+                        </span>
                         <button
-                          onClick={() => handleCopy(ver.contentHash, ver.id)}
-                          className="shrink-0 ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200"
+                          onClick={() => selectedOrg && loadSessions(selectedOrg.id)}
+                          className="text-xs text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 flex items-center gap-1"
                         >
-                          {copiedKey === ver.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Refresh</span>
                         </button>
                       </div>
 
-                      <div className="text-xs text-slate-600 dark:text-gray-400 italic">
-                        "{ver.changelogNotes || "Immutable baseline version."}"
+                      <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
+                        {sessions.map((sess) => (
+                          <div
+                            key={sess.id}
+                            onClick={() => handleSelectSessionForAudit(sess)}
+                            className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                              selectedSessionForAudit?.id === sess.id
+                                ? "border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/30 dark:border-indigo-500 shadow-xs"
+                                : "border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] hover:border-slate-300 dark:hover:border-gray-700"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="font-bold text-slate-900 dark:text-white truncate">
+                                {sess.candidateName}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                  sess.status === "submitted"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                    : sess.status === "expired"
+                                    ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                                    : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300"
+                                }`}
+                              >
+                                {sess.status}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-gray-400 font-mono truncate">
+                              {sess.candidateEmail}
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-400 dark:text-gray-500 flex items-center justify-between">
+                              <span className="font-mono truncate">{sess.id.slice(0, 16)}...</span>
+                              <span>{new Date(sess.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+
+                    {/* Right Column: Telemetry Timeline Stream */}
+                    <div className="md:col-span-2 space-y-4">
+                      {selectedSessionForAudit && (
+                        <div className="p-4 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] flex items-center justify-between shadow-xs">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-slate-900 dark:text-white">
+                                {selectedSessionForAudit.candidateName}
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-400">
+                                ({selectedSessionForAudit.id})
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
+                              {sessionEvents.length} telemetry checkpoints captured • AI Budget: ${selectedSessionForAudit.consumedAiBudgetUsd.toFixed(3)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleSelectSessionForAudit(selectedSessionForAudit)}
+                            disabled={isLoadingEvents}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-gray-700 text-xs text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingEvents ? "animate-spin" : ""}`} />
+                            <span>Reload Events</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Event Timeline Cards */}
+                      {sessionEvents.length === 0 ? (
+                        <div className="p-8 border border-dashed border-slate-300 dark:border-gray-700 rounded-2xl text-center space-y-2">
+                          <Activity className="w-8 h-8 text-slate-400 mx-auto" />
+                          <p className="text-xs font-semibold text-slate-700 dark:text-gray-300">
+                            No telemetry checkpoints recorded yet
+                          </p>
+                          <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                            Checkpoints will stream in as the candidate edits code, runs verification tests, and prompts AI.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">
+                          {sessionEvents.map((evt) => (
+                            <div
+                              key={evt.id}
+                              className="p-3.5 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] text-xs space-y-2 shadow-xs transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300">
+                                    #{evt.sequenceNumber}
+                                  </span>
+
+                                  {/* Badge by type */}
+                                  {evt.type === "session_started" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                                      <Play className="w-3 h-3 text-blue-500" />
+                                      <span>Session Started</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "code_snapshot" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300 flex items-center gap-1">
+                                      <FileCode className="w-3 h-3 text-slate-500" />
+                                      <span>Code Checkpoint</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "test_run" && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${
+                                        evt.payload?.passed
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                          : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                                      }`}
+                                    >
+                                      <Terminal className="w-3 h-3" />
+                                      <span>
+                                        Test Run ({String(evt.payload?.passedCount ?? 0)}/{String(evt.payload?.totalCount ?? 0)} passed)
+                                      </span>
+                                    </span>
+                                  )}
+                                  {evt.type === "ai_query" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 flex items-center gap-1">
+                                      <Sparkles className="w-3 h-3 text-indigo-500" />
+                                      <span>AI Prompt Query</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "ai_patch_proposed" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 flex items-center gap-1">
+                                      <Code2 className="w-3 h-3 text-amber-500" />
+                                      <span>AI Patch Proposed</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "ai_patch_decision" && (
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${
+                                        evt.payload?.decision === "accepted"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                          : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                                      }`}
+                                    >
+                                      {evt.payload?.decision === "accepted" ? (
+                                        <Check className="w-3 h-3 text-emerald-600" />
+                                      ) : (
+                                        <X className="w-3 h-3 text-rose-600" />
+                                      )}
+                                      <span>Candidate {String(evt.payload?.decision).toUpperCase()} Patch</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "window_blur" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3 text-amber-600" />
+                                      <span>Window Focus Lost</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "window_focus" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-400">
+                                      Window Refocused
+                                    </span>
+                                  )}
+                                  {evt.type === "paste_detected" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300">
+                                      Paste Event ({String(evt.payload?.characterCount ?? 0)} chars)
+                                    </span>
+                                  )}
+                                  {evt.type === "session_submitted" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                      <span>Solution Submitted</span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                <span className="text-[11px] text-slate-400 font-mono">
+                                  {new Date(evt.timestamp).toLocaleTimeString()}
+                                </span>
+                              </div>
+
+                              {/* Event Payload Highlights */}
+                              {evt.type === "ai_query" && Boolean(evt.payload?.question) && (
+                                <div className="p-2 rounded-lg bg-slate-50 dark:bg-gray-900/60 text-slate-700 dark:text-gray-300 font-sans italic border border-slate-100 dark:border-gray-800 text-[11px]">
+                                  "{String(evt.payload?.question)}"
+                                </div>
+                              )}
+
+                              {evt.type === "code_snapshot" && (
+                                <div className="text-[11px] text-slate-500 dark:text-gray-400">
+                                  Buffer size: {String(evt.payload?.codeLength ?? 0)} characters • {String(evt.payload?.lines ?? 0)} lines
+                                </div>
+                              )}
+
+                              {evt.type === "test_run" && (
+                                <div className="text-[11px] text-slate-500 dark:text-gray-400">
+                                  Executed in {String(evt.payload?.durationMs ?? 0)}ms • Sandbox isolated
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              ) : (
+                /* Task 9: Cryptographic Immutability Hashes */
+                versions.length === 0 ? (
+                  <div className="p-8 border border-dashed border-slate-300 dark:border-gray-700 rounded-2xl text-center space-y-2">
+                    <Hash className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-gray-300">
+                      No immutable versions published yet
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      Select a template and click "Lock Immutable Version" to freeze a verifiable baseline snapshot.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {versions.map((ver) => (
+                      <div
+                        key={ver.id}
+                        className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] space-y-3 shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                              Version {ver.versionNumber}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-800 dark:text-gray-200">
+                              {ver.snapshot.title}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 dark:text-gray-500 font-mono">
+                            {new Date(ver.publishedAt).toLocaleString()}
+                          </span>
+                        </div>
+
+                        <div className="p-3 rounded-lg bg-slate-50 dark:bg-gray-900/60 font-mono text-[11px] flex items-center justify-between border border-slate-100 dark:border-gray-800">
+                          <div className="flex items-center gap-2 truncate">
+                            <Hash className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="text-slate-500 dark:text-gray-400">SHA-256:</span>
+                            <span className="text-indigo-600 dark:text-indigo-400 truncate">{ver.contentHash}</span>
+                          </div>
+                          <button
+                            onClick={() => handleCopy(ver.contentHash, ver.id)}
+                            className="shrink-0 ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200"
+                          >
+                            {copiedKey === ver.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="text-xs text-slate-600 dark:text-gray-400 italic">
+                          "{ver.changelogNotes || "Immutable baseline version."}"
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
             </div>
           </div>

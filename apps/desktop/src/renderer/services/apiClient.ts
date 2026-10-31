@@ -26,6 +26,10 @@ import type {
   SessionHeartbeatResponse,
   UpdateWorkspaceRequest,
   SubmitSessionRequest,
+  IngestEventsRequest,
+  IngestEventsResponse,
+  GetSessionEventsResponse,
+  SessionEvent,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -387,6 +391,22 @@ export class ApiClient {
     return (await res.json()) as AssessmentSession;
   }
 
+  public static async listSessions(
+    organizationId: string,
+    token?: string
+  ): Promise<{ sessions: AssessmentSession[]; total: number }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions?organizationId=${organizationId}`, {
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to list sessions: ${res.statusText}`);
+    }
+    return (await res.json()) as { sessions: AssessmentSession[]; total: number };
+  }
+
   public static async getSessionHeartbeat(
     sessionId: string
   ): Promise<SessionHeartbeatResponse> {
@@ -433,6 +453,49 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to submit assessment session");
     }
     return (await res.json()) as { sessionId: string; status: string; submittedAt: Date };
+  }
+
+  public static async ingestSessionEvents(
+    sessionId: string,
+    req: IngestEventsRequest,
+    token?: string
+  ): Promise<IngestEventsResponse> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/events`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to ingest session events");
+    }
+    return (await res.json()) as IngestEventsResponse;
+  }
+
+  public static async getSessionEvents(
+    sessionId: string,
+    token?: string
+  ): Promise<GetSessionEventsResponse> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/events`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to fetch session events");
+    }
+    return (await res.json()) as GetSessionEventsResponse;
   }
 }
 

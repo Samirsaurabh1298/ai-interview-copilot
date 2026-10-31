@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
+import { TelemetryClient } from "../services/telemetryClient.js";
 import type {
   SessionBudgetStatus,
   AIResponse,
@@ -282,6 +283,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
         if (isMounted) {
           setSessionId(session.id);
+          telemetryRef.current?.updateSession(session.id);
         }
       } catch (err) {
         console.warn("Dev session bootstrap skipped:", err);
@@ -293,6 +295,51 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       isMounted = false;
     };
   }, [sessionData]);
+
+  // Telemetry event logging client
+  const telemetryRef = useRef<TelemetryClient | null>(null);
+
+  useEffect(() => {
+    const client = new TelemetryClient(sessionId, sessionData?.candidateToken);
+    telemetryRef.current = client;
+
+    client.record(
+      "session_started",
+      {
+        candidateId,
+        sessionId,
+        durationMinutes: sessionData?.durationMinutes ?? 60,
+        starterCodeLength: code.length,
+      },
+      true
+    );
+
+    const handleBlur = () => {
+      client.record("window_blur", { timestamp: Date.now() });
+    };
+
+    const handleFocus = () => {
+      client.record("window_focus", { timestamp: Date.now() });
+    };
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text") || "";
+      if (text.length > 20) {
+        client.record("paste_detected", { characterCount: text.length, snippet: text.slice(0, 40) });
+      }
+    };
+
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("paste", handlePaste);
+
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("paste", handlePaste);
+      client.destroy();
+    };
+  }, [sessionId, sessionData?.candidateToken]);
 
   // Smooth local countdown timer
   useEffect(() => {
@@ -351,6 +398,12 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       });
       setLastSavedAt(new Date(res.lastSavedAt));
       lastSavedCodeRef.current = currentCode;
+
+      // Telemetry record
+      telemetryRef.current?.record("code_snapshot", {
+        codeLength: currentCode.length,
+        lines: currentCode.split("\n").length,
+      });
     } catch {
       // Ignored for transient glitches
     } finally {
@@ -389,6 +442,20 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       });
       setTestResult(result);
       performAutosave(targetCode, result.tests);
+
+      const passedCount = result.tests.filter((t) => t.passed).length;
+      const totalCount = result.tests.length;
+
+      telemetryRef.current?.record(
+        "test_run",
+        {
+          passedCount,
+          totalCount,
+          passed: result.passed,
+          durationMs: result.durationMs,
+        },
+        true
+      );
     } catch (err: unknown) {
       setTestResult({
         success: false,
@@ -411,6 +478,12 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     setAppliedNotice("✓ Proposed patch accepted and applied to src/useTicketQueue.ts. Click 'Run Tests' to verify.");
     setTimeout(() => setAppliedNotice(null), 6000);
 
+    telemetryRef.current?.record(
+      "ai_patch_decision",
+      { decision: "accepted", messageIdx },
+      true
+    );
+
     if (messageIdx !== undefined) {
       setAiHistory((prev) =>
         prev.map((msg, i) => (i === messageIdx ? { ...msg, patchStatus: "accepted" } : msg))
@@ -422,6 +495,12 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const handleRejectPatch = (messageIdx?: number) => {
     setAppliedNotice("Proposed patch rejected. Editor buffer was preserved untouched.");
     setTimeout(() => setAppliedNotice(null), 4000);
+
+    telemetryRef.current?.record(
+      "ai_patch_decision",
+      { decision: "rejected", messageIdx },
+      true
+    );
 
     if (messageIdx !== undefined) {
       setAiHistory((prev) =>
@@ -456,6 +535,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       const correctedCode = answer.code;
       const patchDiff = answer.codeChanges?.[0]?.diff;
       const targetIdx = aiHistory.length + 1;
+
+      telemetryRef.current?.record("ai_patch_proposed", {
+        patchDiffLength: patchDiff?.length ?? 0,
+        proposedCodeLength: correctedCode?.length ?? 0,
+      });
 
       setAiHistory((prev) => [
         ...prev,
@@ -504,6 +588,12 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     setAiQuestion("");
     setAiHistory((prev) => [...prev, { role: "candidate", text: q }]);
     setIsAskingAI(true);
+
+    telemetryRef.current?.record(
+      "ai_query",
+      { question: q, codeLength: code.length },
+      true
+    );
 
     try {
       const answer = await ApiClient.generateAnswer(
@@ -578,6 +668,17 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       } catch (err) {
         console.warn("Server session submit warning:", err);
       }
+
+      telemetryRef.current?.record(
+        "session_submitted",
+        {
+          finalCodeLength: code.length,
+          explanationLength: explanation.length,
+          testsPassed: tests.filter((t) => t.passed).length,
+          totalTests: tests.length,
+        },
+        true
+      );
 
       const diff = `--- a/src/useTicketQueue.ts\n+++ b/src/useTicketQueue.ts\n@@ -1,50 +1,50 @@\n${code}`;
 
