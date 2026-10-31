@@ -51,3 +51,4 @@ export const GetSessionEventsResponseSchema = z.object({
   total: z.number().int(),
 });
 export type GetSessionEventsResponse = z.infer<typeof GetSessionEventsResponseSchema>;
+
