@@ -33,6 +33,12 @@ import {
   RefreshCw,
   Terminal,
   Pause,
+  Award,
+  Scale,
+  AlertTriangle,
+  FileCheck,
+  Sliders,
+  CheckSquare,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -49,7 +55,106 @@ import type {
   AssessmentSession,
   SessionEvent,
   SubmissionArtifact,
+  ReviewerEvaluation,
+  CalibrationConsensus,
+  HiringRecommendation,
+  RubricDimensionId,
+  AssessmentScorecard,
+  DimensionCalibration,
 } from "@ai-copilot/contracts";
+
+const RUBRIC_DIMENSIONS: {
+  id: RubricDimensionId;
+  name: string;
+  weight: number;
+  description: string;
+  anchors: Record<1 | 2 | 3 | 4, { label: string; desc: string }>;
+}[] = [
+  {
+    id: "code-comprehension",
+    name: "Code Comprehension & Localization",
+    weight: 20,
+    description: "Ability to navigate codebase, trace execution, and localize bugs precisely.",
+    anchors: {
+      1: { label: "Developing", desc: "Struggled to identify root cause; made speculative edits across codebase." },
+      2: { label: "Competent", desc: "Understood broad components but required broad delta to localize defect." },
+      3: { label: "Advanced", desc: "Navigated abstractions efficiently; targeted edits localized to affected modules." },
+      4: { label: "Exemplary", desc: "Laser-focused root-cause fix; preserved invariants and existing design patterns." },
+    },
+  },
+  {
+    id: "problem-framing",
+    name: "Problem Framing & Architecture Strategy",
+    weight: 10,
+    description: "Clarifying requirements, decomposing edge cases, and planning algorithmic changes.",
+    anchors: {
+      1: { label: "Developing", desc: "Jumped directly into coding without planning; overlooked clear edge cases." },
+      2: { label: "Competent", desc: "Understood basic problem statement but needed multiple restarts." },
+      3: { label: "Advanced", desc: "Articulated reproduction criteria and formulated sound algorithmic strategy." },
+      4: { label: "Exemplary", desc: "Methodical breakdown of failure modes, edge constraints, and complexity." },
+    },
+  },
+  {
+    id: "ai-collaboration",
+    name: "AI Collaboration & Prompt Formulation",
+    weight: 15,
+    description: "Constructing high-signal, iterative inquiries with contextual precision.",
+    anchors: {
+      1: { label: "Developing", desc: "Passive copy-pasting of whole files or generic 'fix this' queries." },
+      2: { label: "Competent", desc: "Used prompts to generate basic syntax, with occasional trial-and-error churn." },
+      3: { label: "Advanced", desc: "Targeted queries focusing on tricky comparators, edge conditions, or API types." },
+      4: { label: "Exemplary", desc: "High-leverage prompts providing architectural context and interrogating trade-offs." },
+    },
+  },
+  {
+    id: "critical-evaluation",
+    name: "Critical Evaluation of AI Suggestions",
+    weight: 15,
+    description: "Scrutinizing proposed AI patches, catching subtle bugs and rejecting hallucinations.",
+    anchors: {
+      1: { label: "Developing", desc: "Blindly accepted proposed patches without reading diffs; introduced syntax errors." },
+      2: { label: "Competent", desc: "Caught obvious failures after running tests, but missed subtle regressions." },
+      3: { label: "Advanced", desc: "Carefully reviewed diffs in review modal; adjusted variable names and edge logic." },
+      4: { label: "Exemplary", desc: "Spotted subtle off-by-one errors and hallucinated APIs before accepting patches." },
+    },
+  },
+  {
+    id: "debugging-implementation",
+    name: "Debugging & Solution Implementation",
+    weight: 20,
+    description: "Disciplined debugging, clean defensive coding, and algorithmic correctness.",
+    anchors: {
+      1: { label: "Developing", desc: "Introduced regressions; solution fails core requirements or crashes on inputs." },
+      2: { label: "Competent", desc: "Passed happy path but struggled with corner cases or introduced tight coupling." },
+      3: { label: "Advanced", desc: "Robust, clean implementation passing standard tests and handling common anomalies." },
+      4: { label: "Exemplary", desc: "Production-grade, idiomatic code with defensive guards and optimal complexity." },
+    },
+  },
+  {
+    id: "testing-verification",
+    name: "Testing & Verification Discipline",
+    weight: 10,
+    description: "Verification rigor, isolated test execution, and comprehensive test coverage.",
+    anchors: {
+      1: { label: "Developing", desc: "Never ran verification tests or ignored red test assertion failures." },
+      2: { label: "Competent", desc: "Ran tests only at the very end; did not write or verify custom edge cases." },
+      3: { label: "Advanced", desc: "Iterative test cadence; verified assertions after every meaningful code delta." },
+      4: { label: "Exemplary", desc: "Relentless verification discipline; systematically validated boundary cases." },
+    },
+  },
+  {
+    id: "explanation-judgment",
+    name: "Technical Explanation & Engineering Judgment",
+    weight: 10,
+    description: "Ability to articulate trade-offs, root-cause mechanisms, and production impact.",
+    anchors: {
+      1: { label: "Developing", desc: "Minimal or missing explanation; unable to justify architectural decisions." },
+      2: { label: "Competent", desc: "Summarized what was changed without explaining why or discussing trade-offs." },
+      3: { label: "Advanced", desc: "Clear architectural narrative explaining the bug mechanism and fix rationale." },
+      4: { label: "Exemplary", desc: "Executive-grade technical explanation with production considerations." },
+    },
+  },
+];
 
 interface CompanyDashboardProps {
   onLaunchCandidateView?: () => void;
@@ -81,6 +186,27 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [sessionToPause, setSessionToPause] = useState<AssessmentSession | null>(null);
   const [pauseReasonInput, setPauseReasonInput] = useState("Candidate network disconnection / technical incident");
   const [isProctorActionInProgress, setIsProctorActionInProgress] = useState(false);
+
+  // Task 16: Multi-Reviewer Calibration State
+  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
+  const [isConsensusModalOpen, setIsConsensusModalOpen] = useState(false);
+  const [sessionForCalibration, setSessionForCalibration] = useState<AssessmentSession | null>(null);
+  const [evalScores, setEvalScores] = useState<Record<RubricDimensionId, { rating: 1 | 2 | 3 | 4; rationale: string }>>({
+    "code-comprehension": { rating: 3, rationale: "" },
+    "problem-framing": { rating: 3, rationale: "" },
+    "ai-collaboration": { rating: 3, rationale: "" },
+    "critical-evaluation": { rating: 3, rationale: "" },
+    "debugging-implementation": { rating: 3, rationale: "" },
+    "testing-verification": { rating: 3, rationale: "" },
+    "explanation-judgment": { rating: 3, rationale: "" },
+  });
+  const [evalRecommendation, setEvalRecommendation] = useState<HiringRecommendation>("hire");
+  const [evalSummaryRationale, setEvalSummaryRationale] = useState("");
+  const [isLoadingAiDraft, setIsLoadingAiDraft] = useState(false);
+  const [calibrationConsensus, setCalibrationConsensus] = useState<CalibrationConsensus | null>(null);
+  const [evaluationsList, setEvaluationsList] = useState<ReviewerEvaluation[]>([]);
+  const [isEvaluationsMasked, setIsEvaluationsMasked] = useState(false);
+  const [isLoadingCalibration, setIsLoadingCalibration] = useState(false);
 
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
@@ -282,6 +408,109 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setError(err instanceof Error ? err.message : "Failed to resume assessment session");
     } finally {
       setIsProctorActionInProgress(false);
+    }
+  };
+
+  // Task 16: Multi-Reviewer Calibration Handlers
+  const handleOpenScoreModal = async (session: AssessmentSession) => {
+    setSessionForCalibration(session);
+    setIsScoreModalOpen(true);
+    try {
+      const data = await ApiClient.getEvaluations(session.id, activeJwtToken || undefined);
+      if (data.evaluations.length > 0 && activePersona) {
+        const myEval = data.evaluations.find((e) => e.reviewerEmail === activePersona.email);
+        if (myEval) {
+          const loadedScores = { ...evalScores };
+          for (const s of myEval.scores) {
+            loadedScores[s.dimensionId] = { rating: s.rating, rationale: s.rationale };
+          }
+          setEvalScores(loadedScores);
+          setEvalRecommendation(myEval.recommendation);
+          setEvalSummaryRationale(myEval.summaryRationale);
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  const handleAutoFillFromAiDraft = async (sessionId: string) => {
+    try {
+      setIsLoadingAiDraft(true);
+      setError(null);
+      const draft = await ApiClient.getAiDraftScorecard(sessionId, activeJwtToken || undefined);
+      const updatedScores = { ...evalScores };
+      for (const dim of draft.dimensions) {
+        updatedScores[dim.dimensionId] = {
+          rating: dim.rating,
+          rationale: dim.reviewerNotes || (dim.evidenceCitations.length > 0 ? dim.evidenceCitations.join(" ") : "AI Baseline Evaluation recommendation."),
+        };
+      }
+      setEvalScores(updatedScores);
+      setEvalSummaryRationale(draft.summaryNotes || "Automated baseline evaluation suggests solid engineering competence.");
+      setSuccessMessage("Imported baseline rubric ratings from AI Assessment Evaluator (Groq / OpenAI).");
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate AI draft scorecard");
+    } finally {
+      setIsLoadingAiDraft(false);
+    }
+  };
+
+  const handleSubmitEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sessionForCalibration) return;
+    try {
+      setIsProctorActionInProgress(true);
+      setError(null);
+
+      const scoresPayload = RUBRIC_DIMENSIONS.map((dim) => ({
+        dimensionId: dim.id,
+        name: dim.name,
+        rating: evalScores[dim.id]?.rating ?? 3,
+        rationale: evalScores[dim.id]?.rationale?.trim() || "Observed solid engineering performance.",
+        evidenceCitations: [],
+      }));
+
+      await ApiClient.submitReviewerEvaluation(
+        sessionForCalibration.id,
+        {
+          scores: scoresPayload,
+          recommendation: evalRecommendation,
+          summaryRationale: evalSummaryRationale.trim() || "Overall solid candidate execution and communication.",
+        },
+        activeJwtToken || undefined
+      );
+
+      setSuccessMessage(`Evaluation submitted successfully! Scored 7 rubric dimensions.`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      setIsScoreModalOpen(false);
+
+      // Refresh consensus
+      await handleOpenConsensusModal(sessionForCalibration);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit evaluation");
+    } finally {
+      setIsProctorActionInProgress(false);
+    }
+  };
+
+  const handleOpenConsensusModal = async (session: AssessmentSession) => {
+    setSessionForCalibration(session);
+    setIsConsensusModalOpen(true);
+    setIsLoadingCalibration(true);
+    try {
+      const [consensusData, evalsData] = await Promise.all([
+        ApiClient.getCalibrationConsensus(session.id, activeJwtToken || undefined),
+        ApiClient.getEvaluations(session.id, activeJwtToken || undefined),
+      ]);
+      setCalibrationConsensus(consensusData);
+      setEvaluationsList(evalsData.evaluations);
+      setIsEvaluationsMasked(evalsData.isMasked);
+    } catch {
+      // Non-blocking
+    } finally {
+      setIsLoadingCalibration(false);
     }
   };
 
@@ -1426,13 +1655,31 @@ describe("useDebouncedFetch verification suite", () => {
                               </button>
                             )}
                             {selectedSessionForAudit.status === "submitted" && (
-                              <button
-                                onClick={() => handleInspectSubmission(selectedSessionForAudit.id)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors shadow-xs"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                <span>View Submission (SHA-256)</span>
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handleInspectSubmission(selectedSessionForAudit.id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors shadow-xs"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span>View Submission (SHA-256)</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenScoreModal(selectedSessionForAudit)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white border border-indigo-500 text-xs font-semibold hover:bg-indigo-500 transition-colors shadow-xs"
+                                  title="Grade candidate across the 7 rubric dimensions"
+                                >
+                                  <Award className="w-3.5 h-3.5 text-white" />
+                                  <span>Score Rubric</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenConsensusModal(selectedSessionForAudit)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 text-xs font-semibold hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors shadow-xs"
+                                  title="View multi-reviewer calibration consensus and variance flags"
+                                >
+                                  <Scale className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                                  <span>Calibration Board</span>
+                                </button>
+                              </>
                             )}
                             <button
                               onClick={() => handleSelectSessionForAudit(selectedSessionForAudit)}
@@ -2207,10 +2454,36 @@ describe("useDebouncedFetch verification suite", () => {
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex justify-end">
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {selectedSessionForAudit && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setIsSubmissionModalOpen(false);
+                        handleOpenScoreModal(selectedSessionForAudit);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      <span>Score Candidate Rubric</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsSubmissionModalOpen(false);
+                        handleOpenConsensusModal(selectedSessionForAudit);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/50 font-semibold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <Scale className="w-3.5 h-3.5 text-purple-500" />
+                      <span>View Calibration</span>
+                    </button>
+                  </>
+                )}
+              </div>
               <button
                 onClick={() => setIsSubmissionModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold text-xs hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
               >
                 Close Submission View
               </button>
@@ -2309,6 +2582,510 @@ describe("useDebouncedFetch verification suite", () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Task 16: Reviewer 7-Dimension Rubric Scorecard Modal */}
+      {isScoreModalOpen && sessionForCalibration && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                    <Award className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Reviewer Rubric Scorecard
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-gray-400">
+                      Candidate: <span className="font-semibold text-slate-800 dark:text-gray-200">{sessionForCalibration.candidateName}</span> ({sessionForCalibration.candidateEmail})
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAutoFillFromAiDraft(sessionForCalibration.id)}
+                  disabled={isLoadingAiDraft}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800 text-xs font-semibold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors shadow-xs disabled:opacity-50"
+                  title="Import baseline score generated by AI Assessment Evaluator"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 text-indigo-500 ${isLoadingAiDraft ? "animate-spin" : ""}`} />
+                  <span>{isLoadingAiDraft ? "Evaluating..." : "Auto-fill from AI Draft"}</span>
+                </button>
+                <button
+                  onClick={() => setIsScoreModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white ml-2"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body Form */}
+            <form onSubmit={handleSubmitEvaluation} className="p-6 overflow-y-auto space-y-6 text-xs flex-1">
+              {/* Score Live Composite Banner */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/30 border border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                    Weighted Composite Score
+                  </span>
+                  <div className="text-xl font-extrabold text-slate-900 dark:text-white mt-0.5">
+                    {Math.round(
+                      RUBRIC_DIMENSIONS.reduce((acc, dim) => {
+                        const r = evalScores[dim.id]?.rating ?? 3;
+                        return acc + (r / 4) * dim.weight;
+                      }, 0) * 10
+                    ) / 10}{" "}
+                    <span className="text-xs font-normal text-slate-500 dark:text-gray-400">/ 100 pts</span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 dark:text-gray-400 block">
+                    Reviewer Persona:
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-gray-200">
+                    {activePersona?.name || "Active Reviewer"} ({activePersona?.role.toUpperCase() || "REVIEWER"})
+                  </span>
+                </div>
+              </div>
+
+              {/* 7 Dimensions List */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-800 pb-2">
+                  <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px]">
+                    7 Rubric Dimensions (Strict Anchors 1–4)
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Weights sum to 100%
+                  </span>
+                </div>
+
+                {RUBRIC_DIMENSIONS.map((dim) => {
+                  const currentRating = evalScores[dim.id]?.rating ?? 3;
+                  const currentRationale = evalScores[dim.id]?.rationale ?? "";
+
+                  return (
+                    <div
+                      key={dim.id}
+                      className="p-4 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0b101b] space-y-3 shadow-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs">
+                              {dim.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-gray-800 dark:text-gray-300">
+                              {dim.weight}% Weight
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-0.5">
+                            {dim.description}
+                          </p>
+                        </div>
+
+                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                          {Math.round((currentRating / 4) * dim.weight * 10) / 10} / {dim.weight} pts
+                        </span>
+                      </div>
+
+                      {/* 4 Anchor Buttons */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {([1, 2, 3, 4] as const).map((anchor) => {
+                          const isSelected = currentRating === anchor;
+                          const meta = dim.anchors[anchor];
+
+                          return (
+                            <button
+                              key={anchor}
+                              type="button"
+                              onClick={() =>
+                                setEvalScores({
+                                  ...evalScores,
+                                  [dim.id]: {
+                                    ...evalScores[dim.id],
+                                    rating: anchor,
+                                    rationale: currentRationale || meta.desc,
+                                  },
+                                })
+                              }
+                              className={`p-2.5 rounded-lg border text-left transition-all ${
+                                isSelected
+                                  ? "border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/50 dark:border-indigo-500 ring-1 ring-indigo-500"
+                                  : "border-slate-200 dark:border-gray-800 hover:border-slate-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900/60"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`font-bold text-[11px] ${isSelected ? "text-indigo-600 dark:text-indigo-400" : "text-slate-800 dark:text-gray-200"}`}>
+                                  {anchor}. {meta.label}
+                                </span>
+                                {isSelected && <Check className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />}
+                              </div>
+                              <p className="text-[10px] text-slate-500 dark:text-gray-400 line-clamp-2 leading-snug">
+                                {meta.desc}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Rationale Input */}
+                      <div>
+                        <input
+                          type="text"
+                          required
+                          value={currentRationale}
+                          placeholder={`Evidence rationale for ${dim.name}...`}
+                          onChange={(e) =>
+                            setEvalScores({
+                              ...evalScores,
+                              [dim.id]: {
+                                ...evalScores[dim.id],
+                                rating: currentRating,
+                                rationale: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Hiring Recommendation Selector */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0b101b] space-y-3">
+                <span className="font-bold text-slate-900 dark:text-white text-xs block">
+                  Overall Hiring Recommendation
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { val: "strong_hire" as const, label: "Strong Hire" },
+                    { val: "hire" as const, label: "Hire" },
+                    { val: "lean_hire" as const, label: "Lean Hire" },
+                    { val: "no_hire" as const, label: "No Hire" },
+                  ].map((opt) => {
+                    const isSelected = evalRecommendation === opt.val;
+                    return (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setEvalRecommendation(opt.val)}
+                        className={`p-3 rounded-xl border text-center font-bold text-xs transition-all ${
+                          isSelected
+                            ? opt.val === "strong_hire"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-300 ring-2 ring-emerald-500"
+                              : opt.val === "hire"
+                              ? "bg-blue-50 text-blue-800 border-blue-500 dark:bg-blue-950/50 dark:text-blue-300 ring-2 ring-blue-500"
+                              : opt.val === "lean_hire"
+                              ? "bg-amber-50 text-amber-800 border-amber-500 dark:bg-amber-950/50 dark:text-amber-300 ring-2 ring-amber-500"
+                              : "bg-rose-50 text-rose-800 border-rose-500 dark:bg-rose-950/50 dark:text-rose-300 ring-2 ring-rose-500"
+                            : "border-slate-200 dark:border-gray-800 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Summary Rationale Textarea */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block">
+                  Executive Summary Rationale (for Hiring Committee & Hiring Manager)
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={evalSummaryRationale}
+                  onChange={(e) => setEvalSummaryRationale(e.target.value)}
+                  placeholder="Articulate overall candidate strengths, problem decomposition velocity, AI leverage efficiency, and areas of concern..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed font-sans"
+                />
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="pt-4 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsScoreModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProctorActionInProgress}
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                >
+                  <Award className="w-4 h-4" />
+                  <span>{isProctorActionInProgress ? "Submitting..." : "Submit Reviewer Evaluation"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Task 16: Multi-Reviewer Calibration Consensus Board Modal */}
+      {isConsensusModalOpen && sessionForCalibration && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Multi-Reviewer Calibration Consensus Board
+                    </h3>
+                    {calibrationConsensus && (
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                          calibrationConsensus.status === "calibrated"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : calibrationConsensus.status === "requires_calibration"
+                            ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 animate-pulse"
+                            : "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300"
+                        }`}
+                      >
+                        {calibrationConsensus.status.toUpperCase().replace("_", " ")}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Candidate: <span className="font-semibold text-slate-800 dark:text-gray-200">{sessionForCalibration.candidateName}</span> • {sessionForCalibration.candidateEmail}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleOpenConsensusModal(sessionForCalibration)}
+                  disabled={isLoadingCalibration}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-gray-700 text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  title="Refresh calibration data"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCalibration ? "animate-spin" : ""}`} />
+                </button>
+                <button
+                  onClick={() => setIsConsensusModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-5 text-xs flex-1">
+              {/* Blind Calibration Notice */}
+              {isEvaluationsMasked && (
+                <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 flex items-center gap-2.5">
+                  <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Blind Calibration Active: </span>
+                    <span>To eliminate anchoring bias, other reviewers' evaluations and calibration divergence remain masked until you submit your own evaluation.</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Requires Discussion Banner */}
+              {calibrationConsensus?.requiresDiscussion && (
+                <div className="p-4 rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50/80 dark:bg-rose-950/30 text-rose-900 dark:text-rose-200 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-xs text-rose-800 dark:text-rose-300">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Calibration Committee Discussion Required (Anchor Variance Δ ≥ 2 or Recommendation Split)</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-rose-800/90 dark:text-rose-200/90 pl-1">
+                    {calibrationConsensus.discussionTopics.map((topic, idx) => (
+                      <li key={idx}>{topic}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Consensus Recommendation Summary */}
+              {calibrationConsensus && (
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                      Aggregated Hiring Consensus ({calibrationConsensus.evaluationsCount} Evaluators)
+                    </span>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 flex items-center gap-2">
+                      {calibrationConsensus.consensusRecommendation ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          {calibrationConsensus.consensusRecommendation.toUpperCase().replace("_", " ")}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          SPLIT RECOMMENDATION — COMMITTEE MEETING NEEDED
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setIsConsensusModalOpen(false);
+                      handleOpenScoreModal(sessionForCalibration);
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5"
+                  >
+                    <Award className="w-3.5 h-3.5" />
+                    <span>Grade / Update My Score</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Side-by-Side Reviewer Dimension Comparison */}
+              {calibrationConsensus && calibrationConsensus.dimensions.length > 0 && (
+                <div className="space-y-3">
+                  <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] block">
+                    7-Dimension Reviewer Variance Matrix
+                  </span>
+
+                  <div className="space-y-2.5">
+                    {calibrationConsensus.dimensions.map((dim) => (
+                      <div
+                        key={dim.dimensionId}
+                        className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                          dim.alignment === "high_variance"
+                            ? "border-rose-300 bg-rose-50/40 dark:border-rose-900 dark:bg-rose-950/20"
+                            : dim.alignment === "moderate"
+                            ? "border-amber-200 bg-amber-50/20 dark:border-amber-900/40 dark:bg-amber-950/10"
+                            : "border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0b101b]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {dim.name}
+                            </span>
+                            <span className="text-[10px] text-slate-400">({dim.weight}%)</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                dim.alignment === "high_variance"
+                                  ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/80 dark:text-rose-300"
+                                  : dim.alignment === "moderate"
+                                  ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300"
+                                  : "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-300"
+                              }`}
+                            >
+                              {dim.alignment === "high_variance"
+                                ? `High Divergence (Δ = ${dim.variance})`
+                                : dim.alignment === "moderate"
+                                ? `Minor Spread (Δ = ${dim.variance})`
+                                : `Aligned (Consensus)`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Reviewer Breakdown Cards */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          {Object.entries(dim.ratingsByReviewer).map(([revId, data]) => (
+                            <div
+                              key={revId}
+                              className="p-2 rounded-lg bg-slate-50 dark:bg-gray-900/60 border border-slate-100 dark:border-gray-800 text-[11px]"
+                            >
+                              <div className="flex items-center justify-between font-semibold text-slate-700 dark:text-gray-300 mb-0.5">
+                                <span>{data.reviewerName}:</span>
+                                <span className="font-mono text-indigo-600 dark:text-indigo-400">
+                                  Anchor {data.rating} / 4
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 dark:text-gray-400 italic">
+                                "{data.rationale}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Submitted Reviewer Scorecards Summary Cards */}
+              <div className="space-y-3">
+                <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] block">
+                  Individual Reviewer Evaluations ({evaluationsList.length})
+                </span>
+
+                {evaluationsList.length === 0 ? (
+                  <p className="text-slate-400 text-xs italic">No reviewer evaluations visible.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {evaluationsList.map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="p-4 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0b101b] space-y-2 shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-slate-900 dark:text-white block">
+                              {ev.reviewerName}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {ev.reviewerEmail}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-extrabold text-sm text-indigo-600 dark:text-indigo-400 block">
+                              {ev.weightedTotalScore} / 100
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                ev.recommendation === "strong_hire"
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                  : ev.recommendation === "hire"
+                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                  : ev.recommendation === "lean_hire"
+                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                  : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                              }`}
+                            >
+                              {ev.recommendation.replace("_", " ")}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-gray-900/60 border border-slate-100 dark:border-gray-800 text-[11px] text-slate-700 dark:text-gray-300 italic">
+                          "{ev.summaryRationale}"
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex justify-end">
+              <button
+                onClick={() => setIsConsensusModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
+              >
+                Close Calibration Board
+              </button>
+            </div>
           </div>
         </div>
       )}

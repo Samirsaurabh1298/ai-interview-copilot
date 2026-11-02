@@ -28,7 +28,12 @@ describe("GroqProvider", () => {
       code: "for (let i = 0; i <= arr.length; i++)",
     };
 
-    // Client call with fake key against real API will fail with 401
+    // Deterministic mock without network latency
+    // @ts-expect-error accessing private client for unit test assertion
+    vi.spyOn(provider.client.chat.completions, "create").mockRejectedValue(
+      new Error("Groq API rate limit or network error")
+    );
+
     await expect(provider.generate(request)).rejects.toThrow(AIProviderError);
   });
 });

@@ -8,6 +8,7 @@ import type {
   RubricDimensionId,
   AuthUserContext,
   AssessmentScorecard,
+  SubmissionArtifact,
 } from "@ai-copilot/contracts";
 import { AssessmentEvaluator } from "@ai-copilot/scoring-engine";
 import type { AssessmentSessionService } from "./session.js";
@@ -283,9 +284,9 @@ export class CalibrationService {
       throw new Error(`Assessment session not found: ${sessionId}`);
     }
 
-    let artifact = null;
+    let artifact: SubmissionArtifact | null = null;
     try {
-      artifact = await this.submissionService.getSubmissionArtifact(sessionId);
+      artifact = this.submissionService.getSubmission(sessionId);
     } catch {
       // Artifact not submitted yet, fallback to session workspace snapshot
     }

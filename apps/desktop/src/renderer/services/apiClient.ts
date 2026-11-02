@@ -33,6 +33,9 @@ import type {
   SubmissionArtifact,
   SubmitAssessmentResponse,
   GetSubmissionResponse,
+  ReviewerEvaluation,
+  SubmitReviewerEvaluationRequest,
+  CalibrationConsensus,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -590,6 +593,89 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to resume session");
     }
     return (await res.json()) as AssessmentSession;
+  }
+
+  public static async submitReviewerEvaluation(
+    sessionId: string,
+    req: SubmitReviewerEvaluationRequest,
+    token?: string
+  ): Promise<ReviewerEvaluation> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/evaluations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to submit evaluation");
+    }
+    return (await res.json()) as ReviewerEvaluation;
+  }
+
+  public static async getEvaluations(
+    sessionId: string,
+    token?: string
+  ): Promise<{ evaluations: ReviewerEvaluation[]; isMasked: boolean }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/evaluations`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to fetch evaluations");
+    }
+    return (await res.json()) as { evaluations: ReviewerEvaluation[]; isMasked: boolean };
+  }
+
+  public static async getCalibrationConsensus(
+    sessionId: string,
+    token?: string
+  ): Promise<CalibrationConsensus> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/calibration`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to fetch calibration consensus");
+    }
+    return (await res.json()) as CalibrationConsensus;
+  }
+
+  public static async getAiDraftScorecard(
+    sessionId: string,
+    token?: string
+  ): Promise<AssessmentScorecard> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/scorecard/ai-draft`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to generate AI draft scorecard");
+    }
+    return (await res.json()) as AssessmentScorecard;
   }
 }
 
