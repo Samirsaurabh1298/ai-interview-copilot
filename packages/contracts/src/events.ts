@@ -11,6 +11,8 @@ export const SessionEventTypeSchema = z.enum([
   "window_focus",
   "paste_detected",
   "session_submitted",
+  "session_paused",
+  "session_resumed",
 ]);
 export type SessionEventType = z.infer<typeof SessionEventTypeSchema>;
 

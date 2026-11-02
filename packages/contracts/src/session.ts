@@ -5,6 +5,7 @@ import { SingleTestResultSchema } from "./validation.js";
 export const AssessmentSessionStatusSchema = z.enum([
   "created",
   "in_progress",
+  "paused",
   "submitted",
   "expired",
   "terminated",
@@ -31,6 +32,9 @@ export const AssessmentSessionSchema = z.object({
   startedAt: z.coerce.date(),
   expiresAt: z.coerce.date(),
   submittedAt: z.coerce.date().optional(),
+  pausedAt: z.coerce.date().optional(),
+  totalPausedMs: z.number().int().default(0),
+  pauseReason: z.string().optional(),
   durationMinutes: z.number().int().min(15).max(240).default(60),
   gracePeriodSeconds: z.number().int().min(0).max(300).default(60),
   allocatedAiBudgetUsd: z.number().min(0.05).max(5.0).default(0.25),
@@ -61,6 +65,8 @@ export const SessionHeartbeatResponseSchema = z.object({
   remainingSeconds: z.number().int(),
   isExpired: z.boolean(),
   inGracePeriod: z.boolean(),
+  isPaused: z.boolean().default(false),
+  pauseReason: z.string().optional(),
   consumedBudgetUsd: z.number(),
   remainingBudgetUsd: z.number(),
   budgetWarning: z.boolean(),
@@ -79,3 +85,13 @@ export const SubmitSessionRequestSchema = z.object({
   testResults: z.array(SingleTestResultSchema).optional(),
 });
 export type SubmitSessionRequest = z.infer<typeof SubmitSessionRequestSchema>;
+
+export const PauseSessionRequestSchema = z.object({
+  reason: z.string().max(250).optional(),
+});
+export type PauseSessionRequest = z.infer<typeof PauseSessionRequestSchema>;
+
+export const ResumeSessionRequestSchema = z.object({
+  notes: z.string().max(250).optional(),
+});
+export type ResumeSessionRequest = z.infer<typeof ResumeSessionRequestSchema>;

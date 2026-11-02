@@ -32,6 +32,7 @@ import {
   Eye,
   RefreshCw,
   Terminal,
+  Pause,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -75,6 +76,11 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
   const [selectedSubmissionArtifact, setSelectedSubmissionArtifact] = useState<SubmissionArtifact | null>(null);
   const [isSubmissionModalOpen, setIsSubmissionModalOpen] = useState(false);
+
+  // Task 15: Proctor Controls State
+  const [sessionToPause, setSessionToPause] = useState<AssessmentSession | null>(null);
+  const [pauseReasonInput, setPauseReasonInput] = useState("Candidate network disconnection / technical incident");
+  const [isProctorActionInProgress, setIsProctorActionInProgress] = useState(false);
 
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
@@ -235,6 +241,47 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setIsSubmissionModalOpen(true);
     } catch {
       alert("Submission artifact not available for this session yet.");
+    }
+  };
+
+  const handlePauseSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sessionToPause) return;
+    try {
+      setIsProctorActionInProgress(true);
+      setError(null);
+      const updated = await ApiClient.pauseSession(sessionToPause.id, pauseReasonInput, activeJwtToken || undefined);
+      setSuccessMessage(`Assessment session paused: ${updated.id.slice(0, 8)}... Countdown frozen.`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      setSessionToPause(null);
+      if (selectedOrg) {
+        await loadSessions(selectedOrg.id);
+      }
+      setSelectedSessionForAudit(updated);
+      await handleSelectSessionForAudit(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to pause assessment session");
+    } finally {
+      setIsProctorActionInProgress(false);
+    }
+  };
+
+  const handleResumeSession = async (sessionId: string) => {
+    try {
+      setIsProctorActionInProgress(true);
+      setError(null);
+      const updated = await ApiClient.resumeSession(sessionId, activeJwtToken || undefined);
+      setSuccessMessage(`Assessment session resumed. Candidate timer extended by elapsed pause duration.`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      if (selectedOrg) {
+        await loadSessions(selectedOrg.id);
+      }
+      setSelectedSessionForAudit(updated);
+      await handleSelectSessionForAudit(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to resume assessment session");
+    } finally {
+      setIsProctorActionInProgress(false);
     }
   };
 
@@ -1319,10 +1366,12 @@ describe("useDebouncedFetch verification suite", () => {
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
                                     : sess.status === "expired"
                                     ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                                    : sess.status === "paused"
+                                    ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 font-bold"
                                     : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300"
                                 }`}
                               >
-                                {sess.status}
+                                {sess.status.toUpperCase()}
                               </span>
                             </div>
                             <div className="text-[11px] text-slate-500 dark:text-gray-400 font-mono truncate">
@@ -1355,6 +1404,27 @@ describe("useDebouncedFetch verification suite", () => {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
+                            {selectedSessionForAudit.status === "in_progress" && (
+                              <button
+                                onClick={() => setSessionToPause(selectedSessionForAudit)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors shadow-xs"
+                                title="Pause session due to candidate technical difficulty or proctor intervention"
+                              >
+                                <Pause className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                <span>Pause Session</span>
+                              </button>
+                            )}
+                            {selectedSessionForAudit.status === "paused" && (
+                              <button
+                                onClick={() => handleResumeSession(selectedSessionForAudit.id)}
+                                disabled={isProctorActionInProgress}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white border border-emerald-500 text-xs font-semibold hover:bg-emerald-500 transition-colors shadow-xs disabled:opacity-50"
+                                title="Resume session and extend candidate timer by exact pause duration"
+                              >
+                                <Play className="w-3.5 h-3.5 text-white" />
+                                <span>Resume Session</span>
+                              </button>
+                            )}
                             {selectedSessionForAudit.status === "submitted" && (
                               <button
                                 onClick={() => handleInspectSubmission(selectedSessionForAudit.id)}
@@ -1373,6 +1443,34 @@ describe("useDebouncedFetch verification suite", () => {
                               <span>Reload Events</span>
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Proctor Paused Banner */}
+                      {selectedSessionForAudit?.status === "paused" && (
+                        <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 flex items-center justify-between text-xs shadow-xs">
+                          <div className="flex items-center gap-2.5">
+                            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <div>
+                              <div className="font-bold flex items-center gap-2">
+                                <span>Assessment Paused by Proctor</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 uppercase tracking-wider font-semibold">
+                                  Timer Frozen
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-amber-700 dark:text-amber-300/80 mt-0.5">
+                                Reason: <span className="italic">{selectedSessionForAudit.pauseReason || "Proctor incident pause"}</span> • Candidate countdown is frozen. Upon resumption, deadline will be automatically extended.
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleResumeSession(selectedSessionForAudit.id)}
+                            disabled={isProctorActionInProgress}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 shrink-0"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                            <span>Resume Now</span>
+                          </button>
                         </div>
                       )}
 
@@ -1477,6 +1575,18 @@ describe("useDebouncedFetch verification suite", () => {
                                       <span>Solution Submitted</span>
                                     </span>
                                   )}
+                                  {evt.type === "session_paused" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 flex items-center gap-1">
+                                      <Pause className="w-3 h-3 text-amber-600" />
+                                      <span>Session Paused by Proctor</span>
+                                    </span>
+                                  )}
+                                  {evt.type === "session_resumed" && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 flex items-center gap-1">
+                                      <Play className="w-3 h-3 text-emerald-600" />
+                                      <span>Session Resumed (Timer Extended)</span>
+                                    </span>
+                                  )}
                                 </div>
 
                                 <span className="text-[11px] text-slate-400 font-mono">
@@ -1500,6 +1610,18 @@ describe("useDebouncedFetch verification suite", () => {
                               {evt.type === "test_run" && (
                                 <div className="text-[11px] text-slate-500 dark:text-gray-400">
                                   Executed in {String(evt.payload?.durationMs ?? 0)}ms • Sandbox isolated
+                                </div>
+                              )}
+
+                              {evt.type === "session_paused" && Boolean(evt.payload?.reason) && (
+                                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-sans border border-amber-200 dark:border-amber-800 text-[11px]">
+                                  Proctor Incident Reason: <span className="font-semibold">{String(evt.payload?.reason)}</span>
+                                </div>
+                              )}
+
+                              {evt.type === "session_resumed" && Boolean(evt.payload?.pauseDurationMs) && (
+                                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-sans border border-emerald-200 dark:border-emerald-800 text-[11px]">
+                                  Timer Extended: <span className="font-semibold">+{Math.round(Number(evt.payload?.pauseDurationMs) / 1000)}s</span> added to candidate deadline
                                 </div>
                               )}
                             </div>
@@ -2093,6 +2215,100 @@ describe("useDebouncedFetch verification suite", () => {
                 Close Submission View
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task 15: Proctor Pause Incident Modal */}
+      {sessionToPause && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/50 text-amber-600">
+                  <Pause className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Pause Assessment Session
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Freeze timer & handle technical incident
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSessionToPause(null)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePauseSession} className="p-5 space-y-4 text-xs">
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 text-amber-800 dark:text-amber-200 space-y-1">
+                <p className="font-semibold">Candidate: {sessionToPause.candidateName}</p>
+                <p className="text-[11px] opacity-90">
+                  Freezing this session locks the candidate's Monaco editor and stops the timer. When resumed, the deadline is dynamically extended by the exact paused duration.
+                </p>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Incident Reason (Audit Log)
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Candidate experienced network disconnection"
+                  value={pauseReasonInput}
+                  onChange={(e) => setPauseReasonInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {/* Quick Reason Chips */}
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                  Quick Incident Presets:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    "Network / Wi-Fi Glitch",
+                    "Hardware Reconnect Issue",
+                    "Accommodated Break",
+                    "Proctor Environment Check",
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setPauseReasonInput(preset)}
+                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-300 text-[10px] transition-colors"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSessionToPause(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProctorActionInProgress}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold shadow-xs flex items-center gap-1.5"
+                >
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>{isProctorActionInProgress ? "Pausing..." : "Confirm & Freeze Session"}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

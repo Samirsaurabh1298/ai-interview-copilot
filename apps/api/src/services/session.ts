@@ -78,6 +78,7 @@ export class AssessmentSessionService {
       status: "in_progress",
       startedAt,
       expiresAt,
+      totalPausedMs: 0,
       durationMinutes,
       gracePeriodSeconds,
       allocatedAiBudgetUsd: customBudget,
@@ -120,12 +121,23 @@ export class AssessmentSessionService {
   public heartbeat(sessionId: string): SessionHeartbeatResponse {
     const session = this.getSession(sessionId);
     const now = Date.now();
-    const expiresAtMs = new Date(session.expiresAt).getTime();
-    const remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - now) / 1000));
-    const gracePeriodMs = session.gracePeriodSeconds * 1000;
+    const isPaused = session.status === "paused";
 
-    const isExpired = remainingSeconds <= 0;
-    const inGracePeriod = isExpired && now <= expiresAtMs + gracePeriodMs;
+    let remainingSeconds = 0;
+    if (isPaused && session.pausedAt) {
+      // When paused, remainingSeconds is frozen at the exact moment of pause
+      const pauseAtMs = new Date(session.pausedAt).getTime();
+      const expiresAtMs = new Date(session.expiresAt).getTime();
+      remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - pauseAtMs) / 1000));
+    } else {
+      const expiresAtMs = new Date(session.expiresAt).getTime();
+      remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - now) / 1000));
+    }
+
+    const expiresAtMs = new Date(session.expiresAt).getTime();
+    const gracePeriodMs = session.gracePeriodSeconds * 1000;
+    const isExpired = !isPaused && remainingSeconds <= 0;
+    const inGracePeriod = !isPaused && isExpired && now <= expiresAtMs + gracePeriodMs;
 
     const budgetStatus = this.gateway.getBudgetStatus(sessionId);
     session.consumedAiBudgetUsd = budgetStatus.consumedBudgetUsd;
@@ -136,6 +148,8 @@ export class AssessmentSessionService {
       remainingSeconds,
       isExpired,
       inGracePeriod,
+      isPaused,
+      pauseReason: session.pauseReason,
       consumedBudgetUsd: budgetStatus.consumedBudgetUsd,
       remainingBudgetUsd: budgetStatus.remainingBudgetUsd,
       budgetWarning: budgetStatus.isWarningTriggered,
@@ -144,6 +158,10 @@ export class AssessmentSessionService {
 
   public assertCanCode(sessionId: string): AssessmentSession {
     const session = this.getSession(sessionId);
+
+    if (session.status === "paused") {
+      throw new SessionInvalidStateError("Workspace is temporarily locked: assessment session has been paused by the proctor");
+    }
 
     if (session.status === "submitted") {
       throw new SessionInvalidStateError("Cannot modify workspace: candidate assessment is already submitted");
@@ -167,6 +185,10 @@ export class AssessmentSessionService {
 
   public assertCanInvokeAI(sessionId: string): AssessmentSession {
     const session = this.getSession(sessionId);
+
+    if (session.status === "paused") {
+      throw new SessionInvalidStateError("AI assistance is temporarily unavailable: session has been paused by the proctor");
+    }
 
     if (session.status !== "in_progress") {
       throw new SessionInvalidStateError(`AI assistance unavailable: session status is '${session.status}'`);
@@ -233,6 +255,47 @@ export class AssessmentSessionService {
       session.workspaceSnapshot.lastTestTotalCount = req.testResults.length;
       session.workspaceSnapshot.lastTestPassedCount = req.testResults.filter((t) => t.passed).length;
     }
+
+    return session;
+  }
+
+  public pauseSession(sessionId: string, reason?: string): AssessmentSession {
+    const session = this.getSession(sessionId);
+
+    if (session.status === "paused") {
+      return session; // Idempotent
+    }
+
+    if (session.status !== "in_progress" && session.status !== "created") {
+      throw new SessionInvalidStateError(`Cannot pause session with status '${session.status}'`);
+    }
+
+    const now = new Date();
+    session.status = "paused";
+    session.pausedAt = now;
+    session.pauseReason = reason || "Proctor incident pause";
+    session.updatedAt = now;
+
+    return session;
+  }
+
+  public resumeSession(sessionId: string): AssessmentSession {
+    const session = this.getSession(sessionId);
+
+    if (session.status !== "paused") {
+      throw new SessionInvalidStateError(`Cannot resume session that is not paused (current status: '${session.status}')`);
+    }
+
+    const now = Date.now();
+    const pausedAtMs = session.pausedAt ? new Date(session.pausedAt).getTime() : now;
+    const pauseDurationMs = Math.max(0, now - pausedAtMs);
+
+    session.totalPausedMs = (session.totalPausedMs || 0) + pauseDurationMs;
+    session.expiresAt = new Date(new Date(session.expiresAt).getTime() + pauseDurationMs);
+    session.pausedAt = undefined;
+    session.pauseReason = undefined;
+    session.status = "in_progress";
+    session.updatedAt = new Date();
 
     return session;
   }

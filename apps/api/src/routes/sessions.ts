@@ -219,7 +219,70 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 6. Terminate Session (Admin / Interviewer emergency control)
+  // 6. Proctor Controls: Pause Session (Task 15)
+  fastify.post("/:sessionId/pause", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+    const body = (request.body as { reason?: string }) || {};
+
+    try {
+      const session = sessionService.getSession(sessionId);
+
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
+        if (!["owner", "admin", "interviewer"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to pause candidate sessions`,
+          });
+        }
+      }
+
+      const paused = sessionService.pauseSession(sessionId, body.reason);
+      return reply.status(200).send(paused);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (err instanceof SessionInvalidStateError) {
+        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 6b. Proctor Controls: Resume Session & Extend Deadline (Task 15)
+  fastify.post("/:sessionId/resume", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+
+    try {
+      const session = sessionService.getSession(sessionId);
+
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
+        if (!["owner", "admin", "interviewer"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to resume candidate sessions`,
+          });
+        }
+      }
+
+      const resumed = sessionService.resumeSession(sessionId);
+      return reply.status(200).send(resumed);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (err instanceof SessionInvalidStateError) {
+        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 7. Terminate Session (Admin / Interviewer emergency control)
   fastify.post("/:sessionId/terminate", async (request, reply) => {
     const { sessionId } = request.params as { sessionId: string };
     const body = (request.body as { reason?: string }) || {};

@@ -100,7 +100,7 @@ export class SubmissionService {
     private sessionService: AssessmentSessionService,
     private templateService: AssessmentTemplateService,
     private eventsService: SessionEventsService
-  ) {}
+  ) { }
 
   public async submitAssessment(
     sessionId: string,

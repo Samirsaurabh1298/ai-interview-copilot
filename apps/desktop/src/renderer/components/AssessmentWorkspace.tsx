@@ -246,6 +246,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
 
+  // Proctor Incident & Pause Controls (Task 15)
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseReason, setPauseReason] = useState<string | null>(null);
+
   // Poll / Refresh budget helper
   const refreshBudget = async () => {
     try {
@@ -346,13 +350,37 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     };
   }, [sessionId, sessionData?.candidateToken]);
 
-  // Smooth local countdown timer
+  // Smooth local countdown timer (frozen when paused by proctor)
   useEffect(() => {
     const timer = setInterval(() => {
-      setTimeLeftSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+      setTimeLeftSeconds((prev) => (!isPaused && prev > 0 ? prev - 1 : prev));
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isPaused]);
+
+  // Task 15: Automatic Crash Recovery from last autosaved snapshot on reload/reconnect
+  useEffect(() => {
+    let isMounted = true;
+    const recoverSessionSnapshot = async () => {
+      try {
+        const sess = await ApiClient.getSession(sessionId, sessionData?.candidateToken);
+        if (!isMounted) return;
+        if (sess?.workspaceSnapshot?.currentCode && sess.workspaceSnapshot.currentCode.trim().length > 0) {
+          setCode(sess.workspaceSnapshot.currentCode);
+          lastSavedCodeRef.current = sess.workspaceSnapshot.currentCode;
+          if (sess.workspaceSnapshot.lastSavedAt) {
+            setLastSavedAt(new Date(sess.workspaceSnapshot.lastSavedAt));
+          }
+        }
+      } catch {
+        // Fallback to starter code
+      }
+    };
+    recoverSessionSnapshot();
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionId, sessionData?.candidateToken]);
 
   // Server-authoritative heartbeat every 5 seconds
   useEffect(() => {
@@ -366,6 +394,8 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         setTimeLeftSeconds(hb.remainingSeconds);
         setIsExpired(hb.isExpired);
         setInGracePeriod(hb.inGracePeriod);
+        setIsPaused(Boolean(hb.isPaused || hb.status === "paused"));
+        setPauseReason(hb.pauseReason || null);
         setSessionStatus(hb.status);
 
         setBudgetStatus((prev) => ({
@@ -730,6 +760,8 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
               className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
                 sessionStatus === "submitted"
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
+                  : isPaused
+                  ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 animate-pulse"
                   : inGracePeriod
                   ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
                   : isExpired
@@ -739,6 +771,8 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
             >
               {sessionStatus === "submitted"
                 ? "Submitted"
+                : isPaused
+                ? "Session Paused"
                 : inGracePeriod
                 ? "Grace Period Active"
                 : isExpired
@@ -822,7 +856,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           {/* Verification runner button */}
           <button
             onClick={() => handleRunVerification()}
-            disabled={isRunningTests}
+            disabled={isRunningTests || isPaused}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors shadow-xs disabled:opacity-50"
           >
             {isRunningTests ? (
@@ -866,6 +900,22 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           )}
         </div>
       </div>
+
+      {/* Task 15: Proctor Incident Paused Banner */}
+      {isPaused && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-2.5 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 animate-pulse" />
+            <span className="font-bold">⚠️ Assessment Session Paused by Proctor:</span>
+            <span className="text-amber-700 dark:text-amber-300">
+              {pauseReason || "Timer and workspace are temporarily frozen. All work is safely autosaved."}
+            </span>
+          </div>
+          <span className="font-mono text-[11px] bg-amber-500/20 px-2 py-0.5 rounded font-bold text-amber-800 dark:text-amber-300">
+            TIMER FROZEN • WORKSPACE LOCKED
+          </span>
+        </div>
+      )}
 
       {/* Grace Period Active Banner */}
       {inGracePeriod && (
@@ -1212,6 +1262,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                 disabled={
                   isAskingAI ||
                   budgetStatus.isExhausted ||
+                  isPaused ||
                   isExpired ||
                   sessionStatus === "submitted"
                 }
@@ -1231,7 +1282,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     setTimeout(() => setAppliedNotice(null), 3000);
                   }
                 }}
-                disabled={sessionStatus === "submitted" || (isExpired && !inGracePeriod)}
+                disabled={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
                 className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -1262,10 +1313,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              readOnly={sessionStatus === "submitted" || (isExpired && !inGracePeriod)}
+              readOnly={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
               spellCheck={false}
               className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
-                sessionStatus === "submitted" || (isExpired && !inGracePeriod)
+                sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)
                   ? "opacity-75 cursor-not-allowed bg-slate-950/80"
                   : ""
               }`}

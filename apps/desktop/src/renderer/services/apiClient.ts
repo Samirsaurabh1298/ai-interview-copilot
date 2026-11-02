@@ -386,8 +386,11 @@ export class ApiClient {
     return (await res.json()) as AssessmentSession;
   }
 
-  public static async getSession(sessionId: string): Promise<AssessmentSession> {
-    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`);
+  public static async getSession(sessionId: string, token?: string): Promise<AssessmentSession> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, { headers });
     if (!res.ok) {
       throw new Error(`Failed to fetch session: ${res.statusText}`);
     }
@@ -542,6 +545,51 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to fetch submission artifact");
     }
     return (await res.json()) as GetSubmissionResponse;
+  }
+
+  public static async pauseSession(
+    sessionId: string,
+    reason?: string,
+    token?: string
+  ): Promise<AssessmentSession> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/pause`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to pause session");
+    }
+    return (await res.json()) as AssessmentSession;
+  }
+
+  public static async resumeSession(
+    sessionId: string,
+    token?: string
+  ): Promise<AssessmentSession> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/resume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to resume session");
+    }
+    return (await res.json()) as AssessmentSession;
   }
 }
 
