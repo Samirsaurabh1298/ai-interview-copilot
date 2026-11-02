@@ -41,6 +41,12 @@ import {
   CheckSquare,
   FileText,
   Printer,
+  DollarSign,
+  TrendingUp,
+  BarChart3,
+  Webhook,
+  Trash2,
+  Zap,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -64,6 +70,16 @@ import type {
   AssessmentScorecard,
   DimensionCalibration,
   HiringDecisionReport,
+  AiCostAnalytics,
+  ModelCostBreakdown,
+  TrackCostBreakdown,
+  DailyBurnRateItem,
+  CostAnomalyItem,
+  WebhookSubscription,
+  WebhookDeliveryLog,
+  WebhookFormat,
+  WebhookEventType,
+  CreateWebhookSubscriptionRequest,
 } from "@ai-copilot/contracts";
 
 const RUBRIC_DIMENSIONS: {
@@ -216,6 +232,22 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
 
+  // Task 20: AI Cost Analytics State
+  const [analyticsData, setAnalyticsData] = useState<AiCostAnalytics | null>(null);
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<"7d" | "30d" | "all">("30d");
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
+
+  // Task 19: Enterprise ATS & HRIS Webhooks State
+  const [webhooks, setWebhooks] = useState<WebhookSubscription[]>([]);
+  const [isLoadingWebhooks, setIsLoadingWebhooks] = useState(false);
+  const [isCreateWebhookModalOpen, setIsCreateWebhookModalOpen] = useState(false);
+  const [webhookTargetUrl, setWebhookTargetUrl] = useState("");
+  const [webhookFormat, setWebhookFormat] = useState<WebhookFormat>("standard");
+  const [webhookEvents, setWebhookEvents] = useState<string[]>(["*"]);
+  const [isTestingWebhookId, setIsTestingWebhookId] = useState<string | null>(null);
+  const [lastTestDeliveryLog, setLastTestDeliveryLog] = useState<WebhookDeliveryLog | null>(null);
+  const [isTestLogModalOpen, setIsTestLogModalOpen] = useState(false);
+
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
   const [activeJwtToken, setActiveJwtToken] = useState<string | null>(null);
@@ -226,7 +258,7 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"templates" | "rbac" | "audit" | "invitations">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "rbac" | "audit" | "invitations" | "analytics" | "webhooks">("templates");
   const [activeTemplateTab, setActiveTemplateTab] = useState<"brief" | "starter" | "tests" | "rubric">("brief");
 
   // Modal State
@@ -268,6 +300,8 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       loadMembers(selectedOrg.id);
       loadInvitations(selectedOrg.id);
       loadSessions(selectedOrg.id);
+      loadAnalytics(selectedOrg.id, analyticsPeriod);
+      loadWebhooks(selectedOrg.id);
     }
   }, [selectedOrg]);
 
@@ -352,6 +386,97 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       }
     } catch {
       setSessions([]);
+    }
+  };
+
+  const loadAnalytics = async (orgId?: string, period: "7d" | "30d" | "all" = analyticsPeriod) => {
+    const targetOrgId = orgId || selectedOrg?.id;
+    if (!targetOrgId) return;
+    try {
+      setIsLoadingAnalytics(true);
+      const data = await ApiClient.getAiCostAnalytics(targetOrgId, period, activeJwtToken || undefined);
+      setAnalyticsData(data);
+    } catch (err: unknown) {
+      console.error("Failed to load analytics:", err);
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  };
+
+  const loadWebhooks = async (orgId?: string) => {
+    const targetOrgId = orgId || selectedOrg?.id;
+    if (!targetOrgId) return;
+    try {
+      setIsLoadingWebhooks(true);
+      const data = await ApiClient.getWebhookSubscriptions(targetOrgId, activeJwtToken || undefined);
+      setWebhooks(data.subscriptions);
+    } catch (err: unknown) {
+      console.error("Failed to load webhooks:", err);
+    } finally {
+      setIsLoadingWebhooks(false);
+    }
+  };
+
+  const handlePeriodChange = async (newPeriod: "7d" | "30d" | "all") => {
+    setAnalyticsPeriod(newPeriod);
+    if (selectedOrg) {
+      await loadAnalytics(selectedOrg.id, newPeriod);
+    }
+  };
+
+  const handleCreateWebhook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrg) return;
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      const newSub = await ApiClient.createWebhookSubscription(
+        {
+          organizationId: selectedOrg.id,
+          targetUrl: webhookTargetUrl.trim(),
+          format: webhookFormat,
+          eventTypes: webhookEvents as any,
+        },
+        activeJwtToken || undefined
+      );
+      setWebhooks((prev) => [newSub, ...prev]);
+      setIsCreateWebhookModalOpen(false);
+      setWebhookTargetUrl("");
+      setSuccessMessage(`Webhook subscription registered for ${newSub.targetUrl}`);
+      setTimeout(() => setSuccessMessage(null), 3500);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create webhook subscription");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteWebhook = async (webhookId: string) => {
+    if (!selectedOrg) return;
+    try {
+      await ApiClient.deleteWebhookSubscription(selectedOrg.id, webhookId, activeJwtToken || undefined);
+      setWebhooks((prev) => prev.filter((w) => w.id !== webhookId));
+      setSuccessMessage("Webhook subscription deleted successfully.");
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete webhook subscription");
+    }
+  };
+
+  const handleTestWebhook = async (webhookId: string) => {
+    if (!selectedOrg) return;
+    try {
+      setIsTestingWebhookId(webhookId);
+      setError(null);
+      const res = await ApiClient.testWebhookSubscription(selectedOrg.id, webhookId, activeJwtToken || undefined);
+      setLastTestDeliveryLog(res.deliveryLog);
+      setIsTestLogModalOpen(true);
+      setSuccessMessage(`Test dispatch returned HTTP ${res.deliveryLog.statusCode || 200} in ${res.deliveryLog.durationMs}ms`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Webhook test dispatch failed");
+    } finally {
+      setIsTestingWebhookId(null);
     }
   };
 
@@ -831,6 +956,34 @@ describe("useDebouncedFetch verification suite", () => {
               <Activity className="w-3.5 h-3.5 text-indigo-500" />
               <span>Evidence & Audit Log ({sessions.length})</span>
             </button>
+            <button
+              onClick={() => {
+                setActiveTab("analytics");
+                if (selectedOrg) loadAnalytics(selectedOrg.id, analyticsPeriod);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "analytics"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
+              <span>AI Cost & Budget</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("webhooks");
+                if (selectedOrg) loadWebhooks(selectedOrg.id);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "webhooks"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Webhook className="w-3.5 h-3.5 text-violet-500" />
+              <span>Webhooks & ATS ({webhooks.length})</span>
+            </button>
           </div>
 
           {activeTab === "templates" && (
@@ -860,6 +1013,26 @@ describe("useDebouncedFetch verification suite", () => {
             >
               <UserPlus className="w-4 h-4" />
               <span>Invite Member</span>
+            </button>
+          )}
+
+          {activeTab === "analytics" && (
+            <button
+              onClick={() => selectedOrg && loadAnalytics(selectedOrg.id, analyticsPeriod)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-gray-700 hover:bg-slate-50 dark:hover:bg-gray-800 px-3 py-2 font-semibold text-xs text-slate-700 dark:text-gray-200 transition-all"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAnalytics ? "animate-spin text-indigo-600" : ""}`} />
+              <span>Refresh Analytics</span>
+            </button>
+          )}
+
+          {activeTab === "webhooks" && (
+            <button
+              onClick={() => setIsCreateWebhookModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2 font-semibold text-xs text-white shadow-md shadow-violet-600/20 transition-all focus:outline-none focus:ring-2 focus:ring-violet-400"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Webhook</span>
             </button>
           )}
         </div>
@@ -1538,7 +1711,7 @@ describe("useDebouncedFetch verification suite", () => {
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === "audit" ? (
           /* Evidence & Audit Log Tab (Task 9 & Task 13) */
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-6xl mx-auto space-y-6">
@@ -1983,7 +2156,496 @@ describe("useDebouncedFetch verification suite", () => {
               )}
             </div>
           </div>
-        )}
+        ) : activeTab === "analytics" ? (
+          /* Task 20: AI Cost Analytics & Token Budget Forecasting Board */
+          <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Header with period toggle and budget cap summary */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span>AI Cost Analytics & Token Budget Forecasting (Task 20)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    Real-time consumption ledger, 30-day linear regression burn rate, runway estimation, and automated runaway prompt anomaly alerts.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-gray-800/80 border border-slate-200 dark:border-gray-700 text-xs font-semibold">
+                    <button
+                      onClick={() => handlePeriodChange("7d")}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${
+                        analyticsPeriod === "7d"
+                          ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400 font-bold"
+                          : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                      }`}
+                    >
+                      Last 7 Days
+                    </button>
+                    <button
+                      onClick={() => handlePeriodChange("30d")}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${
+                        analyticsPeriod === "30d"
+                          ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400 font-bold"
+                          : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                      }`}
+                    >
+                      Last 30 Days
+                    </button>
+                    <button
+                      onClick={() => handlePeriodChange("all")}
+                      className={`px-3 py-1.5 rounded-lg transition-all ${
+                        analyticsPeriod === "all"
+                          ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400 font-bold"
+                          : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                      }`}
+                    >
+                      All Time
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {isLoadingAnalytics && !analyticsData ? (
+                <div className="p-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                  <span>Computing token consumption & burn rate projections...</span>
+                </div>
+              ) : analyticsData ? (
+                <>
+                  {/* Top 4 Financial KPI Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Total Spend */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+                        <span className="font-semibold uppercase tracking-wider text-[10px]">Total AI Spend</span>
+                        <DollarSign className="w-4 h-4 text-emerald-500" />
+                      </div>
+                      <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                        ${analyticsData.totalCostUsd.toFixed(4)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-gray-400 flex items-center justify-between">
+                        <span>{analyticsData.totalTokens.toLocaleString()} tokens</span>
+                        <span>{analyticsData.totalQueries} LLM queries</span>
+                      </div>
+                    </div>
+
+                    {/* Allocated Monthly Budget & Utilization */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+                        <span className="font-semibold uppercase tracking-wider text-[10px]">Monthly Budget Cap</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          analyticsData.budgetUtilizationPercent > 85
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                            : analyticsData.budgetUtilizationPercent > 60
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        }`}>
+                          {analyticsData.budgetUtilizationPercent.toFixed(1)}% Used
+                        </span>
+                      </div>
+                      <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                        ${analyticsData.allocatedMonthlyBudgetUsd.toFixed(2)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-gray-400">
+                        Remaining: ${(Math.max(0, analyticsData.allocatedMonthlyBudgetUsd - analyticsData.totalCostUsd)).toFixed(2)}
+                      </div>
+                    </div>
+
+                    {/* Projected 30-Day Spend */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+                        <span className="font-semibold uppercase tracking-wider text-[10px]">Projected 30-Day Spend</span>
+                        <TrendingUp className="w-4 h-4 text-indigo-500" />
+                      </div>
+                      <div className={`text-2xl font-extrabold ${
+                        analyticsData.isOverBudget
+                          ? "text-rose-600 dark:text-rose-400"
+                          : "text-slate-900 dark:text-white"
+                      }`}>
+                        ${analyticsData.projectedMonthlySpendUsd.toFixed(2)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-gray-400">
+                        {analyticsData.isOverBudget ? "⚠️ Forecast exceeds budget cap" : "Forecasted from daily burn rate"}
+                      </div>
+                    </div>
+
+                    {/* Estimated Runway & Unit Economics */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+                        <span className="font-semibold uppercase tracking-wider text-[10px]">Runway & Unit Cost</span>
+                        <Zap className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                        {analyticsData.runwayDaysRemaining >= 999 ? "∞ Stable" : `${analyticsData.runwayDaysRemaining} Days`}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-gray-400">
+                        Avg: ${analyticsData.avgCostPerSessionUsd.toFixed(3)} / candidate
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Budget Utilization Progress Bar */}
+                  <div className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        Monthly AI Token Allocation Progress
+                      </span>
+                      <span className="font-mono text-slate-500 dark:text-gray-400">
+                        ${analyticsData.totalCostUsd.toFixed(3)} / ${analyticsData.allocatedMonthlyBudgetUsd.toFixed(2)} USD
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 dark:bg-gray-800 rounded-full h-3 overflow-hidden flex">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          analyticsData.budgetUtilizationPercent > 85
+                            ? "bg-rose-500"
+                            : analyticsData.budgetUtilizationPercent > 60
+                            ? "bg-amber-500"
+                            : "bg-emerald-500"
+                        }`}
+                        style={{ width: `${Math.min(100, Math.max(1, analyticsData.budgetUtilizationPercent))}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>Threshold: 0%</span>
+                      <span>Warning: 60% ($30.00)</span>
+                      <span>Critical: 85% ($42.50)</span>
+                      <span>Cap: 100% (${analyticsData.allocatedMonthlyBudgetUsd.toFixed(0)}.00)</span>
+                    </div>
+                  </div>
+
+                  {/* Cost Anomaly Outlier Detection Banner */}
+                  <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-5 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className={`w-4 h-4 ${analyticsData.anomalies.length > 0 ? "text-amber-500" : "text-emerald-500"}`} />
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider">
+                          Automated Cost Anomaly & Outlier Guard
+                        </h4>
+                      </div>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        {analyticsData.anomalies.length} Anomaly Flags Detected
+                      </span>
+                    </div>
+
+                    {analyticsData.anomalies.length === 0 ? (
+                      <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <span>All candidate sessions operating within normal variance parameters. No runaway prompt loops or unexpected cost spikes detected.</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {analyticsData.anomalies.map((a) => (
+                          <div
+                            key={a.id}
+                            className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-4 ${
+                              a.severity === "critical"
+                                ? "bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40 text-rose-800 dark:text-rose-300"
+                                : "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300"
+                            }`}
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  a.severity === "critical" ? "bg-rose-200 text-rose-800" : "bg-amber-200 text-amber-800"
+                                }`}>
+                                  {a.anomalyType.replace(/_/g, " ")}
+                                </span>
+                                <span className="font-bold">{a.candidateEmail}</span>
+                                <span className="font-mono text-[10px] opacity-75">Session: {a.sessionId.slice(0, 16)}...</span>
+                              </div>
+                              <p className="text-[11px] opacity-90">{a.description}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-mono font-bold block">{a.metricValue} (vs {a.thresholdValue} limit)</span>
+                              <span className="text-[10px] opacity-70">{new Date(a.detectedAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Two Column Breakdown: Model Breakdown vs Track Breakdown */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Column: LLM Model Cost Breakdown */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-5 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-indigo-500" />
+                          <span>LLM Model & Provider Breakdown</span>
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {analyticsData.modelsBreakdown.length} Models Active
+                        </span>
+                      </div>
+
+                      {analyticsData.modelsBreakdown.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-4">No AI queries recorded in this period.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 dark:border-gray-800 text-[10px] uppercase text-slate-400 font-semibold">
+                                <th className="pb-2">Model</th>
+                                <th className="pb-2">Provider</th>
+                                <th className="pb-2 text-right">Tokens</th>
+                                <th className="pb-2 text-right">Cost</th>
+                                <th className="pb-2 text-right">Share</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-gray-800/60 font-mono">
+                              {analyticsData.modelsBreakdown.map((m) => (
+                                <tr key={m.modelId} className="hover:bg-slate-50/50 dark:hover:bg-gray-800/30">
+                                  <td className="py-2.5 font-bold text-slate-800 dark:text-gray-200 text-[11px] truncate max-w-[140px]">
+                                    {m.modelId}
+                                  </td>
+                                  <td className="py-2.5 uppercase text-[10px] text-slate-500">
+                                    {m.providerId}
+                                  </td>
+                                  <td className="py-2.5 text-right text-slate-600 dark:text-gray-400 text-[11px]">
+                                    {m.totalTokens.toLocaleString()}
+                                  </td>
+                                  <td className="py-2.5 text-right font-bold text-slate-900 dark:text-white text-[11px]">
+                                    ${m.costUsd.toFixed(4)}
+                                  </td>
+                                  <td className="py-2.5 text-right text-indigo-600 dark:text-indigo-400 font-bold text-[11px]">
+                                    {m.percentageOfTotal.toFixed(1)}%
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column: Engineering Track Cost Breakdown */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-5 shadow-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                          <Code2 className="w-4 h-4 text-emerald-500" />
+                          <span>Cost by Target Role & Track</span>
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {analyticsData.tracksBreakdown.length} Tracks
+                        </span>
+                      </div>
+
+                      {analyticsData.tracksBreakdown.length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-4">No track usage recorded in this period.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 dark:border-gray-800 text-[10px] uppercase text-slate-400 font-semibold">
+                                <th className="pb-2">Track</th>
+                                <th className="pb-2 text-right">Sessions</th>
+                                <th className="pb-2 text-right">Total Cost</th>
+                                <th className="pb-2 text-right">Avg / Session</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-gray-800/60 font-mono">
+                              {analyticsData.tracksBreakdown.map((t) => (
+                                <tr key={t.track} className="hover:bg-slate-50/50 dark:hover:bg-gray-800/30">
+                                  <td className="py-2.5 font-bold text-slate-800 dark:text-gray-200 text-[11px]">
+                                    {t.track}
+                                  </td>
+                                  <td className="py-2.5 text-right text-slate-600 dark:text-gray-400 text-[11px]">
+                                    {t.sessionCount}
+                                  </td>
+                                  <td className="py-2.5 text-right font-bold text-slate-900 dark:text-white text-[11px]">
+                                    ${t.totalCostUsd.toFixed(4)}
+                                  </td>
+                                  <td className="py-2.5 text-right text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">
+                                    ${t.avgCostPerSessionUsd.toFixed(4)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Daily Burn Rate & Activity Series */}
+                  <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-5 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-indigo-500" />
+                        <span>Daily Spend Velocity & Burn Rate Series</span>
+                      </h4>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {analyticsData.dailyBurnRate.length} Days Recorded
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-gray-800 text-[10px] uppercase text-slate-400 font-semibold">
+                            <th className="pb-2">Date</th>
+                            <th className="pb-2 text-right">Daily Cost</th>
+                            <th className="pb-2 text-right">Tokens</th>
+                            <th className="pb-2 text-right">Queries</th>
+                            <th className="pb-2 text-right">Active Sessions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-gray-800/60 font-mono">
+                          {analyticsData.dailyBurnRate.slice(-14).reverse().map((d) => (
+                            <tr key={d.date} className="hover:bg-slate-50/50 dark:hover:bg-gray-800/30">
+                              <td className="py-2 font-bold text-slate-700 dark:text-gray-300 text-[11px]">
+                                {d.date}
+                              </td>
+                              <td className="py-2 text-right font-extrabold text-slate-900 dark:text-white text-[11px]">
+                                ${d.costUsd.toFixed(4)}
+                              </td>
+                              <td className="py-2 text-right text-slate-600 dark:text-gray-400 text-[11px]">
+                                {d.tokens.toLocaleString()}
+                              </td>
+                              <td className="py-2 text-right text-slate-600 dark:text-gray-400 text-[11px]">
+                                {d.queryCount}
+                              </td>
+                              <td className="py-2 text-right text-indigo-600 dark:text-indigo-400 font-bold text-[11px]">
+                                {d.sessionsActive}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                  <BarChart3 className="w-8 h-8 mx-auto text-slate-300 dark:text-gray-600" />
+                  <p className="font-semibold text-slate-700 dark:text-gray-300">
+                    No analytics data loaded
+                  </p>
+                  <button
+                    onClick={() => selectedOrg && loadAnalytics(selectedOrg.id, analyticsPeriod)}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold text-xs"
+                  >
+                    Load Analytics
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeTab === "webhooks" ? (
+          /* Task 19: Enterprise ATS & HRIS Webhooks Dispatcher */
+          <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="max-w-5xl mx-auto space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Webhook className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                    <span>Enterprise ATS & HRIS Webhooks Dispatcher (Task 19)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    Deliver cryptographically signed HMAC-SHA256 event payloads to Greenhouse, Lever, Workday, or custom endpoints with automatic exponential retry backoff.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setIsCreateWebhookModalOpen(true)}
+                  className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-4 py-2 font-semibold text-xs text-white shadow-md shadow-violet-600/20 transition-all shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Register Webhook</span>
+                </button>
+              </div>
+
+              {/* Subscriptions List */}
+              <div className="space-y-3">
+                {webhooks.length === 0 ? (
+                  <div className="p-8 border border-dashed border-slate-300 dark:border-gray-700 rounded-2xl text-center space-y-2">
+                    <Webhook className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-gray-300">
+                      No webhook endpoints registered
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      Connect your Greenhouse, Lever, or Workday ATS endpoint to automatically sync assessment submissions and candidate hiring reports.
+                    </p>
+                  </div>
+                ) : (
+                  webhooks.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="p-5 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] space-y-3 shadow-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            sub.format === "greenhouse"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              : sub.format === "lever"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+                              : sub.format === "workday"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                              : "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
+                          }`}>
+                            {sub.format.toUpperCase()} ADAPTER
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            sub.status === "active"
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300"
+                              : "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/30 dark:text-rose-300"
+                          }`}>
+                            {sub.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleTestWebhook(sub.id)}
+                            disabled={isTestingWebhookId === sub.id}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-300 text-xs font-semibold transition-colors"
+                          >
+                            <Zap className={`w-3.5 h-3.5 text-amber-500 ${isTestingWebhookId === sub.id ? "animate-spin" : ""}`} />
+                            <span>{isTestingWebhookId === sub.id ? "Dispatching..." : "Send Test Ping"}</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteWebhook(sub.id)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                            title="Delete Webhook"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg bg-slate-50 dark:bg-gray-900/60 font-mono text-[11px] border border-slate-100 dark:border-gray-800 space-y-1">
+                        <div className="text-slate-900 dark:text-white font-bold truncate">
+                          {sub.targetUrl}
+                        </div>
+                        <div className="flex items-center justify-between text-slate-400 text-[10px]">
+                          <span>HMAC Secret: {sub.secret.slice(0, 10)}••••••••</span>
+                          <span>Registered: {new Date(sub.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold">Subscribed Events:</span>
+                        {sub.eventTypes.map((evt) => (
+                          <span
+                            key={evt}
+                            className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300 font-mono text-[10px]"
+                          >
+                            {evt}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Candidate Invitation Modal */}
@@ -3531,6 +4193,188 @@ describe("useDebouncedFetch verification suite", () => {
                 className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-colors"
               >
                 Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task 19: Register Webhook Subscription Modal */}
+      {isCreateWebhookModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Webhook className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Register Webhook Endpoint
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsCreateWebhookModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateWebhook} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Destination Target URL (HTTPS Recommended)
+                </label>
+                <input
+                  type="url"
+                  required
+                  placeholder="https://api.greenhouse.io/v1/partner/candidates/webhook"
+                  value={webhookTargetUrl}
+                  onChange={(e) => setWebhookTargetUrl(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white font-mono text-[11px] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Payload Format Adapter
+                </label>
+                <select
+                  value={webhookFormat}
+                  onChange={(e) => setWebhookFormat(e.target.value as WebhookFormat)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white"
+                >
+                  <option value="standard">Standard JSON (Full assessment telemetry & evidence)</option>
+                  <option value="greenhouse">Greenhouse ATS (Partner Candidate Ingest Schema)</option>
+                  <option value="lever">Lever ATS (Candidate Opportunity Schema)</option>
+                  <option value="workday">Workday HRIS (Recruiting Assessment Ingest Schema)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Subscribed Event Triggers
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800">
+                  {[
+                    { id: "*", label: "All Events (*)" },
+                    { id: "session.submitted", label: "Session Submitted" },
+                    { id: "report.finalized", label: "Report Finalized" },
+                    { id: "calibration.completed", label: "Calibration Completed" },
+                    { id: "candidate.invited", label: "Candidate Invited" },
+                    { id: "candidate.started", label: "Candidate Started" },
+                  ].map((evt) => (
+                    <label key={evt.id} className="flex items-center gap-2 cursor-pointer text-[11px]">
+                      <input
+                        type="checkbox"
+                        checked={webhookEvents.includes(evt.id)}
+                        onChange={(e) => {
+                          if (evt.id === "*") {
+                            setWebhookEvents(e.target.checked ? ["*"] : ["session.submitted"]);
+                          } else {
+                            const withoutWildcard = webhookEvents.filter((x) => x !== "*");
+                            if (e.target.checked) {
+                              setWebhookEvents([...withoutWildcard, evt.id]);
+                            } else {
+                              const remaining = withoutWildcard.filter((x) => x !== evt.id);
+                              setWebhookEvents(remaining.length === 0 ? ["session.submitted"] : remaining);
+                            }
+                          }
+                        }}
+                        className="rounded text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="text-slate-700 dark:text-gray-300 font-mono">{evt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 text-[11px] text-violet-800 dark:text-violet-300">
+                🔒 A cryptographically secure HMAC secret key will be generated. All outgoing dispatches will include an <code>X-Webhook-Signature: sha256=...</code> header to verify authenticity and prevent tampering.
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateWebhookModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold shadow-xs flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isSubmitting ? "Registering..." : "Register Webhook"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Task 19: Webhook Delivery Log Modal */}
+      {isTestLogModalOpen && lastTestDeliveryLog && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Webhook Dispatch Delivery Verification
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsTestLogModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">HTTP Status</span>
+                  <span className={`font-mono font-bold text-sm ${lastTestDeliveryLog.success ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                    {lastTestDeliveryLog.statusCode || 200} {lastTestDeliveryLog.success ? "OK" : "Failed"}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Round-Trip Latency</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white text-sm">
+                    {lastTestDeliveryLog.durationMs} ms
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#111827]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Attempt</span>
+                  <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">
+                    #{lastTestDeliveryLog.attemptCount} of 3
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 font-mono text-[11px] space-y-1">
+                <div className="text-slate-500">Destination: <span className="text-slate-900 dark:text-white font-bold">{lastTestDeliveryLog.targetUrl}</span></div>
+                <div className="text-slate-500">Format Adapter: <span className="text-indigo-600 dark:text-indigo-400 font-bold uppercase">{lastTestDeliveryLog.format}</span></div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="font-bold text-slate-900 dark:text-white text-xs">
+                  Transmitted Payload (Formatted for Adapter):
+                </span>
+                <pre className="p-3 rounded-xl bg-[#0a0f1d] font-mono text-[10px] text-slate-200 overflow-x-auto max-h-48 border border-slate-800">
+                  {JSON.stringify(lastTestDeliveryLog.requestPayload, null, 2)}
+                </pre>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex justify-end">
+              <button
+                onClick={() => setIsTestLogModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-colors"
+              >
+                Close Delivery Log
               </button>
             </div>
           </div>

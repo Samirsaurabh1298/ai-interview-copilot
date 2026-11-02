@@ -529,6 +529,13 @@ Fastify API server (`http://127.0.0.1:4000`):
 | `GET` | `/api/v1/sessions/:sessionId/calibration` | Bearer JWT | Returns multi-reviewer consensus and spread flags (Task 16). |
 | `GET` | `/api/v1/sessions/:sessionId/report` | Bearer JWT | Generates evidence-linked hiring decision report with tamper seal (Task 17). |
 | `GET` | `/api/v1/sessions/:sessionId/report/export` | Bearer / Token Query | Exports standalone print-ready HTML / PDF executive view (Task 17). |
+| `GET` | `/api/v1/organizations/:orgId/webhooks` | Bearer JWT | Lists registered ATS/HRIS webhook endpoints for tenant (Task 19). |
+| `POST` | `/api/v1/webhooks/subscriptions` | Bearer (`admin`, `owner`) | Registers ATS/HRIS webhook subscription with HMAC-SHA256 signing (Task 19). |
+| `DELETE`| `/api/v1/webhooks/subscriptions/:id` | Bearer (`admin`, `owner`) | Removes webhook subscription (Task 19). |
+| `POST` | `/api/v1/webhooks/subscriptions/:id/test` | Bearer (`admin`, `owner`) | Dispatches ping test with HMAC header and returns delivery log (Task 19). |
+| `GET` | `/api/v1/analytics/ai-costs` | Bearer JWT | Aggregates token spend, models/tracks breakdown, budget utilization, runway, and anomalies (Task 20). |
+| `GET` | `/api/v1/analytics/burn-rate` | Bearer JWT | Computes daily spend velocity and 30-day linear regression projection (Task 20). |
+| `GET` | `/api/v1/analytics/anomalies` | Bearer JWT | Detects runaway prompt loops and statistical budget outliers (Task 20). |
 | `POST` | `/api/v1/code/validate` | Candidate / Bearer | Executes code inside Node 22 native isolated sandbox. |
 | `POST` | `/api/v1/answers/generate` | Candidate / Bearer | Generates AI assistant responses within budget cap. |
 | `POST` | `/api/v1/assessment/evaluate` | Reviewer / Interviewer / Admin | Evaluates submission and computes 7-dimension scorecard. |
@@ -552,7 +559,7 @@ All 13 packages maintain **100% passing test suites**:
 | Package / Module | Test Scope | Tests Passed | Status |
 | :--- | :--- | :---: | :---: |
 | `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 | **PASS** |
-| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates) | 4 / 4 | **PASS** |
+| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks) | 4 / 4 | **PASS** |
 | `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
 | `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
 | `services/code-runner` | Node 22 sandbox, watchdog timeouts, secret scrubbing, network socket traps, eval lockout, exit traps | 9 / 9 | **PASS** |
@@ -561,8 +568,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, and ATS/HRIS webhooks | 98 / 98 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **134 / 134** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, and AI cost analytics & forecasting | 106 / 106 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **142 / 142** | **100% PASS** |
 
 ---
 
@@ -570,7 +577,8 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
+- `HEAD` — **feat(analytics):** implement AI cost analytics, token budget forecasting, and company dashboard financial board (Task 20)
+- `b8962fe` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
 - `213aa37` — **feat(security):** implement multi-tenant IDOR guards, token brute-force rate limiter, and adversarial penetration test suite (Task 18)
 - `3873048` — **feat(reports):** implement evidence-linked hiring decision reports, tamper verification seal, and HTML/PDF export (Task 17)
 - `f0a85ed` — **feat(calibration):** add multi-reviewer rubric scorecard and consensus board UI (Task 16)

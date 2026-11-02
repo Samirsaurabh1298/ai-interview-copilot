@@ -37,6 +37,10 @@ import type {
   SubmitReviewerEvaluationRequest,
   CalibrationConsensus,
   HiringDecisionReport,
+  AiCostAnalytics,
+  WebhookSubscription,
+  CreateWebhookSubscriptionRequest,
+  WebhookDeliveryLog,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -702,6 +706,109 @@ export class ApiClient {
   public static getReportExportUrl(sessionId: string, token?: string): string {
     const url = `${API_BASE_URL}/sessions/${sessionId}/report/export`;
     return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+  }
+
+  // ==============================================================================
+  // Webhooks (Task 19)
+  // ==============================================================================
+
+  public static async getWebhookSubscriptions(
+    orgId: string,
+    token?: string
+  ): Promise<{ subscriptions: WebhookSubscription[]; total: number }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/webhooks/subscriptions?organizationId=${encodeURIComponent(orgId)}`, {
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error("Failed to fetch webhook subscriptions");
+    }
+    return (await res.json()) as { subscriptions: WebhookSubscription[]; total: number };
+  }
+
+  public static async createWebhookSubscription(
+    req: CreateWebhookSubscriptionRequest,
+    token?: string
+  ): Promise<WebhookSubscription> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/webhooks/subscriptions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to create webhook subscription");
+    }
+    return (await res.json()) as WebhookSubscription;
+  }
+
+  public static async deleteWebhookSubscription(
+    orgId: string,
+    subscriptionId: string,
+    token?: string
+  ): Promise<void> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(
+      `${API_BASE_URL}/webhooks/subscriptions/${subscriptionId}?organizationId=${encodeURIComponent(orgId)}`,
+      {
+        method: "DELETE",
+        headers,
+      }
+    );
+    if (!res.ok) {
+      throw new Error("Failed to delete webhook subscription");
+    }
+  }
+
+  public static async testWebhookSubscription(
+    orgId: string,
+    subscriptionId: string,
+    token?: string
+  ): Promise<{ success: boolean; deliveryLog: WebhookDeliveryLog }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(
+      `${API_BASE_URL}/webhooks/subscriptions/${subscriptionId}/test?organizationId=${encodeURIComponent(orgId)}`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    if (!res.ok) {
+      throw new Error("Failed to dispatch test webhook");
+    }
+    return (await res.json()) as { success: boolean; deliveryLog: WebhookDeliveryLog };
+  }
+
+  // ==============================================================================
+  // AI Cost Analytics & Forecasting (Task 20)
+  // ==============================================================================
+
+  public static async getAiCostAnalytics(
+    orgId: string,
+    period: "7d" | "30d" | "all" = "30d",
+    token?: string
+  ): Promise<AiCostAnalytics> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(
+      `${API_BASE_URL}/analytics/ai-costs?organizationId=${encodeURIComponent(orgId)}&period=${period}`,
+      { headers }
+    );
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to fetch AI cost analytics");
+    }
+    return (await res.json()) as AiCostAnalytics;
   }
 }
 

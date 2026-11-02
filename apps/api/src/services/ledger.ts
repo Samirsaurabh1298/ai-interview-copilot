@@ -59,4 +59,12 @@ export class UsageLedgerService {
   public listSessions(userId: string): SessionRecord[] {
     return Array.from(this.sessions.values()).filter((s) => s.userId === userId);
   }
+
+  public getEventsForOrg(orgId: string): UsageEventRecord[] {
+    return this.events.filter((e) => e.userId === orgId || (e.userId && e.userId.startsWith(`${orgId}:`)));
+  }
+
+  public getAllEvents(): UsageEventRecord[] {
+    return [...this.events];
+  }
 }

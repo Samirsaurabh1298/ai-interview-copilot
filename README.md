@@ -85,6 +85,10 @@ pnpm run typecheck
 - **Candidate:** Open secure invite gateway, review objectives and agree to integrity terms, launch 60-minute workspace, ask AI questions, inspect diffs, run tests, and submit solution with 20-second autosave protection.
 - **Interviewer / Proctor:** Live monitor sessions, track consumed AI budget, review chronological telemetry checkpoints, detect window blurs/pastes, and pause/resume sessions during technical incidents.
 - **Reviewer / Hiring Manager:** Inspect candidate code AST diffs, evaluate 7-dimension rubric scores, calibrate anchors, verify cryptographic hashes, and export compliance reports.
+- **Talent Operations / ATS Integration:** Dispatch cryptographically signed HMAC-SHA256 webhook payloads directly to Greenhouse, Lever, Workday, or custom HRIS webhooks with exponential retry backoff (Task 19).
+- **Finance & Engineering Leadership:** Inspect real-time token spend ledgers, 30-day linear burn rate forecasting, unit economics ($/session), and automated runaway prompt anomaly alerts (Task 20).
+
+All **142 automated tests across 13 packages** are passing (100% pass rate).
 
 For in-depth operational instructions, refer to **[PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)**.
 
