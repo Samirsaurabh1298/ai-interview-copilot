@@ -23,6 +23,7 @@ export const App: React.FC = () => {
   });
   const [activeSessionData, setActiveSessionData] = useState<AcceptInvitationResponse | null>(null);
   const [apiConnected, setApiConnected] = useState(false);
+  const [triggerPracticeCapture, setTriggerPracticeCapture] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [stage, setStage] = useState<"idle" | "confirming" | "answered">("idle");
 
@@ -125,7 +126,7 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden select-none font-sans">
       <Header
         apiConnected={apiConnected}
-        onOpenCapture={() => setIsCaptureModalOpen(true)}
+        onOpenCapture={() => setTriggerPracticeCapture(true)}
         isGenerating={isGenerating}
         activeView={activeView}
         onSelectView={setActiveView}
@@ -146,7 +147,8 @@ export const App: React.FC = () => {
         />
       ) : (
         <PracticeStudio
-          onOpenCapture={() => setIsCaptureModalOpen(true)}
+          triggerCapture={triggerPracticeCapture}
+          onResetTriggerCapture={() => setTriggerPracticeCapture(false)}
           onExit={() => setActiveView("company")}
         />
       )}

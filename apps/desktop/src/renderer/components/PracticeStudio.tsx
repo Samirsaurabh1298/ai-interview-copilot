@@ -44,11 +44,15 @@ import type {
 
 interface PracticeStudioProps {
   onOpenCapture?: () => void;
+  triggerCapture?: boolean;
+  onResetTriggerCapture?: () => void;
   onExit?: () => void;
 }
 
 export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   onOpenCapture,
+  triggerCapture,
+  onResetTriggerCapture,
   onExit,
 }) => {
   // Navigation State
@@ -142,6 +146,13 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, [isCaptureModalOpen]);
+
+  useEffect(() => {
+    if (triggerCapture) {
+      handleOpenCaptureModal();
+      onResetTriggerCapture?.();
+    }
+  }, [triggerCapture]);
 
   const handleOpenCaptureModal = async () => {
     setIsCaptureModalOpen(true);
@@ -734,7 +745,6 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
             )}
           </div>
         </div>
-        {renderCaptureModal()}
       </div>
     );
   };
