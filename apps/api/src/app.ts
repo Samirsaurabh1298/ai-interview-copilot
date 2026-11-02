@@ -23,6 +23,7 @@ import { calibrationRoutes } from "./routes/calibration.js";
 import { reportsRoutes } from "./routes/reports.js";
 import { webhooksRoutes } from "./routes/webhooks.js";
 import { analyticsRoutes } from "./routes/analytics.js";
+import { practiceRoutes } from "./routes/practice.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
@@ -37,6 +38,7 @@ import { CalibrationService } from "./services/calibration.js";
 import { ReportService } from "./services/report.js";
 import { WebhookService } from "./services/webhook.js";
 import { AICostAnalyticsService } from "./services/analytics.js";
+import { PracticeStudioService } from "./services/practice.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -168,6 +170,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     templateService,
     orgService
   );
+  const practiceService = new PracticeStudioService();
   const invitationService = new CandidateInvitationService(
     templateService,
     orgService,
@@ -245,6 +248,11 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: "/api/v1/analytics",
     analyticsService,
     authService,
+  });
+
+  await app.register(practiceRoutes, {
+    prefix: "/api/v1/practice",
+    practiceService,
   });
 
   await app.register(answersRoutes, {

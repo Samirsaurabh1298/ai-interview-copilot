@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 134 / 134 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 149 / 149 Automated Tests Passing (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
@@ -28,6 +28,7 @@
    - [4.10. Submission Packaging & Immutable Artifact Bundling](#410-submission-packaging--immutable-artifact-bundling)
    - [4.11. Proctor Controls, Emergency Pausing & Incident Recovery](#411-proctor-controls-emergency-pausing--incident-recovery)
    - [4.12. User Experience, Dark/Light Theming & Favicon Branding](#412-user-experience-darklight-theming--favicon-branding)
+   - [4.13. Candidate Practice Studio & Instant Diagnostic Feedback Engine](#413-candidate-practice-studio--instant-diagnostic-feedback-engine)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -343,6 +344,15 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Seamless Theme Toggle:** 1-click toggle between crisp corporate Light Mode and immersive Dark Mode (`#0a0f1d`).
 - **Brand SVG Favicon:** Custom SVG terminal/brain glyph embedded in `apps/desktop/public/favicon.svg` and `apps/desktop/favicon.svg`.
 
+### 4.13. Candidate Practice Studio & Instant Diagnostic Feedback Engine (Task 21)
+- **Practice Challenge Catalog:** Curated problem catalog across multiple engineering tracks (`frontend`, `backend`, `fullstack`, `systems`, `algorithms`) and seniority tiers (`Junior`, `Mid`, `Senior`, `Staff`).
+- **Preloaded Core Challenges:**
+  1. *React Immutable Ticket Queue* (Frontend, Mid): Diagnose descending priority inversion comparator bug and array mutation.
+  2. *Algorithmic LRU Cache with TTL Eviction* (Backend, Senior): O(1) doubly-linked list with time-to-live expiration and memory limits.
+  3. *Distributed Async Concurrency Limiter* (Systems, Staff): Promise pooling with retry backoff, queue priority, and cooperative cancellation.
+- **Simulated AI Token Budget:** Realistic \$0.25 candidate AI budget meter teaching candidates token frugality and prompt engineering before formal enterprise evaluations.
+- **Instant 7-Dimension Diagnostic Feedback Engine:** Immediate rubric scoring card evaluating Code Comprehension, Problem Framing, AI Collaboration, Critical Evaluation, Debugging & Quality, Testing Discipline, and Technical Explanation. Includes an **AI Reliance Index** measuring scrutiny ratio (accepted vs. rejected patches).
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -568,8 +578,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, and AI cost analytics & forecasting | 106 / 106 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **142 / 142** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, and candidate practice challenges & diagnostic feedback | 113 / 113 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **149 / 149** | **100% PASS** |
 
 ---
 
@@ -577,7 +587,8 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(analytics):** implement AI cost analytics, token budget forecasting, and company dashboard financial board (Task 20)
+- `HEAD` — **feat(practice):** implement candidate practice studio, challenge catalog, and instant diagnostic feedback engine (Task 21)
+- `3fda684` — **feat(analytics):** implement AI cost analytics, token budget forecasting, and company dashboard financial board (Task 20)
 - `b8962fe` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
 - `213aa37` — **feat(security):** implement multi-tenant IDOR guards, token brute-force rate limiter, and adversarial penetration test suite (Task 18)
 - `3873048` — **feat(reports):** implement evidence-linked hiring decision reports, tamper verification seal, and HTML/PDF export (Task 17)

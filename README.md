@@ -1,6 +1,6 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-134%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-149%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
 [![Accessibility](https://img.shields.io/badge/WCAG-2.2%20AA%20Compliant-purple.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
@@ -65,7 +65,7 @@ Open your browser at **`http://localhost:5173`**.
 
 ## Monorepo Testing & Verification
 
-Run the entire 77-test automated verification suite across all 13 workspace packages:
+Run the entire 149-test automated verification suite across all 13 workspace packages:
 
 ```bash
 pnpm test

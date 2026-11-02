@@ -41,6 +41,11 @@ import type {
   WebhookSubscription,
   CreateWebhookSubscriptionRequest,
   WebhookDeliveryLog,
+  PracticeChallenge,
+  PracticeSubmissionRequest,
+  PracticeFeedbackCard,
+  PracticeTrack,
+  PracticeDifficulty,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -809,6 +814,49 @@ export class ApiClient {
       throw new Error(err.message || "Failed to fetch AI cost analytics");
     }
     return (await res.json()) as AiCostAnalytics;
+  }
+
+  // ==============================================================================
+  // Candidate Practice Studio (Task 21)
+  // ==============================================================================
+
+  public static async listPracticeChallenges(
+    track?: PracticeTrack,
+    difficulty?: PracticeDifficulty
+  ): Promise<{ challenges: PracticeChallenge[]; total: number }> {
+    const params = new URLSearchParams();
+    if (track) params.append("track", track);
+    if (difficulty) params.append("difficulty", difficulty);
+
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${API_BASE_URL}/practice/challenges${qs}`);
+    if (!res.ok) {
+      throw new Error("Failed to load practice challenges catalog");
+    }
+    return (await res.json()) as { challenges: PracticeChallenge[]; total: number };
+  }
+
+  public static async getPracticeChallenge(id: string): Promise<{ challenge: PracticeChallenge }> {
+    const res = await fetch(`${API_BASE_URL}/practice/challenges/${id}`);
+    if (!res.ok) {
+      throw new Error(`Practice challenge '${id}' not found`);
+    }
+    return (await res.json()) as { challenge: PracticeChallenge };
+  }
+
+  public static async evaluatePracticeSubmission(
+    req: PracticeSubmissionRequest
+  ): Promise<{ feedback: PracticeFeedbackCard }> {
+    const res = await fetch(`${API_BASE_URL}/practice/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to evaluate practice submission");
+    }
+    return (await res.json()) as { feedback: PracticeFeedbackCard };
   }
 }
 
