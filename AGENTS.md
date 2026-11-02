@@ -91,6 +91,12 @@ Base decisions on real production needs, not hypothetical scale.
 - Be concise. Depth where it matters, no filler.
 </response_format>
 
+<git_repository_rule>
+- Remote Repository: https://github.com/Samirsaurabh1298/ai-interview-copilot.git
+- Branch: main
+- All commits and daily work for this project must be committed and pushed to this remote repository and branch.
+</git_repository_rule>
+
 <override>
 These rules apply to all conversations unless I explicitly override them.
 </override>
