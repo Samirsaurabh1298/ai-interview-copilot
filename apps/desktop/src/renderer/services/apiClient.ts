@@ -46,6 +46,8 @@ import type {
   PracticeFeedbackCard,
   PracticeTrack,
   PracticeDifficulty,
+  ScreenCaptureIngestRequest,
+  ExtractedChallengeResponse,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -857,6 +859,55 @@ export class ApiClient {
       throw new Error(err.message || "Failed to evaluate practice submission");
     }
     return (await res.json()) as { feedback: PracticeFeedbackCard };
+  }
+
+  // ==============================================================================
+  // Screen Capture & Multimodal OCR Ingest (Task 22)
+  // ==============================================================================
+
+  public static async extractChallengeFromScreen(
+    req: ScreenCaptureIngestRequest
+  ): Promise<ExtractedChallengeResponse> {
+    const res = await fetch(`${API_BASE_URL}/capture/extract-question`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+      throw new Error(err.message || err.error || "Failed to extract challenge from image");
+    }
+    return (await res.json()) as ExtractedChallengeResponse;
+  }
+
+  public static async getCaptureSamplePresets(): Promise<{
+    presets: Array<{
+      id: string;
+      name: string;
+      source: string;
+      track: PracticeTrack;
+      difficulty: PracticeDifficulty;
+      thumbnailSvg: string;
+      userHint: string;
+    }>;
+    total: number;
+  }> {
+    const res = await fetch(`${API_BASE_URL}/capture/sample-presets`);
+    if (!res.ok) {
+      throw new Error("Failed to load screen capture sample presets");
+    }
+    return (await res.json()) as {
+      presets: Array<{
+        id: string;
+        name: string;
+        source: string;
+        track: PracticeTrack;
+        difficulty: PracticeDifficulty;
+        thumbnailSvg: string;
+        userHint: string;
+      }>;
+      total: number;
+    };
   }
 }
 

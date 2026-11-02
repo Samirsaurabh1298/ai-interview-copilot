@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 149 / 149 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 156 / 156 Automated Tests Passing (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
@@ -29,6 +29,7 @@
    - [4.11. Proctor Controls, Emergency Pausing & Incident Recovery](#411-proctor-controls-emergency-pausing--incident-recovery)
    - [4.12. User Experience, Dark/Light Theming & Favicon Branding](#412-user-experience-darklight-theming--favicon-branding)
    - [4.13. Candidate Practice Studio & Instant Diagnostic Feedback Engine](#413-candidate-practice-studio--instant-diagnostic-feedback-engine)
+   - [4.14. Screen Capture & Multimodal OCR Ingest Engine](#414-screen-capture--multimodal-ocr-ingest-engine)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -353,6 +354,15 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Simulated AI Token Budget:** Realistic \$0.25 candidate AI budget meter teaching candidates token frugality and prompt engineering before formal enterprise evaluations.
 - **Instant 7-Dimension Diagnostic Feedback Engine:** Immediate rubric scoring card evaluating Code Comprehension, Problem Framing, AI Collaboration, Critical Evaluation, Debugging & Quality, Testing Discipline, and Technical Explanation. Includes an **AI Reliance Index** measuring scrutiny ratio (accepted vs. rejected patches).
 
+### 4.14. Screen Capture & Multimodal OCR Ingest Engine (Task 22)
+- **Multimodal Question Ingestion (`POST /api/v1/capture/extract-question`):** Ingests screenshot images, base64 payloads, or clipboard pastes from any external source (LeetCode, HackerRank, CodeSignal, system architecture PDFs, or interview docs).
+- **Multi-Provider Vision Extraction with Heuristic Resilience:**
+  - Fast structured parsing leveraging Google Gemini 2.0 Flash (`gemini-2.0-flash`), OpenAI GPT-4o (`gpt-4o`), or Anthropic Claude 3.5 Sonnet (`claude-3-5-sonnet-20241022`).
+  - Offline / test heuristic synthesizer parses problem keywords, generates type-safe starter code, 3–4 unit test assertions, and runner harnesses with 100% offline verification reliability.
+- **Memory Denial-of-Service Defense:** Fastify native body limits and server payload validation strictly reject image data exceeding 10MB to prevent heap memory exhaustion.
+- **1-Click Benchmark Demo Presets (`GET /api/v1/capture/sample-presets`):** Preloaded with LeetCode 146 (LRU Cache), LeetCode 1 (Two Sum), and API Spec (Token Bucket Rate Limiter) with embedded SVG visual thumbnails.
+- **Direct Workspace Hydration:** Extracted problems automatically hydrate Monaco editor starter stubs, isolated Node 22 sandbox test harnesses, and simulated \$0.25 AI token budgets.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -578,8 +588,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, and candidate practice challenges & diagnostic feedback | 113 / 113 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **149 / 149** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 120 / 120 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **156 / 156** | **100% PASS** |
 
 ---
 
@@ -587,7 +597,8 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(practice):** implement candidate practice studio, challenge catalog, and instant diagnostic feedback engine (Task 21)
+- `HEAD` — **feat(capture):** implement screen capture & multimodal ocr question ingest engine (Task 22)
+- `c3b9ec3` — **feat(practice):** implement candidate practice studio, challenge catalog, and instant diagnostic feedback engine (Task 21)
 - `3fda684` — **feat(analytics):** implement AI cost analytics, token budget forecasting, and company dashboard financial board (Task 20)
 - `b8962fe` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
 - `213aa37` — **feat(security):** implement multi-tenant IDOR guards, token brute-force rate limiter, and adversarial penetration test suite (Task 18)

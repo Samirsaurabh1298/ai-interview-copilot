@@ -120,7 +120,7 @@ run().catch((err) => {
         "--no-addons",
         "--no-warnings",
         "--experimental-strip-types",
-        `--max-old-space-size=${request.memoryLimitMb}`,
+        `--max-old-space-size=${request.memoryLimitMb || 64}`,
         scriptPath,
       ];
     } else if (request.language === "python") {

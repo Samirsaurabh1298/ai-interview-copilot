@@ -11,6 +11,7 @@ export const PracticeTrackSchema = z.enum([
   "backend",
   "fullstack",
   "systems",
+  "algorithms",
 ]);
 export type PracticeTrack = z.infer<typeof PracticeTrackSchema>;
 

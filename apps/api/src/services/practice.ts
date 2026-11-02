@@ -335,6 +335,10 @@ test("ConcurrencyLimiter frees slot when task throws error", async () => {
     return this.challenges.get(id);
   }
 
+  public registerChallenge(challenge: PracticeChallenge): void {
+    this.challenges.set(challenge.id, challenge);
+  }
+
   /**
    * Evaluates candidate practice submission against the 7-dimension rubric
    * and computes instant diagnostic feedback card.
