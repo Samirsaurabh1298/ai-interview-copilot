@@ -11,11 +11,18 @@ import {
   MemberNotFoundError,
   TenantOperationForbiddenError,
 } from "../services/organization.js";
+import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+  isTenantOrAuthForbiddenError,
+} from "../services/auth.js";
 
 export const organizationsRoutes: FastifyPluginAsync<{
   orgService: OrganizationService;
+  authService?: AuthService;
 }> = async (fastify, opts) => {
-  const { orgService } = opts;
+  const { orgService, authService } = opts;
 
   // 0. List Organizations
   fastify.get("/", async (_request, reply) => {
@@ -73,7 +80,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
     return reply.status(200).send(org);
   });
 
-  // 4. Invite / Add Member
+  // 4. Invite / Add Member (Tenant & Role Guarded)
   fastify.post("/:orgId/members", async (request, reply) => {
     const { orgId } = request.params as { orgId: string };
     const parse = InviteMemberRequestSchema.safeParse(request.body);
@@ -85,9 +92,23 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
 
     try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+        if (!["owner", "admin"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to add members`,
+          });
+        }
+      }
+
       const member = orgService.inviteMember(orgId, parse.data);
       return reply.status(201).send(member);
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TenantNotFoundError) {
         return reply.status(404).send({ error: "ORGANIZATION_NOT_FOUND", message: err.message });
       }
@@ -98,13 +119,21 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 5. List Members
+  // 5. List Members (Tenant Guarded)
   fastify.get("/:orgId/members", async (request, reply) => {
     const { orgId } = request.params as { orgId: string };
     try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+      }
+
       const members = orgService.listMembers(orgId);
       return reply.status(200).send({ members, total: members.length });
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TenantNotFoundError) {
         return reply.status(404).send({ error: "ORGANIZATION_NOT_FOUND", message: err.message });
       }
@@ -112,7 +141,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 6. Update Member Role
+  // 6. Update Member Role (Tenant & Role Guarded)
   fastify.patch("/:orgId/members/:memberId", async (request, reply) => {
     const { orgId, memberId } = request.params as { orgId: string; memberId: string };
     const parse = UpdateMemberRoleRequestSchema.safeParse(request.body);
@@ -124,9 +153,23 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
 
     try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+        if (!["owner", "admin"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to update member roles`,
+          });
+        }
+      }
+
       const updated = orgService.updateMemberRole(orgId, memberId, parse.data.role);
       return reply.status(200).send(updated);
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TenantNotFoundError) {
         return reply.status(404).send({ error: "ORGANIZATION_NOT_FOUND", message: err.message });
       }
@@ -140,13 +183,27 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 7. Remove Member
+  // 7. Remove Member (Tenant & Role Guarded)
   fastify.delete("/:orgId/members/:memberId", async (request, reply) => {
     const { orgId, memberId } = request.params as { orgId: string; memberId: string };
     try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+        if (!["owner", "admin"].includes(auth.role)) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to remove members`,
+          });
+        }
+      }
+
       orgService.removeMember(orgId, memberId);
       return reply.status(204).send();
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TenantNotFoundError) {
         return reply.status(404).send({ error: "ORGANIZATION_NOT_FOUND", message: err.message });
       }

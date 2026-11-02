@@ -174,6 +174,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await app.register(organizationsRoutes, {
     prefix: "/api/v1/organizations",
     orgService,
+    authService,
   });
 
   await app.register(templatesRoutes, {

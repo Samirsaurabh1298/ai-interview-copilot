@@ -9,6 +9,7 @@ import {
   AuthenticationError,
   AuthorizationError,
   TenantAccessDeniedError,
+  isTenantOrAuthForbiddenError,
 } from "../services/auth.js";
 import { SessionNotFoundError } from "../services/session.js";
 
@@ -55,8 +56,8 @@ export const sessionEventsRoutes: FastifyPluginAsync<{
       if (err instanceof AuthenticationError) {
         return reply.status(401).send({ error: "UNAUTHORIZED", message: err.message });
       }
-      if (err instanceof AuthorizationError || err instanceof TenantAccessDeniedError) {
-        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       const message = err instanceof Error ? err.message : "Failed to ingest session events";
       return reply.status(400).send({ error: "EVENT_INGESTION_FAILED", message });
@@ -94,8 +95,8 @@ export const sessionEventsRoutes: FastifyPluginAsync<{
       if (err instanceof AuthenticationError) {
         return reply.status(401).send({ error: "UNAUTHORIZED", message: err.message });
       }
-      if (err instanceof AuthorizationError || err instanceof TenantAccessDeniedError) {
-        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       throw err;
     }

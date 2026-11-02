@@ -11,6 +11,11 @@ import {
   SessionInvalidStateError,
 } from "../services/session.js";
 import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+  isTenantOrAuthForbiddenError,
+} from "../services/auth.js";
 import type { SubmissionService } from "../services/submission.js";
 import { SubmissionNotFoundError } from "../services/submission.js";
 
@@ -68,6 +73,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
       }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       throw err;
     }
   });
@@ -98,11 +106,11 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
 
     try {
+      const session = sessionService.getSession(sessionId);
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
-        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
-          return reply.status(403).send({ error: "FORBIDDEN", message: "Token not valid for this session" });
-        }
+        authService.assertTenantAccess(auth, session.organizationId);
+        authService.assertSessionAccess(auth, sessionId);
       }
 
       const updated = sessionService.updateWorkspaceCode(sessionId, parse.data);
@@ -114,6 +122,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
     } catch (err: unknown) {
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       if (err instanceof SessionExpiredError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
@@ -148,11 +159,11 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
 
     try {
+      const session = sessionService.getSession(sessionId);
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
-        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
-          return reply.status(403).send({ error: "FORBIDDEN", message: "Token not valid for this session" });
-        }
+        authService.assertTenantAccess(auth, session.organizationId);
+        authService.assertSessionAccess(auth, sessionId);
       }
 
       if (submissionService) {
@@ -180,6 +191,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
     } catch (err: unknown) {
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       if (err instanceof SessionExpiredError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
@@ -215,6 +229,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (err instanceof SessionNotFoundError || err instanceof SubmissionNotFoundError) {
         return reply.status(404).send({ error: "SUBMISSION_NOT_FOUND", message: err.message });
       }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       throw err;
     }
   });
@@ -243,6 +260,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
     } catch (err: unknown) {
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       if (err instanceof SessionInvalidStateError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
@@ -275,6 +295,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
       }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof SessionInvalidStateError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
@@ -289,8 +312,11 @@ export const sessionsRoutes: FastifyPluginAsync<{
     const reason = body.reason || "Terminated by interviewer";
 
     try {
+      const session = sessionService.getSession(sessionId);
+
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
         if (!["owner", "admin", "interviewer"].includes(auth.role)) {
           return reply.status(403).send({
             error: "FORBIDDEN",
@@ -305,21 +331,31 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (err instanceof SessionNotFoundError) {
         return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
       }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       throw err;
     }
   });
 
-  // 7. List Sessions for Organization
+  // 7. List Sessions for Organization (Tenant Guarded)
   fastify.get("/", async (request, reply) => {
     const query = request.query as { organizationId?: string };
     let orgId = query?.organizationId;
 
-    if (!orgId && authService && request.headers.authorization) {
+    if (authService && request.headers.authorization) {
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
-        orgId = auth.organizationId;
-      } catch {
-        // Continue
+        if (orgId) {
+          authService.assertTenantAccess(auth, orgId);
+        } else {
+          orgId = auth.organizationId;
+        }
+      } catch (err: unknown) {
+        if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+        }
+        return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication failed" });
       }
     }
 

@@ -135,3 +135,4 @@ export const HiringDecisionReportSchema = z.object({
   generatedAt: z.coerce.date(),
 });
 export type HiringDecisionReport = z.infer<typeof HiringDecisionReportSchema>;
+

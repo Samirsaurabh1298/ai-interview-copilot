@@ -4,7 +4,13 @@ import {
 } from "@ai-copilot/contracts";
 import type { CalibrationService } from "../services/calibration.js";
 import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+  isTenantOrAuthForbiddenError,
+} from "../services/auth.js";
 import type { AssessmentSessionService } from "../services/session.js";
+import { SessionNotFoundError } from "../services/session.js";
 
 export const calibrationRoutes: FastifyPluginAsync<{
   calibrationService: CalibrationService;
@@ -50,6 +56,12 @@ export const calibrationRoutes: FastifyPluginAsync<{
       const evaluation = await calibrationService.submitEvaluation(sessionId, auth, parse.data);
       return reply.status(201).send(evaluation);
     } catch (err: unknown) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
+      if (err instanceof SessionNotFoundError || (err instanceof Error && err.name === "SessionNotFoundError")) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err instanceof Error ? err.message : "Session not found" });
+      }
       const message = err instanceof Error ? err.message : "Failed to submit evaluation";
       return reply.status(400).send({ error: "EVALUATION_SUBMISSION_FAILED", message });
     }
@@ -72,6 +84,12 @@ export const calibrationRoutes: FastifyPluginAsync<{
       const result = await calibrationService.getEvaluations(sessionId, requestingUser);
       return reply.status(200).send(result);
     } catch (err: unknown) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
+      if (err instanceof SessionNotFoundError || (err instanceof Error && err.name === "SessionNotFoundError")) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err instanceof Error ? err.message : "Session not found" });
+      }
       const message = err instanceof Error ? err.message : "Failed to fetch evaluations";
       return reply.status(400).send({ error: "FETCH_EVALUATIONS_FAILED", message });
     }
@@ -94,6 +112,12 @@ export const calibrationRoutes: FastifyPluginAsync<{
       const consensus = await calibrationService.getCalibrationConsensus(sessionId, requestingUser);
       return reply.status(200).send(consensus);
     } catch (err: unknown) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
+      if (err instanceof SessionNotFoundError || (err instanceof Error && err.name === "SessionNotFoundError")) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err instanceof Error ? err.message : "Session not found" });
+      }
       const message = err instanceof Error ? err.message : "Failed to compute calibration consensus";
       return reply.status(400).send({ error: "CALIBRATION_FAILED", message });
     }
@@ -115,6 +139,12 @@ export const calibrationRoutes: FastifyPluginAsync<{
       const draftScorecard = await calibrationService.generateAiDraftScorecard(sessionId);
       return reply.status(200).send(draftScorecard);
     } catch (err: unknown) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
+      if (err instanceof SessionNotFoundError || (err instanceof Error && err.name === "SessionNotFoundError")) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err instanceof Error ? err.message : "Session not found" });
+      }
       const message = err instanceof Error ? err.message : "Failed to generate AI draft scorecard";
       return reply.status(400).send({ error: "AI_DRAFT_FAILED", message });
     }

@@ -13,6 +13,7 @@ export class AuthenticationError extends Error {
   constructor(message = "Authentication required") {
     super(message);
     this.name = "AuthenticationError";
+    Object.setPrototypeOf(this, AuthenticationError.prototype);
   }
 }
 
@@ -20,6 +21,7 @@ export class AuthorizationError extends Error {
   constructor(message = "Forbidden: Insufficient role permissions") {
     super(message);
     this.name = "AuthorizationError";
+    Object.setPrototypeOf(this, AuthorizationError.prototype);
   }
 }
 
@@ -27,7 +29,23 @@ export class TenantAccessDeniedError extends Error {
   constructor(message = "Forbidden: Cannot access resources outside your organization") {
     super(message);
     this.name = "TenantAccessDeniedError";
+    Object.setPrototypeOf(this, TenantAccessDeniedError.prototype);
   }
+}
+
+export function isTenantOrAuthForbiddenError(err: unknown): boolean {
+  if (!err) return false;
+  if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) return true;
+  if (
+    err instanceof Error &&
+    (err.name === "TenantAccessDeniedError" ||
+      err.name === "AuthorizationError" ||
+      err.message.includes("Cross-tenant access forbidden") ||
+      err.message.includes("lacks permission"))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export class AuthService {

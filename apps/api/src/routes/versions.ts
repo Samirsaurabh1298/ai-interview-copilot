@@ -4,6 +4,10 @@ import type { AssessmentVersioningService } from "../services/versioning.js";
 import { VersionNotFoundError } from "../services/versioning.js";
 import type { AssessmentTemplateService } from "../services/template.js";
 import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+} from "../services/auth.js";
 
 export const versionsRoutes: FastifyPluginAsync<{
   versioningService: AssessmentVersioningService;
@@ -48,6 +52,9 @@ export const versionsRoutes: FastifyPluginAsync<{
       const version = versioningService.publishVersion(parse.data, templateService);
       return reply.status(201).send(version);
     } catch (err) {
+      if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      }
       if (err instanceof VersionNotFoundError) {
         return reply.status(404).send({ error: "TEMPLATE_NOT_FOUND", message: err.message });
       }
@@ -55,7 +62,7 @@ export const versionsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 2. List Versions for a Template
+  // 2. List Versions for a Template (Tenant Guarded)
   fastify.get("/templates/:templateId/versions", async (request, reply) => {
     const { templateId } = request.params as { templateId: string };
     const query = request.query as { organizationId?: string };
@@ -68,11 +75,23 @@ export const versionsRoutes: FastifyPluginAsync<{
       });
     }
 
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+      }
+    } catch (err) {
+      if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      }
+      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication failed" });
+    }
+
     const versions = versioningService.listVersionsForTemplate(templateId, orgId);
     return reply.status(200).send({ versions, total: versions.length });
   });
 
-  // 3. Get Immutable Version by ID
+  // 3. Get Immutable Version by ID (Tenant Guarded)
   fastify.get("/versions/:versionId", async (request, reply) => {
     const { versionId } = request.params as { versionId: string };
     const query = request.query as { organizationId?: string };
@@ -85,16 +104,39 @@ export const versionsRoutes: FastifyPluginAsync<{
       });
     }
 
+    try {
+      if (authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, version.organizationId);
+      }
+    } catch (err) {
+      if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      }
+      return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication failed" });
+    }
+
     return reply.status(200).send(version);
   });
 
   // 4. Verify Cryptographic Integrity
   fastify.get("/versions/:versionId/verify", async (request, reply) => {
     const { versionId } = request.params as { versionId: string };
+    const query = request.query as { organizationId?: string };
+
     try {
+      const version = versioningService.getVersionById(versionId, query?.organizationId);
+      if (version && authService && request.headers.authorization) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, version.organizationId);
+      }
+
       const verification = versioningService.verifyVersionIntegrity(versionId);
       return reply.status(200).send(verification);
     } catch (err) {
+      if (err instanceof TenantAccessDeniedError || err instanceof AuthorizationError) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err.message });
+      }
       if (err instanceof VersionNotFoundError) {
         return reply.status(404).send({ error: "VERSION_NOT_FOUND", message: err.message });
       }

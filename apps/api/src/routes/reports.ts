@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ReportService } from "../services/report.js";
 import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+  isTenantOrAuthForbiddenError,
+} from "../services/auth.js";
 import type { AssessmentSessionService } from "../services/session.js";
 
 export const reportsRoutes: FastifyPluginAsync<{
@@ -19,14 +24,20 @@ export const reportsRoutes: FastifyPluginAsync<{
         const auth = authService.parseAuthHeader(request.headers.authorization);
         if (sessionService) {
           const session = sessionService.getSession(sessionId);
-          // If session belongs to an organization, assert tenant access unless candidate
-          if (auth.role !== "candidate") {
+          if (auth.role === "candidate") {
+            if (auth.sessionId !== sessionId) {
+              return reply.status(403).send({ error: "FORBIDDEN", message: "Candidate cannot access reports of another session" });
+            }
+          } else {
             authService.assertTenantAccess(auth, session.organizationId);
           }
         }
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === "SessionNotFoundError") {
+        if (err instanceof Error && (err.name === "SessionNotFoundError" || err.message.includes("not found"))) {
           return reply.status(404).send({ error: "NOT_FOUND", message: err.message });
+        }
+        if (isTenantOrAuthForbiddenError(err)) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
         }
         return reply.status(401).send({
           error: "UNAUTHORIZED",
@@ -57,13 +68,22 @@ export const reportsRoutes: FastifyPluginAsync<{
     if (authService && tokenHeader) {
       try {
         const auth = authService.parseAuthHeader(tokenHeader);
-        if (sessionService && auth.role !== "candidate") {
+        if (sessionService) {
           const session = sessionService.getSession(sessionId);
-          authService.assertTenantAccess(auth, session.organizationId);
+          if (auth.role === "candidate") {
+            if (auth.sessionId !== sessionId) {
+              return reply.status(403).send({ error: "FORBIDDEN", message: "Candidate cannot export reports of another session" });
+            }
+          } else {
+            authService.assertTenantAccess(auth, session.organizationId);
+          }
         }
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === "SessionNotFoundError") {
+        if (err instanceof Error && (err.name === "SessionNotFoundError" || err.message.includes("not found"))) {
           return reply.status(404).send({ error: "NOT_FOUND", message: err.message });
+        }
+        if (isTenantOrAuthForbiddenError(err)) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
         }
         return reply.status(401).send({
           error: "UNAUTHORIZED",

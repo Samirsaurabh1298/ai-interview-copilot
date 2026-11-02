@@ -6,6 +6,11 @@ import {
 import type { AssessmentTemplateService } from "../services/template.js";
 import { TemplateNotFoundError, TemplateConflictError } from "../services/template.js";
 import type { AuthService } from "../services/auth.js";
+import {
+  TenantAccessDeniedError,
+  AuthorizationError,
+  isTenantOrAuthForbiddenError,
+} from "../services/auth.js";
 
 export const templatesRoutes: FastifyPluginAsync<{
   templateService: AssessmentTemplateService;
@@ -39,6 +44,9 @@ export const templatesRoutes: FastifyPluginAsync<{
       const template = templateService.createTemplate(parse.data);
       return reply.status(201).send(template);
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TemplateConflictError) {
         return reply.status(409).send({ error: "TEMPLATE_SLUG_CONFLICT", message: err.message });
       }
@@ -46,17 +54,24 @@ export const templatesRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 2. List Templates for an Organization
+  // 2. List Templates for an Organization (Tenant Guarded)
   fastify.get("/", async (request, reply) => {
     const query = request.query as { organizationId?: string };
     let orgId = query?.organizationId;
 
-    if (!orgId && authService && request.headers.authorization) {
+    if (authService && request.headers.authorization) {
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
-        orgId = auth.organizationId;
-      } catch {
-        // Continue
+        if (orgId) {
+          authService.assertTenantAccess(auth, orgId);
+        } else {
+          orgId = auth.organizationId;
+        }
+      } catch (err) {
+        if (isTenantOrAuthForbiddenError(err)) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+        }
+        return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication failed" });
       }
     }
 
@@ -71,7 +86,7 @@ export const templatesRoutes: FastifyPluginAsync<{
     return reply.status(200).send({ templates, total: templates.length });
   });
 
-  // 3. Get Template by ID
+  // 3. Get Template by ID (Tenant Guarded)
   fastify.get("/:templateId", async (request, reply) => {
     const { templateId } = request.params as { templateId: string };
     const query = request.query as { organizationId?: string };
@@ -82,6 +97,18 @@ export const templatesRoutes: FastifyPluginAsync<{
         error: "MISSING_ORGANIZATION_ID",
         message: "Query parameter 'organizationId' is required",
       });
+    }
+
+    if (authService && request.headers.authorization) {
+      try {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, orgId);
+      } catch (err) {
+        if (isTenantOrAuthForbiddenError(err)) {
+          return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+        }
+        return reply.status(401).send({ error: "UNAUTHORIZED", message: "Authentication failed" });
+      }
     }
 
     const template = templateService.getTemplateById(orgId, templateId);
@@ -131,6 +158,9 @@ export const templatesRoutes: FastifyPluginAsync<{
       const updated = templateService.updateTemplate(orgId, templateId, parse.data);
       return reply.status(200).send(updated);
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TemplateNotFoundError) {
         return reply.status(404).send({ error: "TEMPLATE_NOT_FOUND", message: err.message });
       }
@@ -166,6 +196,9 @@ export const templatesRoutes: FastifyPluginAsync<{
       const published = templateService.publishTemplate(orgId, templateId);
       return reply.status(200).send(published);
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TemplateNotFoundError) {
         return reply.status(404).send({ error: "TEMPLATE_NOT_FOUND", message: err.message });
       }
@@ -201,6 +234,9 @@ export const templatesRoutes: FastifyPluginAsync<{
       templateService.deleteTemplate(orgId, templateId);
       return reply.status(204).send();
     } catch (err) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       if (err instanceof TemplateNotFoundError) {
         return reply.status(404).send({ error: "TEMPLATE_NOT_FOUND", message: err.message });
       }
