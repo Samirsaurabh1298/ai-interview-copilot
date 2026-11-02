@@ -36,6 +36,7 @@ import type {
   ReviewerEvaluation,
   SubmitReviewerEvaluationRequest,
   CalibrationConsensus,
+  HiringDecisionReport,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -676,6 +677,31 @@ export class ApiClient {
       throw new Error(err.message || err.error || "Failed to generate AI draft scorecard");
     }
     return (await res.json()) as AssessmentScorecard;
+  }
+
+  public static async getHiringDecisionReport(
+    sessionId: string,
+    token?: string
+  ): Promise<HiringDecisionReport> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/report`, {
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(err.message || err.error || "Failed to fetch hiring decision report");
+    }
+    return (await res.json()) as HiringDecisionReport;
+  }
+
+  public static getReportExportUrl(sessionId: string, token?: string): string {
+    const url = `${API_BASE_URL}/sessions/${sessionId}/report/export`;
+    return token ? `${url}?token=${encodeURIComponent(token)}` : url;
   }
 }
 

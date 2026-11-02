@@ -39,6 +39,8 @@ import {
   FileCheck,
   Sliders,
   CheckSquare,
+  FileText,
+  Printer,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -61,6 +63,7 @@ import type {
   RubricDimensionId,
   AssessmentScorecard,
   DimensionCalibration,
+  HiringDecisionReport,
 } from "@ai-copilot/contracts";
 
 const RUBRIC_DIMENSIONS: {
@@ -207,6 +210,11 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [evaluationsList, setEvaluationsList] = useState<ReviewerEvaluation[]>([]);
   const [isEvaluationsMasked, setIsEvaluationsMasked] = useState(false);
   const [isLoadingCalibration, setIsLoadingCalibration] = useState(false);
+
+  // Task 17: Evidence-Linked Hiring Decision Report State
+  const [selectedReport, setSelectedReport] = useState<HiringDecisionReport | null>(null);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
 
   const [activePersona, setActivePersona] = useState<OrganizationMember | null>(null);
   const [activeAuthUser, setActiveAuthUser] = useState<AuthUserContext | null>(null);
@@ -512,6 +520,33 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
     } finally {
       setIsLoadingCalibration(false);
     }
+  };
+
+  const handleOpenHiringReport = async (session: AssessmentSession) => {
+    try {
+      setIsLoadingReport(true);
+      setError(null);
+      const report = await ApiClient.getHiringDecisionReport(session.id, activeJwtToken ?? undefined);
+      setSelectedReport(report);
+      setIsReportModalOpen(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load hiring decision report");
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const handleCopyReportJson = () => {
+    if (!selectedReport) return;
+    navigator.clipboard.writeText(JSON.stringify(selectedReport, null, 2));
+    setCopiedKey("report_json");
+    setTimeout(() => setCopiedKey(null), 2500);
+  };
+
+  const handleExportPrintReport = () => {
+    if (!selectedReport) return;
+    const url = ApiClient.getReportExportUrl(selectedReport.sessionId, activeJwtToken ?? undefined);
+    window.open(url, "_blank");
   };
 
   const handleSelectPersona = async (member: OrganizationMember) => {
@@ -1679,6 +1714,15 @@ describe("useDebouncedFetch verification suite", () => {
                                   <Scale className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                                   <span>Calibration Board</span>
                                 </button>
+                                <button
+                                  onClick={() => handleOpenHiringReport(selectedSessionForAudit)}
+                                  disabled={isLoadingReport}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white border border-blue-500 text-xs font-semibold hover:bg-blue-500 transition-colors shadow-xs"
+                                  title="View evidence-linked candidate hiring decision report"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-white" />
+                                  <span>Decision Report</span>
+                                </button>
                               </>
                             )}
                             <button
@@ -2478,6 +2522,16 @@ describe("useDebouncedFetch verification suite", () => {
                       <Scale className="w-3.5 h-3.5 text-purple-500" />
                       <span>View Calibration</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        setIsSubmissionModalOpen(false);
+                        handleOpenHiringReport(selectedSessionForAudit);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>View Decision Report</span>
+                    </button>
                   </>
                 )}
               </div>
@@ -3078,12 +3132,405 @@ describe("useDebouncedFetch verification suite", () => {
             </div>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex justify-end">
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex items-center justify-between">
+              <div>
+                {sessionForCalibration && (
+                  <button
+                    onClick={() => {
+                      setIsConsensusModalOpen(false);
+                      handleOpenHiringReport(sessionForCalibration);
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>View Hiring Decision Report</span>
+                  </button>
+                )}
+              </div>
               <button
                 onClick={() => setIsConsensusModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-colors"
               >
                 Close Calibration Board
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task 17: Evidence-Linked Hiring Decision Report Modal */}
+      {isReportModalOpen && selectedReport && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between bg-slate-50/50 dark:bg-gray-900/40">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Candidate Hiring Decision Report
+                    </h3>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 uppercase tracking-wide">
+                      Tamper-Evident
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Evidence-Linked Rubric Citations &bull; Multi-Reviewer Calibration &bull; ATS Ready
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsReportModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs">
+              {/* Top Overview & Outcome Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Candidate & Challenge Details */}
+                <div className="md:col-span-2 p-4 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      Assessment Details
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-500">
+                      ID: {selectedReport.reportId.slice(0, 18)}...
+                    </span>
+                  </div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                    {selectedReport.candidateName}
+                  </div>
+                  <div className="text-slate-500 dark:text-gray-400 text-xs">
+                    {selectedReport.candidateEmail} &bull; {selectedReport.targetRole} ({selectedReport.difficulty.toUpperCase()})
+                  </div>
+                  <div className="pt-1 flex items-center gap-3 text-[11px] text-slate-600 dark:text-gray-400">
+                    <span>Challenge: <strong>{selectedReport.templateTitle}</strong></span>
+                    <span>&bull;</span>
+                    <span>Duration: <strong>{selectedReport.telemetrySummary.totalDurationSeconds}s</strong></span>
+                  </div>
+                </div>
+
+                {/* Calibrated Recommendation & Composite Score */}
+                <div className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                      Calibrated Outcome
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        selectedReport.calibrationStatus === "calibrated"
+                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                          : selectedReport.calibrationStatus === "requires_calibration"
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                          : "bg-slate-200 text-slate-700 dark:bg-gray-800 dark:text-gray-300"
+                      }`}
+                    >
+                      {selectedReport.calibrationStatus.replace("_", " ")}
+                    </span>
+                  </div>
+
+                  <div className="my-2">
+                    <div className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400">
+                      {selectedReport.calibratedCompositeScore}
+                      <span className="text-sm text-slate-400 font-normal"> / 100 pts</span>
+                    </div>
+                    <div className="w-full bg-indigo-200 dark:bg-indigo-950/80 rounded-full h-1.5 mt-1 overflow-hidden">
+                      <div
+                        className="bg-indigo-600 dark:bg-indigo-400 h-1.5 rounded-full"
+                        style={{ width: `${Math.min(100, selectedReport.calibratedCompositeScore)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <span
+                      className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wide ${
+                        selectedReport.consensusRecommendation === "strong_hire"
+                          ? "bg-emerald-600 text-white"
+                          : selectedReport.consensusRecommendation === "hire"
+                          ? "bg-blue-600 text-white"
+                          : selectedReport.consensusRecommendation === "lean_hire"
+                          ? "bg-amber-500 text-white"
+                          : selectedReport.consensusRecommendation === "no_hire"
+                          ? "bg-rose-600 text-white"
+                          : "bg-slate-500 text-white"
+                      }`}
+                    >
+                      {selectedReport.consensusRecommendation.replace("_", " ")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cryptographic Tamper-Evident Verification Seal */}
+              <div className="p-4 rounded-xl border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
+                      Cryptographic Tamper-Evident Verification Seal
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-200/80 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200 uppercase">
+                    {selectedReport.verificationSeal.tamperCheckStatus}
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-800/90 dark:text-emerald-300/80">
+                  This report is cryptographically bound to candidate submission SHA-256 digests and server HMAC signatures. Any post-submission modification invalidates this seal.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 font-mono text-[10px] text-slate-600 dark:text-gray-300">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/70 dark:bg-gray-900/50 border border-emerald-200 dark:border-emerald-900">
+                    <span className="truncate mr-2">SHA-256: {selectedReport.verificationSeal.submissionFingerprint}</span>
+                    <button
+                      onClick={() => handleCopy(selectedReport.verificationSeal.submissionFingerprint, "seal_sub")}
+                      className="text-emerald-600 hover:text-emerald-800 shrink-0"
+                      title="Copy Submission Fingerprint"
+                    >
+                      {copiedKey === "seal_sub" ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-white/70 dark:bg-gray-900/50 border border-emerald-200 dark:border-emerald-900">
+                    <span className="truncate mr-2">HMAC: {selectedReport.verificationSeal.reportSignature}</span>
+                    <button
+                      onClick={() => handleCopy(selectedReport.verificationSeal.reportSignature, "seal_hmac")}
+                      className="text-emerald-600 hover:text-emerald-800 shrink-0"
+                      title="Copy HMAC Digital Signature"
+                    >
+                      {copiedKey === "seal_hmac" ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Executive Summary Narrative */}
+              <div className="p-4 rounded-xl border border-purple-200 dark:border-purple-900/60 bg-purple-50/50 dark:bg-purple-950/20 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 dark:text-purple-400 block">
+                  Executive Evaluation Summary
+                </span>
+                <p className="text-slate-800 dark:text-gray-200 leading-relaxed text-xs">
+                  {selectedReport.executiveSummary}
+                </p>
+                {selectedReport.varianceAlerts.length > 0 && (
+                  <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-[11px] space-y-1">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Reviewer Committee Variance Alerts:
+                    </span>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {selectedReport.varianceAlerts.map((alert, idx) => (
+                        <li key={idx}>{alert}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* 7-Dimension Rubric Scorecards & Citations */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
+                    7-Dimension Rubric Scorecard & Evidence Citations
+                  </h4>
+                  <span className="text-[11px] text-slate-400">
+                    Weighted Sum: {selectedReport.calibratedCompositeScore} / 100 pts
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {selectedReport.dimensions.map((dim) => (
+                    <div
+                      key={dim.dimensionId}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-white text-xs">
+                            {dim.name}
+                          </span>
+                          <span className="text-slate-400 text-[11px] ml-2">
+                            Weight: {dim.weight}%
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              dim.calibratedRating === 4
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                                : dim.calibratedRating === 3
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                : dim.calibratedRating === 2
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                : "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                            }`}
+                          >
+                            {dim.calibratedRating}/4 &bull; {dim.calibratedLabel}
+                          </span>
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400 text-xs">
+                            +{dim.weightedScoreContribution} pts
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-600 dark:text-gray-400">
+                        <strong>Consensus Rationale:</strong> {dim.consensusRationale}
+                      </p>
+
+                      {/* Evidence Citations */}
+                      <div className="space-y-1.5 pt-1">
+                        {dim.evidenceCitations.map((ev) => (
+                          <div
+                            key={ev.id}
+                            className={`flex items-start gap-2 p-2 rounded-lg text-[11px] border-l-3 ${
+                              ev.significance === "positive"
+                                ? "border-l-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 text-slate-800 dark:text-gray-200"
+                                : ev.significance === "concerning"
+                                ? "border-l-rose-500 bg-rose-50/40 dark:bg-rose-950/20 text-slate-800 dark:text-gray-200"
+                                : "border-l-slate-400 bg-slate-50 dark:bg-gray-800/40 text-slate-800 dark:text-gray-200"
+                            }`}
+                          >
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-gray-800 text-[9px] font-extrabold text-slate-600 dark:text-gray-300 uppercase shrink-0 mt-0.5">
+                              {ev.type.replace("_", " ")}
+                            </span>
+                            <div>
+                              <strong>{ev.title}:</strong> {ev.citation}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Execution & Proctor Integrity Audit Table */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
+                  Execution & Proctor Integrity Audit
+                </h4>
+                <div className="border border-slate-200 dark:border-gray-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-slate-50 dark:bg-gray-800/60 text-slate-500 dark:text-gray-400 font-semibold border-b border-slate-200 dark:border-gray-800">
+                      <tr>
+                        <th className="p-2.5">Category</th>
+                        <th className="p-2.5">Observed Metric</th>
+                        <th className="p-2.5">Verification Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-gray-800/60">
+                      <tr>
+                        <td className="p-2.5 font-medium text-slate-800 dark:text-gray-200">Unit Tests</td>
+                        <td className="p-2.5">
+                          {selectedReport.telemetrySummary.testsSummary.passedCount} of {selectedReport.telemetrySummary.testsSummary.totalCount} tests passed ({selectedReport.telemetrySummary.testsSummary.durationMs}ms)
+                        </td>
+                        <td className="p-2.5">
+                          {selectedReport.telemetrySummary.testsSummary.passed ? (
+                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">Passed Verified</span>
+                          ) : (
+                            <span className="text-rose-600 dark:text-rose-400 font-bold">Assertion Failures</span>
+                          )}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-medium text-slate-800 dark:text-gray-200">AI Budget Stewardship</td>
+                        <td className="p-2.5">
+                          ${selectedReport.telemetrySummary.aiBudgetConsumedUsd.toFixed(3)} consumed of ${selectedReport.telemetrySummary.aiBudgetCapUsd.toFixed(2)} cap ({selectedReport.telemetrySummary.aiQueriesCount} queries)
+                        </td>
+                        <td className="p-2.5 text-emerald-600 dark:text-emerald-400 font-semibold">Compliant</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-medium text-slate-800 dark:text-gray-200">AI Patch Scrutiny</td>
+                        <td className="p-2.5">
+                          {selectedReport.telemetrySummary.patchDecisions.accepted} accepted, {selectedReport.telemetrySummary.patchDecisions.rejected} rejected after diff review
+                        </td>
+                        <td className="p-2.5 text-slate-600 dark:text-gray-400">Explicit Diff Verification</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-medium text-slate-800 dark:text-gray-200">Proctor Controls</td>
+                        <td className="p-2.5">
+                          {selectedReport.telemetrySummary.technicalIncidentsCount} technical incident pauses ({selectedReport.telemetrySummary.totalPausedMs}ms paused)
+                        </td>
+                        <td className="p-2.5 text-slate-600 dark:text-gray-400">Dynamic Deadline Extension</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Reviewer Committee Sign-offs */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider">
+                  Reviewer Committee Sign-offs
+                </h4>
+                {selectedReport.committeeSignoffs.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedReport.committeeSignoffs.map((s) => (
+                      <div
+                        key={s.reviewerId}
+                        className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40 text-[11px] space-y-1"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white">{s.reviewerName}</span>
+                          <span className="font-extrabold text-indigo-600 dark:text-indigo-400">{s.weightedScore} pts</span>
+                        </div>
+                        <div className="text-slate-400 text-[10px]">{s.reviewerEmail}</div>
+                        <div className="pt-1 flex items-center justify-between">
+                          <span className="font-semibold uppercase text-slate-700 dark:text-gray-300">
+                            {s.recommendation.replace("_", " ")}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            Signed {new Date(s.submittedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-400 italic text-xs">
+                    No human reviewer evaluations submitted yet. Automated advisory baseline is displayed.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportPrintReport}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print / Save to PDF</span>
+                </button>
+                <button
+                  onClick={handleCopyReportJson}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-800 font-semibold text-xs transition-colors"
+                >
+                  {copiedKey === "report_json" ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                      <span className="text-emerald-600">Copied ATS JSON</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy ATS/HRIS JSON</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={() => setIsReportModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-colors"
+              >
+                Close Report
               </button>
             </div>
           </div>

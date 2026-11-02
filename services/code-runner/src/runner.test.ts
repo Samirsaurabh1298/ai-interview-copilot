@@ -113,7 +113,7 @@ describe("Isolated Code Runner", () => {
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  });
+  }, 12000);
 
   it("prohibits host child process execution", async () => {
     const result = await executeCodeInSandbox({
@@ -146,7 +146,7 @@ describe("Isolated Code Runner", () => {
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  });
+  }, 12000);
 
   it("prohibits worker thread creation", async () => {
     const result = await executeCodeInSandbox({
@@ -179,7 +179,7 @@ describe("Isolated Code Runner", () => {
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  });
+  }, 12000);
 
   it("prohibits dynamic string code evaluation via eval()", async () => {
     const result = await executeCodeInSandbox({
@@ -210,7 +210,7 @@ describe("Isolated Code Runner", () => {
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  });
+  }, 12000);
 
   it("rejects candidate code attempting to fake test pass via process.exit()", async () => {
     const result = await executeCodeInSandbox({

@@ -20,6 +20,7 @@ import { invitationsRoutes } from "./routes/invitations.js";
 import { sessionsRoutes } from "./routes/sessions.js";
 import { sessionEventsRoutes } from "./routes/session-events.js";
 import { calibrationRoutes } from "./routes/calibration.js";
+import { reportsRoutes } from "./routes/reports.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
@@ -31,6 +32,7 @@ import { AssessmentSessionService } from "./services/session.js";
 import { SessionEventsService } from "./services/session-events.js";
 import { SubmissionService } from "./services/submission.js";
 import { CalibrationService } from "./services/calibration.js";
+import { ReportService } from "./services/report.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -146,6 +148,15 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     eventsService,
     orgService
   );
+  const reportService = new ReportService(
+    sessionService,
+    templateService,
+    submissionService,
+    calibrationService,
+    eventsService,
+    orgService,
+    config.JWT_SECRET
+  );
   const invitationService = new CandidateInvitationService(
     templateService,
     orgService,
@@ -201,6 +212,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await app.register(calibrationRoutes, {
     prefix: "/api/v1/sessions",
     calibrationService,
+    authService,
+    sessionService,
+  });
+
+  await app.register(reportsRoutes, {
+    prefix: "/api/v1/sessions",
+    reportService,
     authService,
     sessionService,
   });

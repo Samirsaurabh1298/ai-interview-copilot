@@ -432,25 +432,20 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 
 ### Workflow 4: Reviewer & Hiring Manager Evaluation Guide
 1. **Open Candidate Scorecard:**
-   - Reviewer clicks on candidate's submitted session and opens the **7-Dimension Scorecard Modal**.
-2. **Inspect Weighted Dimension Ratings:**
-   - Total Weighted Score: e.g. `88.5 / 100`.
-   - Review individual ratings across:
-     - Code Comprehension: `Anchor 4: Strong (20/20)`
-     - AI Collaboration: `Anchor 3: Proficient (12/15)`
-     - Critical Evaluation: `Anchor 4: Strong (15/15)`
-     - Debugging & Implementation: `Anchor 4: Strong (20/20)` (5/5 tests passed)
-     - Testing Discipline: `Anchor 3: Proficient (12/15)`
-     - Technical Explanation: `Anchor 4: Strong (5/5)`
-3. **Review Concrete Evidence Citations:**
-   - Reviewer reads concrete citations: test pass count, total test runs, AI queries asked, diffs rejected/accepted, and candidate explanation.
-4. **Calibrate Anchors & Add Reviewer Notes:**
-   - Reviewer can calibrate dimension anchors based on interview depth.
-   - Adds qualitative notes in the calibration field.
-5. **Verify Cryptographic SHA-256 Fingerprint:**
-   - Confirms submission hash matches baseline template hash.
-6. **Export Audit Report:**
-   - Click **`[Export Scorecard JSON]`** to archive the assessment in enterprise ATS/HRIS (Workday, Greenhouse, Lever).
+   - Reviewer clicks on candidate's submitted session in the audit log and opens the **7-Dimension Rubric Scorecard Modal** (`[Score Rubric]`).
+2. **Review Advisory AI Baseline & Enter Human Scores:**
+   - Click **`[Auto-fill from AI Draft]`** to load automated baseline anchors generated from code AST diffs, test logs, and AI queries.
+   - Select 1–4 anchors (Developing, Competent, Advanced, Exemplary) for each of the 7 dimensions.
+   - Enter specific rationales and select a Hiring Recommendation (`Strong Hire`, `Hire`, `Lean Hire`, `No Hire`).
+3. **Multi-Reviewer Calibration Consensus:**
+   - Click **`[Calibration Board]`** to compare independent reviewer scorecards.
+   - **Anti-Bias Invariant:** Blind review conceals other reviewers' ratings until the reviewer submits their own scorecard.
+   - **Variance Alerts:** Automated spread detection ($\Delta \ge 2$) flags divergence for committee discussion.
+4. **Generate Tamper-Evident Hiring Decision Report:**
+   - Click **`[Decision Report]`** to view the comprehensive evidence-linked report.
+   - **Cryptographic Seal:** Verifies submission SHA-256 fingerprint against published template version hash with server HMAC digital signature.
+   - **Line-by-Line Evidence Links:** Directly cites AST diffs, test assertion timings, and AI prompt scrutiny.
+   - **1-Click Export:** Click **`[Print / Save to PDF]`** for printable executive review, or **`[Copy ATS/HRIS JSON]`** for Greenhouse, Lever, or Workday candidate archiving.
 
 ---
 
@@ -527,6 +522,13 @@ Fastify API server (`http://127.0.0.1:4000`):
 | `POST` | `/api/v1/sessions/:sessionId/events` | Candidate / Bearer | Ingests batch of chronological telemetry audit events. |
 | `GET` | `/api/v1/sessions/:sessionId/events` | Reviewer / Interviewer / Admin | Retrieves chronological telemetry stream for audit review. |
 | `POST` | `/api/v1/sessions/:sessionId/submit` | Candidate / Bearer | Submits final solution, bundles artifacts, locks session. |
+| `POST` | `/api/v1/sessions/:sessionId/pause` | Bearer (`interviewer`, `admin`, `owner`) | Proctor control: freezes session timer during technical incidents (Task 15). |
+| `POST` | `/api/v1/sessions/:sessionId/resume` | Bearer (`interviewer`, `admin`, `owner`) | Proctor control: unfreezes timer and dynamically extends server deadline (Task 15). |
+| `POST` | `/api/v1/sessions/:sessionId/evaluations` | Bearer (`interviewer`, `reviewer`, `admin`) | Submits blind 7-dimension rubric scorecard (Task 16). |
+| `GET` | `/api/v1/sessions/:sessionId/evaluations` | Bearer JWT | Retrieves evaluations with blind-scoring anti-bias masking (Task 16). |
+| `GET` | `/api/v1/sessions/:sessionId/calibration` | Bearer JWT | Returns multi-reviewer consensus and spread flags (Task 16). |
+| `GET` | `/api/v1/sessions/:sessionId/report` | Bearer JWT | Generates evidence-linked hiring decision report with tamper seal (Task 17). |
+| `GET` | `/api/v1/sessions/:sessionId/report/export` | Bearer / Token Query | Exports standalone print-ready HTML / PDF executive view (Task 17). |
 | `POST` | `/api/v1/code/validate` | Candidate / Bearer | Executes code inside Node 22 native isolated sandbox. |
 | `POST` | `/api/v1/answers/generate` | Candidate / Bearer | Generates AI assistant responses within budget cap. |
 | `POST` | `/api/v1/assessment/evaluate` | Reviewer / Interviewer / Admin | Evaluates submission and computes 7-dimension scorecard. |
@@ -559,8 +561,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling | 45 / 45 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **81 / 81** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, and evidence reports | 56 / 56 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **92 / 92** | **100% PASS** |
 
 ---
 
@@ -568,6 +570,10 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
+- `HEAD` — **feat(reports):** implement evidence-linked hiring decision reports, tamper verification seal, and HTML/PDF export (Task 17)
+- `f0a85ed` — **feat(calibration):** add multi-reviewer rubric scorecard and consensus board UI (Task 16)
+- `317fbc0` — **feat(calibration):** implement multi-reviewer calibration, blind scoring, and variance detection (Task 16)
+- `a4fc469` — **feat(proctor):** implement proctor controls, session pause/resume, and crash recovery (Task 15)
 - `afb44dc` — **feat(submission):** implement immutable artifact bundling with canonical sha256 fingerprint (Task 14)
 - `c85fe95` — **fix(telemetry):** resolve undefined array indexing and isolate test port in session events
 - `6174291` — **docs:** comprehensive feature inventory, architectural blueprint, and user workflows manual
