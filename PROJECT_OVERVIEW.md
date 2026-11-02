@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 119 / 119 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 134 / 134 Automated Tests Passing (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
@@ -561,8 +561,8 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, and multi-tenant IDOR attack suite | 83 / 83 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **119 / 119** | **100% PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, and ATS/HRIS webhooks | 98 / 98 | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **134 / 134** | **100% PASS** |
 
 ---
 
@@ -570,7 +570,8 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(security):** implement multi-tenant IDOR guards, token brute-force rate limiter, and adversarial penetration test suite (Task 18)
+- `HEAD` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
+- `213aa37` — **feat(security):** implement multi-tenant IDOR guards, token brute-force rate limiter, and adversarial penetration test suite (Task 18)
 - `3873048` — **feat(reports):** implement evidence-linked hiring decision reports, tamper verification seal, and HTML/PDF export (Task 17)
 - `f0a85ed` — **feat(calibration):** add multi-reviewer rubric scorecard and consensus board UI (Task 16)
 - `317fbc0` — **feat(calibration):** implement multi-reviewer calibration, blind scoring, and variance detection (Task 16)

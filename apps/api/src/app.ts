@@ -21,6 +21,7 @@ import { sessionsRoutes } from "./routes/sessions.js";
 import { sessionEventsRoutes } from "./routes/session-events.js";
 import { calibrationRoutes } from "./routes/calibration.js";
 import { reportsRoutes } from "./routes/reports.js";
+import { webhooksRoutes } from "./routes/webhooks.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
@@ -33,6 +34,7 @@ import { SessionEventsService } from "./services/session-events.js";
 import { SubmissionService } from "./services/submission.js";
 import { CalibrationService } from "./services/calibration.js";
 import { ReportService } from "./services/report.js";
+import { WebhookService } from "./services/webhook.js";
 import type { AppConfig } from "./config.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
@@ -157,6 +159,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     orgService,
     config.JWT_SECRET
   );
+  const webhookService = new WebhookService(orgService);
   const invitationService = new CandidateInvitationService(
     templateService,
     orgService,
@@ -222,6 +225,12 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     reportService,
     authService,
     sessionService,
+  });
+
+  await app.register(webhooksRoutes, {
+    prefix: "/api/v1/webhooks",
+    webhookService,
+    authService,
   });
 
   await app.register(answersRoutes, {
