@@ -53,7 +53,7 @@ export type PracticeChallenge = z.infer<typeof PracticeChallengeSchema>;
 export const PracticeSubmissionRequestSchema = z.object({
   challengeId: z.string(),
   candidateCode: z.string().min(1, "Candidate code cannot be empty"),
-  technicalExplanation: z.string().min(10, "Technical explanation must be at least 10 characters"),
+  technicalExplanation: z.string().min(1, "Technical explanation cannot be empty"),
   elapsedSeconds: z.number().int().min(0),
   aiQueriesCount: z.number().int().min(0).default(0),
   aiBudgetConsumedUsd: z.number().min(0).default(0),

@@ -94,6 +94,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   // Submission & Feedback
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [technicalExplanation, setTechnicalExplanation] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [feedbackCard, setFeedbackCard] = useState<PracticeFeedbackCard | null>(null);
   const [showSolutionTemplate, setShowSolutionTemplate] = useState(false);
@@ -288,7 +289,24 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       });
       setTestResult(result);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to execute tests in sandbox");
+      const errMsg = err instanceof Error ? err.message : "Failed to execute tests in sandbox";
+      setTestResult({
+        success: false,
+        passed: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: errMsg,
+        durationMs: 0,
+        tests: [
+          {
+            name: `${(selectedChallenge.language || "polyglot").toUpperCase()} Execution Check`,
+            passed: false,
+            durationMs: 0,
+            error: errMsg,
+          },
+        ],
+        sandboxed: true,
+      });
     } finally {
       setIsRunningTests(false);
     }
@@ -365,6 +383,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   const handleSubmitPractice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChallenge) return;
+    setSubmitError(null);
     try {
       setIsEvaluating(true);
       setIsTimerRunning(false);
@@ -373,7 +392,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       let finalTestRun = testResult;
       if (!finalTestRun) {
         finalTestRun = await ApiClient.validateCode({
-          language: "typescript",
+          language: selectedChallenge.language || "typescript",
           code,
           testCode: selectedChallenge.verificationTestCode,
           timeoutMs: 4000,
@@ -413,7 +432,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       setIsSubmitModalOpen(false);
       setActiveStage("feedback");
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Evaluation failed");
+      setSubmitError(err instanceof Error ? err.message : "Evaluation failed");
     } finally {
       setIsEvaluating(false);
     }
@@ -1331,10 +1350,20 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                     required
                     placeholder="Summarize root cause of defect, how you fixed it, and algorithmic time/space complexity..."
                     value={technicalExplanation}
-                    onChange={(e) => setTechnicalExplanation(e.target.value)}
+                    onChange={(e) => {
+                      setTechnicalExplanation(e.target.value);
+                      if (submitError) setSubmitError(null);
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
+
+                {submitError && (
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
 
                 <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
                   <button

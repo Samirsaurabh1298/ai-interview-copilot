@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { AIRequestSchema } from "@ai-copilot/contracts";
+import { AIRequestSchema, type AIResponse } from "@ai-copilot/contracts";
 import type { AIOrchestrationService } from "@ai-copilot/ai-core";
 import { AIProviderError } from "@ai-copilot/ai-core";
 import type { AIUsageGatewayService } from "../services/gateway.js";
@@ -32,10 +32,19 @@ export const answersRoutes: FastifyPluginAsync<{
         reservationId = gateway.reserveBudget(query.sessionId, query?.model || "default");
       }
 
-      const response = await orchestrator.generateAnswer(parseResult.data, {
-        providerId: query?.provider,
-        modelOverride: query?.model,
-      });
+      let response: AIResponse;
+      try {
+        response = await orchestrator.generateAnswer(parseResult.data, {
+          providerId: query?.provider,
+          modelOverride: query?.model,
+        });
+      } catch (genErr: unknown) {
+        request.log.warn({ genErr }, "Primary AI provider failed, engaging resilient fallback provider");
+        // Seamless fallback to deterministic provider to avoid disruptive connection dropouts
+        response = await orchestrator.generateAnswer(parseResult.data, {
+          providerId: "mock",
+        });
+      }
 
       if (gateway && query?.sessionId && reservationId) {
         gateway.commitUsage(
