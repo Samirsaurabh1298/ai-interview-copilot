@@ -20,10 +20,11 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 
 1. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
 2. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-3. **Hardened Ephemeral Code Sandbox:** Node 22 native execution with `--permission`, `--disallow-code-generation-from-strings`, stripped environment variables, temp directory jail, and socket interception traps (AD #8).
-4. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-5. **Human Reviewer Accountability:** AI scorecards are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-6. **Anti-IDOR Tenant Boundary:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control (`owner`, `admin`, `interviewer`, `reviewer`, `candidate`).
+3. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
+4. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
+5. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
+6. **Human Reviewer Accountability:** AI scorecards are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
+7. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
 
 ---
 

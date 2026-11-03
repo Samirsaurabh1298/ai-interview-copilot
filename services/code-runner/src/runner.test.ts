@@ -231,5 +231,70 @@ describe("Isolated Code Runner", () => {
     // Must NOT pass because tests were intercepted or could not complete cleanly
     expect(result.passed).toBe(false);
   });
+
+  it("executes Python solutions and verifies test assertions in Python sandbox", async () => {
+    const result = await executeCodeInSandbox({
+      language: "python",
+      code: `
+def two_sum(nums, target):
+    seen = {}
+    for i, n in enumerate(nums):
+        complement = target - n
+        if complement in seen:
+            return [seen[complement], i]
+        seen[n] = i
+    return []
+`,
+      testCode: `
+def test_two_sum_basic():
+    res = two_sum([2, 7, 11, 15], 9)
+    assert res == [0, 1], f"Expected [0, 1] got {res}"
+
+def test_two_sum_negatives():
+    res = two_sum([-1, -2, -3, -4, -5], -8)
+    assert res == [2, 4], f"Expected [2, 4] got {res}"
+
+test("test_two_sum_basic", test_two_sum_basic)
+test("test_two_sum_negatives", test_two_sum_negatives)
+`,
+      timeoutMs: 5000,
+      memoryLimitMb: 64,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.tests.length).toBe(2);
+    expect(result.tests[0]?.passed).toBe(true);
+    expect(result.tests[1]?.passed).toBe(true);
+  });
+
+  it("verifies polyglot Go and Java challenges via static contract engine", async () => {
+    const goResult = await executeCodeInSandbox({
+      language: "go",
+      code: `
+package main
+
+type LRUCache struct {
+    capacity int
+    items    map[string]string
+}
+
+func NewLRUCache(cap int) *LRUCache {
+    return &LRUCache{capacity: cap, items: make(map[string]string)}
+}
+`,
+      testCode: `
+func TestLRUCacheOperations(t *testing.T) {}
+func TestLRUCacheEviction(t *testing.T) {}
+`,
+      timeoutMs: 5000,
+    });
+
+    expect(goResult.success).toBe(true);
+    expect(goResult.passed).toBe(true);
+    expect(goResult.tests.length).toBe(2);
+    expect(goResult.tests[0]?.name).toBe("TestLRUCacheOperations");
+    expect(goResult.tests[1]?.name).toBe("TestLRUCacheEviction");
+  });
 });
 

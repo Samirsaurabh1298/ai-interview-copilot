@@ -3,6 +3,7 @@ import {
   PracticeDifficultySchema,
   PracticeSubmissionRequestSchema,
   PracticeTrackSchema,
+  ProgrammingLanguageSchema,
 } from "@ai-copilot/contracts";
 import type { PracticeStudioService } from "../services/practice.js";
 
@@ -16,9 +17,9 @@ export const practiceRoutes: FastifyPluginAsync<PracticeRouteOptions> = async (
 ) => {
   const { practiceService } = options;
 
-  // List practice challenges (optionally filtered by track / difficulty)
+  // List practice challenges (optionally filtered by track / difficulty / language)
   fastify.get("/challenges", async (request, reply) => {
-    const query = request.query as { track?: string; difficulty?: string };
+    const query = request.query as { track?: string; difficulty?: string; language?: string };
 
     let track;
     if (query.track) {
@@ -32,7 +33,13 @@ export const practiceRoutes: FastifyPluginAsync<PracticeRouteOptions> = async (
       if (parsedDiff.success) difficulty = parsedDiff.data;
     }
 
-    const challenges = practiceService.listChallenges(track, difficulty);
+    let language;
+    if (query.language) {
+      const parsedLang = ProgrammingLanguageSchema.safeParse(query.language);
+      if (parsedLang.success) language = parsedLang.data;
+    }
+
+    const challenges = practiceService.listChallenges(track, difficulty, language);
     return reply.status(200).send({
       challenges,
       total: challenges.length,

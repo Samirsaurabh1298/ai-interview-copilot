@@ -46,6 +46,7 @@ import type {
   PracticeFeedbackCard,
   PracticeTrack,
   PracticeDifficulty,
+  ProgrammingLanguage,
   ScreenCaptureIngestRequest,
   ExtractedChallengeResponse,
 } from "@ai-copilot/contracts";
@@ -824,11 +825,13 @@ export class ApiClient {
 
   public static async listPracticeChallenges(
     track?: PracticeTrack,
-    difficulty?: PracticeDifficulty
+    difficulty?: PracticeDifficulty,
+    language?: ProgrammingLanguage
   ): Promise<{ challenges: PracticeChallenge[]; total: number }> {
     const params = new URLSearchParams();
     if (track) params.append("track", track);
     if (difficulty) params.append("difficulty", difficulty);
+    if (language) params.append("language", language);
 
     const qs = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`${API_BASE_URL}/practice/challenges${qs}`);

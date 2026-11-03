@@ -1,7 +1,18 @@
 import { z } from "zod";
 
+export const ProgrammingLanguageSchema = z.enum([
+  "typescript",
+  "javascript",
+  "python",
+  "go",
+  "java",
+  "cpp",
+  "rust",
+]);
+export type ProgrammingLanguage = z.infer<typeof ProgrammingLanguageSchema>;
+
 export const CodeValidationRequestSchema = z.object({
-  language: z.enum(["typescript", "javascript", "python"]),
+  language: ProgrammingLanguageSchema,
   code: z.string().min(1, "Code cannot be empty"),
   testCode: z.string().min(1, "Test code cannot be empty"),
   timeoutMs: z.number().int().min(500).max(15000).default(5000),

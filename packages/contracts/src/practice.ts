@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { RubricDimensionIdSchema, RubricRatingAnchorSchema } from "./assessment.js";
 import { HiringRecommendationSchema } from "./calibration.js";
+import { ProgrammingLanguageSchema } from "./validation.js";
 
 // ==============================================================================
 // Practice Track & Difficulty Schemas
@@ -33,6 +34,7 @@ export const PracticeChallengeSchema = z.object({
   title: z.string(),
   track: PracticeTrackSchema,
   difficulty: PracticeDifficultySchema,
+  language: ProgrammingLanguageSchema.default("typescript"),
   estimatedMinutes: z.number().int().min(10).max(180).default(45),
   description: z.string().min(20),
   starterCode: z.string(),

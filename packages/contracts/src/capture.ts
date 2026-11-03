@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { PracticeTrackSchema, PracticeDifficultySchema } from "./practice.js";
 import { CropRegionSchema } from "./extraction.js";
+import { ProgrammingLanguageSchema } from "./validation.js";
 
 export const ScreenCaptureIngestRequestSchema = z.object({
   imageBase64: z.string().min(1, "Image base64 data or data URL is required"),
   mimeType: z.enum(["image/png", "image/jpeg", "image/webp"]).default("image/png"),
   crop: CropRegionSchema.optional(),
   userHint: z.string().optional(),
-  targetLanguage: z.enum(["typescript", "javascript", "python"]).default("typescript"),
+  targetLanguage: ProgrammingLanguageSchema.default("typescript"),
   trackHint: PracticeTrackSchema.optional(),
 });
 
@@ -27,6 +28,7 @@ export const ExtractedChallengeResponseSchema = z.object({
   title: z.string().min(1),
   track: PracticeTrackSchema,
   difficulty: PracticeDifficultySchema,
+  language: ProgrammingLanguageSchema.default("typescript"),
   timeLimitMinutes: z.number().int().positive().default(45),
   description: z.string().min(1),
   starterCode: z.string(),

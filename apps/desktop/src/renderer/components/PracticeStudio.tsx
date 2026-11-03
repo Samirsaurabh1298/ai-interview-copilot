@@ -37,6 +37,7 @@ import type {
   PracticeFeedbackCard,
   PracticeSubmissionRequest,
   PracticeTrack,
+  ProgrammingLanguage,
   CodeValidationResponse,
   AIResponse,
   ExtractedChallengeResponse,
@@ -61,6 +62,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   const [selectedChallenge, setSelectedChallenge] = useState<PracticeChallenge | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<PracticeTrack | "all">("all");
   const [selectedDifficulty, setSelectedDifficulty] = useState<PracticeDifficulty | "all">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<ProgrammingLanguage | "all">("all");
   const [isLoadingChallenges, setIsLoadingChallenges] = useState(false);
 
   // Active Workspace State
@@ -102,7 +104,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   const [captureTab, setCaptureTab] = useState<"upload" | "presets">("upload");
   const [captureImageBase64, setCaptureImageBase64] = useState<string | null>(null);
   const [captureUserHint, setCaptureUserHint] = useState("");
-  const [captureLanguage, setCaptureLanguage] = useState<"typescript" | "javascript">("typescript");
+  const [captureLanguage, setCaptureLanguage] = useState<ProgrammingLanguage>("typescript");
   const [captureTrack, setCaptureTrack] = useState<PracticeTrack | "all">("all");
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
@@ -200,6 +202,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       title: extractedPreview.title,
       track: extractedPreview.track,
       difficulty: extractedPreview.difficulty,
+      language: extractedPreview.language || captureLanguage || "typescript",
       estimatedMinutes: extractedPreview.timeLimitMinutes || 45,
       description: extractedPreview.description,
       starterCode: extractedPreview.starterCode,
@@ -217,7 +220,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   // Load catalog on mount
   useEffect(() => {
     loadCatalog();
-  }, [selectedTrack, selectedDifficulty]);
+  }, [selectedTrack, selectedDifficulty, selectedLanguage]);
 
   // Timer countdown / elapsed
   useEffect(() => {
@@ -237,7 +240,8 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       setIsLoadingChallenges(true);
       const trackParam = selectedTrack === "all" ? undefined : selectedTrack;
       const diffParam = selectedDifficulty === "all" ? undefined : selectedDifficulty;
-      const data = await ApiClient.listPracticeChallenges(trackParam, diffParam);
+      const langParam = selectedLanguage === "all" ? undefined : selectedLanguage;
+      const data = await ApiClient.listPracticeChallenges(trackParam, diffParam, langParam);
       setChallenges(data.challenges);
     } catch (err) {
       console.error("Failed to load practice catalog:", err);
@@ -276,7 +280,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
       setTestRunsCount((prev) => prev + 1);
       setWorkspaceTab("tests");
       const result = await ApiClient.validateCode({
-        language: "typescript",
+        language: selectedChallenge.language || "typescript",
         code,
         testCode: selectedChallenge.verificationTestCode,
         timeoutMs: 4000,
@@ -637,19 +641,27 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                   <label className="text-[11px] font-bold text-slate-700 dark:text-gray-300 block mb-1">
                     Target Language:
                   </label>
-                  <div className="flex items-center gap-2">
-                    {(["typescript", "javascript"] as const).map((lang) => (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {([
+                      { id: "typescript", label: "TypeScript" },
+                      { id: "javascript", label: "JavaScript" },
+                      { id: "python", label: "Python 3" },
+                      { id: "go", label: "Go" },
+                      { id: "java", label: "Java" },
+                      { id: "cpp", label: "C++20" },
+                      { id: "rust", label: "Rust" },
+                    ] as const).map((lang) => (
                       <button
-                        key={lang}
+                        key={lang.id}
                         type="button"
-                        onClick={() => setCaptureLanguage(lang)}
-                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold capitalize border transition-all ${
-                          captureLanguage === lang
+                        onClick={() => setCaptureLanguage(lang.id)}
+                        className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold border transition-all ${
+                          captureLanguage === lang.id
                             ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
                             : "bg-white dark:bg-gray-800 text-slate-700 dark:text-gray-300 border-slate-200 dark:border-gray-700 hover:bg-slate-50 dark:hover:bg-gray-700"
                         }`}
                       >
-                        {lang}
+                        {lang.label}
                       </button>
                     ))}
                   </div>
@@ -817,6 +829,23 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                   </button>
                 ))}
               </div>
+
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-gray-800 text-xs font-semibold">
+                <span className="px-2 text-[10px] uppercase tracking-wider text-slate-400 font-bold">Language:</span>
+                {(["all", "typescript", "javascript", "python", "go", "java", "cpp", "rust"] as const).map((l) => (
+                  <button
+                    key={l}
+                    onClick={() => setSelectedLanguage(l)}
+                    className={`px-3 py-1 rounded-lg capitalize transition-all ${
+                      selectedLanguage === l
+                        ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400 font-bold"
+                        : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+                    }`}
+                  >
+                    {l === "all" ? "All Languages" : l === "cpp" ? "C++" : l}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -847,17 +876,22 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                     className="flex flex-col rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] p-6 shadow-xs hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all group"
                   >
                     <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        chal.difficulty === "junior"
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                          : chal.difficulty === "mid"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
-                          : chal.difficulty === "senior"
-                          ? "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
-                          : "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
-                      }`}>
-                        {chal.difficulty} • {chal.track}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          chal.difficulty === "junior"
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : chal.difficulty === "mid"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300"
+                            : chal.difficulty === "senior"
+                            ? "bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300"
+                            : "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                        }`}>
+                          {chal.difficulty} • {chal.track}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 font-mono">
+                          {chal.language === "cpp" ? "C++" : chal.language || "typescript"}
+                        </span>
+                      </div>
                       <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         <span>{chal.estimatedMinutes}m</span>
@@ -1136,7 +1170,24 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
             <div className="p-2.5 bg-[#0e1322] border-b border-slate-800 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <Code2 className="w-4 h-4 text-indigo-400" />
-                <span className="font-mono text-slate-300 font-semibold">candidateSolution.ts</span>
+                <span className="font-mono text-slate-300 font-semibold">
+                  {selectedChallenge.language === "python"
+                    ? "candidate_solution.py"
+                    : selectedChallenge.language === "go"
+                    ? "candidate_solution.go"
+                    : selectedChallenge.language === "java"
+                    ? "CandidateSolution.java"
+                    : selectedChallenge.language === "cpp"
+                    ? "candidate_solution.cpp"
+                    : selectedChallenge.language === "rust"
+                    ? "candidate_solution.rs"
+                    : selectedChallenge.language === "javascript"
+                    ? "candidateSolution.js"
+                    : "candidateSolution.ts"}
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-950 text-indigo-400 border border-indigo-800/80 font-mono">
+                  {selectedChallenge.language === "cpp" ? "C++" : selectedChallenge.language || "typescript"}
+                </span>
               </div>
               <button
                 onClick={() => setCode(selectedChallenge.starterCode)}

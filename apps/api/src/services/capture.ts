@@ -4,6 +4,7 @@ import type {
   ExtractedChallengeResponse,
   PracticeTrack,
   PracticeDifficulty,
+  ProgrammingLanguage,
 } from "@ai-copilot/contracts";
 import type { GoogleGeminiProvider } from "@ai-copilot/ai-provider-google";
 import type { OpenAIProvider } from "@ai-copilot/ai-provider-openai";
@@ -142,6 +143,7 @@ Return STRICTLY a JSON object matching this schema:
       title: parsed.title || "Extracted Programming Challenge",
       track: parsed.track || request.trackHint || "algorithms",
       difficulty: (parsed.difficulty?.toLowerCase() || "mid") as PracticeDifficulty,
+      language: request.targetLanguage || "typescript",
       timeLimitMinutes: parsed.timeLimitMinutes || 45,
       description: parsed.description || "Problem extracted from screen.",
       starterCode: parsed.starterCode || "// Write your solution here\n",
@@ -189,6 +191,7 @@ title, track ("frontend"|"backend"|"fullstack"|"systems"|"algorithms"), difficul
       title: parsed.title || "Extracted Programming Challenge",
       track: parsed.track || request.trackHint || "algorithms",
       difficulty: (parsed.difficulty?.toLowerCase() || "mid") as PracticeDifficulty,
+      language: request.targetLanguage || "typescript",
       timeLimitMinutes: parsed.timeLimitMinutes || 45,
       description: parsed.description || "Problem extracted from screen.",
       starterCode: parsed.starterCode || "// Write your solution here\n",
@@ -246,6 +249,7 @@ title, track, difficulty, timeLimitMinutes, description, starterCode, testCases,
         title: parsed.title || "Extracted Programming Challenge",
         track: parsed.track || request.trackHint || "algorithms",
         difficulty: (parsed.difficulty?.toLowerCase() || "mid") as PracticeDifficulty,
+        language: request.targetLanguage || "typescript",
         timeLimitMinutes: parsed.timeLimitMinutes || 45,
         description: parsed.description || "Problem extracted from screen.",
         starterCode: parsed.starterCode || "// Write your solution here\n",
@@ -269,14 +273,17 @@ title, track, difficulty, timeLimitMinutes, description, starterCode, testCases,
     request: ScreenCaptureIngestRequest
   ): ExtractedChallengeResponse {
     const hint = (request.userHint || "").toLowerCase();
+    const targetLang: ProgrammingLanguage = request.targetLanguage || "typescript";
     const uniqueId = `ingested-${crypto.randomBytes(4).toString("hex")}`;
 
     if (hint.includes("lru") || hint.includes("cache")) {
+      const stubs = this.buildPolyglotProblemStubs("lru", targetLang);
       return {
         id: uniqueId,
         title: "LRU Cache (Least Recently Used) with O(1) Operations",
         track: "backend",
         difficulty: "senior",
+        language: targetLang,
         timeLimitMinutes: 45,
         description: `### Problem Description: LRU Cache
 Design a data structure that follows the constraints of a **Least Recently Used (LRU) cache**.
@@ -293,68 +300,15 @@ The functions \`get\` and \`put\` must each run in **O(1) average time complexit
 - \`0 <= key <= 10^4\`
 - \`0 <= value <= 10^5\`
 - At most \`2 * 10^5\` calls will be made to \`get\` and \`put\`.`,
-        starterCode: `export class LRUCache {
-  private capacity: number;
-  private cache: Map<number, number>;
-
-  constructor(capacity: number) {
-    this.capacity = capacity;
-    this.cache = new Map();
-  }
-
-  get(key: number): number {
-    if (!this.cache.has(key)) return -1;
-    const val = this.cache.get(key)!;
-    // Re-insert to mark as recently used
-    this.cache.delete(key);
-    this.cache.set(key, val);
-    return val;
-  }
-
-  put(key: number, value: number): void {
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    } else if (this.cache.size >= this.capacity) {
-      // Evict least recently used (first key in map iterator)
-      const oldestKey = this.cache.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.cache.delete(oldestKey);
-      }
-    }
-    this.cache.set(key, value);
-  }
-}`,
+        starterCode: stubs.starterCode,
         testCases: [
           { name: "Capacity 2 put and get", input: "put(1,1), put(2,2), get(1)", expectedOutput: "1", isHidden: false },
           { name: "Evict LRU item on overflow", input: "put(3,3), get(2)", expectedOutput: "-1 (evicted)", isHidden: false },
           { name: "Update existing key updates recency", input: "put(4,4), get(1)", expectedOutput: "-1", isHidden: true },
         ],
-        testHarnessCode: `test("LRUCache operates within capacity and tracks recency", () => {
-  const lru = new LRUCache(2);
-  lru.put(1, 1);
-  lru.put(2, 2);
-  if (lru.get(1) !== 1) throw new Error("Key 1 should be present");
-  lru.put(3, 3); // evicts key 2
-  if (lru.get(2) !== -1) throw new Error("Key 2 should have been evicted as least recently used");
-  lru.put(4, 4); // evicts key 1
-  if (lru.get(1) !== -1) throw new Error("Key 1 should have been evicted");
-  if (lru.get(3) !== 3) throw new Error("Key 3 should be present");
-  if (lru.get(4) !== 4) throw new Error("Key 4 should be present");
-});
-
-test("LRUCache returns -1 for non-existent keys", () => {
-  const lru = new LRUCache(2);
-  if (lru.get(999) !== -1) throw new Error("Expected -1 for missing key");
-});
-
-test("LRUCache updates existing keys without increasing size", () => {
-  const lru = new LRUCache(1);
-  lru.put(10, 100);
-  lru.put(10, 200);
-  if (lru.get(10) !== 200) throw new Error("Expected updated value 200");
-});`,
+        testHarnessCode: stubs.testHarnessCode,
         hints: [
-          "Hint 1: In JavaScript/TypeScript, Map preserves insertion order. Deleting and re-setting an entry moves it to the most recent position.",
+          "Hint 1: In JavaScript/TypeScript, Map preserves insertion order. In Python, collections.OrderedDict has move_to_end().",
           "Hint 2: For true O(1) in language-agnostic systems, combine a Doubly Linked List with a Hash Map pointing to list nodes.",
           "Hint 3: Ensure you update both the cache map and recency order whenever get() is called on an existing key.",
         ],
@@ -364,11 +318,13 @@ test("LRUCache updates existing keys without increasing size", () => {
     }
 
     if (hint.includes("two sum") || hint.includes("hash") || hint.includes("array")) {
+      const stubs = this.buildPolyglotProblemStubs("twosum", targetLang);
       return {
         id: uniqueId,
         title: "Two Sum: Sub-Quadratic Lookup",
         track: "algorithms",
         difficulty: "junior",
+        language: targetLang,
         timeLimitMinutes: 30,
         description: `### Problem Description: Two Sum
 Given an array of integers \`nums\` and an integer \`target\`, return *indices of the two numbers such that they add up to \`target\`*.
@@ -383,7 +339,397 @@ You can return the answer in any order.
 - \`-10^9 <= target <= 10^9\`
 - Only one valid answer exists.
 - Target time complexity: **O(n)** time and **O(n)** space.`,
-        starterCode: `export function twoSum(nums: number[], target: number): [number, number] {
+        starterCode: stubs.starterCode,
+        testCases: [
+          { name: "Basic positive integers", input: "nums = [2,7,11,15], target = 9", expectedOutput: "[0,1]", isHidden: false },
+          { name: "Duplicates adding to target", input: "nums = [3,3], target = 6", expectedOutput: "[0,1]", isHidden: false },
+          { name: "Negative numbers", input: "nums = [-3,4,3,90], target = 0", expectedOutput: "[0,2]", isHidden: true },
+        ],
+        testHarnessCode: stubs.testHarnessCode,
+        hints: [
+          "Hint 1: A brute-force O(n^2) nested loop checks every pair. How can a Hash Map trade O(n) memory for O(1) lookups?",
+          "Hint 2: As you iterate, compute complement = target - nums[i]. Check if complement is already in the map.",
+          "Hint 3: Insert the current index *after* checking to avoid using the same element twice.",
+        ],
+        confidenceScore: 0.99,
+        detectedSource: "LeetCode #1 (Two Sum)",
+      };
+    }
+
+    // Default: Token Bucket Rate Limiter (Systems / Backend)
+    const stubs = this.buildPolyglotProblemStubs("tokenbucket", targetLang);
+    return {
+      id: uniqueId,
+      title: "Token Bucket Rate Limiter with Burst Capacity",
+      track: "systems",
+      difficulty: "senior",
+      language: targetLang,
+      timeLimitMinutes: 45,
+      description: `### Problem Description: Token Bucket Rate Limiter
+Implement an in-memory **Token Bucket Rate Limiter** commonly deployed in API Gateways to throttle abusive traffic while tolerating bounded burstiness.
+
+Implement the \`TokenBucketRateLimiter\` class:
+- \`constructor(capacity: number, refillRatePerSecond: number)\`:
+  - \`capacity\`: Maximum number of tokens the bucket can hold.
+  - \`refillRatePerSecond\`: Rate at which tokens are added per second.
+- \`allowRequest(tokens: number = 1): boolean\`:
+  - Dynamically calculates the tokens accumulated since the last check without background interval timers (lazy refill).
+  - If at least \`tokens\` are available, consumes them and returns \`true\`.
+  - Otherwise returns \`false\` without consuming tokens.
+- \`getAvailableTokens(): number\`:
+  - Returns current number of tokens available in the bucket rounded to 2 decimal places.
+
+### Constraints
+- Zero CPU usage when idle (must use lazy elapsed time calculation, no setInterval).
+- Must enforce maximum capacity ceiling (\`tokens <= capacity\`).`,
+      starterCode: stubs.starterCode,
+      testCases: [
+        { name: "Initial burst allows capacity tokens", input: "allowRequest(5) on capacity 5", expectedOutput: "true", isHidden: false },
+        { name: "Denies request when bucket is empty", input: "allowRequest(1) on capacity 5 after burst", expectedOutput: "false", isHidden: false },
+        { name: "Refills accurately over elapsed time", input: "allowRequest(1) after 1000ms refill", expectedOutput: "true", isHidden: true },
+      ],
+      testHarnessCode: stubs.testHarnessCode,
+      hints: [
+        "Hint 1: Do not use setInterval or setTimeout! Calculate newly arrived tokens lazily using (now - lastRefillTimestamp) / 1000 * refillRate.",
+        "Hint 2: Cap the computed tokens at Math.min(capacity, tokens + added).",
+        "Hint 3: Remember to update lastRefillTimestamp = now whenever refill() is called.",
+      ],
+      confidenceScore: 0.95,
+      detectedSource: "System Architecture Design Document",
+    };
+  }
+
+  private buildPolyglotProblemStubs(
+    type: "lru" | "twosum" | "tokenbucket",
+    lang: ProgrammingLanguage
+  ): { starterCode: string; testHarnessCode: string } {
+    if (type === "lru") {
+      switch (lang) {
+        case "python":
+          return {
+            starterCode: `class LRUCache:
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        # TODO: Initialize hash map and recency tracker
+
+    def get(self, key: int) -> int:
+        # TODO: Implement O(1) get
+        return -1
+
+    def put(self, key: int, value: int) -> None:
+        # TODO: Implement O(1) put with LRU eviction
+        pass
+`,
+            testHarnessCode: `import unittest
+
+class TestLRUCache(unittest.TestCase):
+    def test_lru_operations(self):
+        lru = LRUCache(2)
+        lru.put(1, 1)
+        lru.put(2, 2)
+        self.assertEqual(lru.get(1), 1)
+        lru.put(3, 3)
+        self.assertEqual(lru.get(2), -1)
+        lru.put(4, 4)
+        self.assertEqual(lru.get(1), -1)
+        self.assertEqual(lru.get(3), 3)
+
+if __name__ == "__main__":
+    unittest.main()
+`,
+          };
+        case "go":
+          return {
+            starterCode: `package solution
+
+type LRUCache struct {
+    capacity int
+}
+
+func Constructor(capacity int) LRUCache {
+    return LRUCache{capacity: capacity}
+}
+
+func (this *LRUCache) Get(key int) int {
+    return -1
+}
+
+func (this *LRUCache) Put(key int, value int) {
+}
+`,
+            testHarnessCode: `package solution
+
+import "testing"
+
+func TestLRUCache(t *testing.T) {
+    lru := Constructor(2)
+    lru.Put(1, 1)
+    lru.Put(2, 2)
+    if lru.Get(1) != 1 {
+        t.Errorf("Expected 1, got %d", lru.Get(1))
+    }
+    lru.Put(3, 3)
+    if lru.Get(2) != -1 {
+        t.Errorf("Expected -1 for evicted key, got %d", lru.Get(2))
+    }
+}
+`,
+          };
+        case "java":
+          return {
+            starterCode: `package solution;
+
+public class LRUCache {
+    private int capacity;
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+    }
+
+    public int get(int key) {
+        return -1;
+    }
+
+    public void put(int key, int value) {
+    }
+}
+`,
+            testHarnessCode: `package solution;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class LRUCacheTest {
+    @Test
+    public void testLRUOperations() {
+        LRUCache lru = new LRUCache(2);
+        lru.put(1, 1);
+        lru.put(2, 2);
+        assertEquals(1, lru.get(1));
+        lru.put(3, 3);
+        assertEquals(-1, lru.get(2));
+    }
+}
+`,
+          };
+        case "cpp":
+          return {
+            starterCode: `class LRUCache {
+public:
+    LRUCache(int capacity) : capacity_(capacity) {}
+
+    int get(int key) {
+        return -1;
+    }
+
+    void put(int key, int value) {
+    }
+
+private:
+    int capacity_;
+};
+`,
+            testHarnessCode: `#include <gtest/gtest.h>
+
+TEST(LRUCacheTest, BasicEviction) {
+    LRUCache lru(2);
+    lru.put(1, 1);
+    lru.put(2, 2);
+    EXPECT_EQ(lru.get(1), 1);
+    lru.put(3, 3);
+    EXPECT_EQ(lru.get(2), -1);
+}
+`,
+          };
+        case "rust":
+          return {
+            starterCode: `pub struct LRUCache {
+    capacity: usize,
+}
+
+impl LRUCache {
+    pub fn new(capacity: i32) -> Self {
+        Self { capacity: capacity as usize }
+    }
+
+    pub fn get(&mut self, key: i32) -> i32 {
+        -1
+    }
+
+    pub fn put(&mut self, key: i32, value: i32) {
+    }
+}
+`,
+            testHarnessCode: `#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lru_operations() {
+        let mut lru = LRUCache::new(2);
+        lru.put(1, 1);
+        lru.put(2, 2);
+        assert_eq!(lru.get(1), 1);
+        lru.put(3, 3);
+        assert_eq!(lru.get(2), -1);
+    }
+}
+`,
+          };
+        case "javascript":
+        case "typescript":
+        default:
+          return {
+            starterCode: `export class LRUCache {
+  private capacity: number;
+  private cache: Map<number, number>;
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+    this.cache = new Map();
+  }
+
+  get(key: number): number {
+    if (!this.cache.has(key)) return -1;
+    const val = this.cache.get(key)!;
+    this.cache.delete(key);
+    this.cache.set(key, val);
+    return val;
+  }
+
+  put(key: number, value: number): void {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    } else if (this.cache.size >= this.capacity) {
+      const oldestKey = this.cache.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
+    }
+    this.cache.set(key, value);
+  }
+}`,
+            testHarnessCode: `test("LRUCache operates within capacity and tracks recency", () => {
+  const lru = new LRUCache(2);
+  lru.put(1, 1);
+  lru.put(2, 2);
+  if (lru.get(1) !== 1) throw new Error("Key 1 should be present");
+  lru.put(3, 3);
+  if (lru.get(2) !== -1) throw new Error("Key 2 should have been evicted");
+  lru.put(4, 4);
+  if (lru.get(1) !== -1) throw new Error("Key 1 should have been evicted");
+  if (lru.get(3) !== 3) throw new Error("Key 3 should be present");
+});`,
+          };
+      }
+    }
+
+    if (type === "twosum") {
+      switch (lang) {
+        case "python":
+          return {
+            starterCode: `def two_sum(nums: list[int], target: int) -> list[int]:
+    # TODO: Return indices of two numbers that add up to target
+    return []
+`,
+            testHarnessCode: `import unittest
+
+class TestTwoSum(unittest.TestCase):
+    def test_two_sum(self):
+        self.assertEqual(two_sum([2, 7, 11, 15], 9), [0, 1])
+        self.assertEqual(two_sum([3, 2, 4], 6), [1, 2])
+
+if __name__ == "__main__":
+    unittest.main()
+`,
+          };
+        case "go":
+          return {
+            starterCode: `package solution
+
+func TwoSum(nums []int, target int) []int {
+    return []int{}
+}
+`,
+            testHarnessCode: `package solution
+
+import (
+    "reflect"
+    "testing"
+)
+
+func TestTwoSum(t *testing.T) {
+    res := TwoSum([]int{2, 7, 11, 15}, 9)
+    if !reflect.DeepEqual(res, []int{0, 1}) {
+        t.Errorf("Expected [0, 1], got %v", res)
+    }
+}
+`,
+          };
+        case "java":
+          return {
+            starterCode: `package solution;
+
+public class Solution {
+    public int[] twoSum(int[] nums, int target) {
+        return new int[]{};
+    }
+}
+`,
+            testHarnessCode: `package solution;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class SolutionTest {
+    @Test
+    public void testTwoSum() {
+        Solution s = new Solution();
+        assertArrayEquals(new int[]{0, 1}, s.twoSum(new int[]{2, 7, 11, 15}, 9));
+    }
+}
+`,
+          };
+        case "cpp":
+          return {
+            starterCode: `#include <vector>
+
+std::vector<int> twoSum(const std::vector<int>& nums, int target) {
+    return {};
+}
+`,
+            testHarnessCode: `#include <gtest/gtest.h>
+#include <vector>
+
+TEST(TwoSumTest, BasicPair) {
+    std::vector<int> nums = {2, 7, 11, 15};
+    std::vector<int> expected = {0, 1};
+    EXPECT_EQ(twoSum(nums, 9), expected);
+}
+`,
+          };
+        case "rust":
+          return {
+            starterCode: `pub fn two_sum(nums: &[i32], target: i32) -> Vec<i32> {
+    vec![]
+}
+`,
+            testHarnessCode: `#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_two_sum() {
+        assert_eq!(two_sum(&[2, 7, 11, 15], 9), vec![0, 1]);
+    }
+}
+`,
+          };
+        case "javascript":
+        case "typescript":
+        default:
+          return {
+            starterCode: `export function twoSum(nums: number[], target: number): [number, number] {
   const seen = new Map<number, number>();
   for (let i = 0; i < nums.length; i++) {
     const complement = target - nums[i]!;
@@ -394,12 +740,7 @@ You can return the answer in any order.
   }
   return [-1, -1];
 }`,
-        testCases: [
-          { name: "Basic positive integers", input: "nums = [2,7,11,15], target = 9", expectedOutput: "[0,1]", isHidden: false },
-          { name: "Duplicates adding to target", input: "nums = [3,3], target = 6", expectedOutput: "[0,1]", isHidden: false },
-          { name: "Negative numbers", input: "nums = [-3,4,3,90], target = 0", expectedOutput: "[0,2]", isHidden: true },
-        ],
-        testHarnessCode: `test("twoSum finds basic pair indices", () => {
+            testHarnessCode: `test("twoSum finds basic pair indices", () => {
   const result = twoSum([2, 7, 11, 15], 9);
   if (result[0] !== 0 || result[1] !== 1) {
     throw new Error("Expected [0, 1]");
@@ -419,41 +760,185 @@ test("twoSum handles negative numbers cleanly", () => {
     throw new Error("Expected [0, 2]");
   }
 });`,
-        hints: [
-          "Hint 1: A brute-force O(n^2) nested loop checks every pair. How can a Hash Map trade O(n) memory for O(1) lookups?",
-          "Hint 2: As you iterate, compute complement = target - nums[i]. Check if complement is already in the map.",
-          "Hint 3: Insert the current index *after* checking to avoid using the same element twice.",
-        ],
-        confidenceScore: 0.99,
-        detectedSource: "LeetCode #1 (Two Sum)",
-      };
+          };
+      }
     }
 
-    // Default: Token Bucket Rate Limiter (Systems / Backend)
-    return {
-      id: uniqueId,
-      title: "Token Bucket Rate Limiter with Burst Capacity",
-      track: "systems",
-      difficulty: "senior",
-      timeLimitMinutes: 45,
-      description: `### Problem Description: Token Bucket Rate Limiter
-Implement an in-memory **Token Bucket Rate Limiter** commonly deployed in API Gateways to throttle abusive traffic while tolerating bounded burstiness.
+    // Token Bucket
+    switch (lang) {
+      case "python":
+        return {
+          starterCode: `import time
 
-Implement the \`TokenBucketRateLimiter\` class:
-- \`constructor(capacity: number, refillRatePerSecond: number)\`:
-  - \`capacity\`: Maximum number of tokens the bucket can hold.
-  - \`refillRatePerSecond\`: Rate at which tokens are added per second.
-- \`allowRequest(tokens: number = 1): boolean\`:
-  - Dynamically calculates the tokens accumulated since the last check without background interval timers (lazy refill).
-  - If at least \`tokens\` are available, consumes them and returns \`true\`.
-  - Otherwise returns \`false\` without consuming tokens.
-- \`getAvailableTokens(): number\`:
-  - Returns current number of tokens available in the bucket rounded to 2 decimal places.
+class TokenBucketRateLimiter:
+    def __init__(self, capacity: float, refill_rate_per_sec: float):
+        self.capacity = capacity
+        self.refill_rate = refill_rate_per_sec
+        self.tokens = capacity
+        self.last_refill = time.time()
 
-### Constraints
-- Zero CPU usage when idle (must use lazy elapsed time calculation, no setInterval).
-- Must enforce maximum capacity ceiling (\`tokens <= capacity\`).`,
-      starterCode: `export class TokenBucketRateLimiter {
+    def allow_request(self, tokens: float = 1.0) -> bool:
+        # TODO: Refill and consume tokens
+        return False
+`,
+          testHarnessCode: `import unittest
+
+class TestTokenBucket(unittest.TestCase):
+    def test_burst(self):
+        limiter = TokenBucketRateLimiter(3, 1)
+        self.assertTrue(limiter.allow_request(1))
+        self.assertTrue(limiter.allow_request(1))
+        self.assertTrue(limiter.allow_request(1))
+        self.assertFalse(limiter.allow_request(1))
+
+if __name__ == "__main__":
+    unittest.main()
+`,
+        };
+      case "go":
+        return {
+          starterCode: `package solution
+
+import "time"
+
+type TokenBucketRateLimiter struct {
+    capacity   float64
+    refillRate float64
+    tokens     float64
+    lastRefill time.Time
+}
+
+func NewTokenBucket(capacity float64, refillRate float64) *TokenBucketRateLimiter {
+    return &TokenBucketRateLimiter{
+        capacity:   capacity,
+        refillRate: refillRate,
+        tokens:     capacity,
+        lastRefill: time.Now(),
+    }
+}
+
+func (tb *TokenBucketRateLimiter) AllowRequest(tokens float64) bool {
+    return false
+}
+`,
+          testHarnessCode: `package solution
+
+import "testing"
+
+func TestTokenBucket(t *testing.T) {
+    tb := NewTokenBucket(3, 1)
+    if !tb.AllowRequest(1) || !tb.AllowRequest(1) || !tb.AllowRequest(1) {
+        t.Errorf("Expected burst of 3 allowed")
+    }
+    if tb.AllowRequest(1) {
+        t.Errorf("Expected request beyond capacity to be denied")
+    }
+}
+`,
+        };
+      case "java":
+        return {
+          starterCode: `package solution;
+
+public class TokenBucketRateLimiter {
+    private final double capacity;
+    private final double refillRate;
+    private double tokens;
+
+    public TokenBucketRateLimiter(double capacity, double refillRate) {
+        this.capacity = capacity;
+        this.refillRate = refillRate;
+        this.tokens = capacity;
+    }
+
+    public boolean allowRequest(double tokensNeeded) {
+        return false;
+    }
+}
+`,
+          testHarnessCode: `package solution;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class TokenBucketTest {
+    @Test
+    public void testBurst() {
+        TokenBucketRateLimiter limiter = new TokenBucketRateLimiter(3, 1);
+        assertTrue(limiter.allowRequest(1));
+        assertTrue(limiter.allowRequest(1));
+        assertTrue(limiter.allowRequest(1));
+        assertFalse(limiter.allowRequest(1));
+    }
+}
+`,
+        };
+      case "cpp":
+        return {
+          starterCode: `class TokenBucketRateLimiter {
+public:
+    TokenBucketRateLimiter(double capacity, double refill_rate)
+        : capacity_(capacity), refill_rate_(refill_rate), tokens_(capacity) {}
+
+    bool allowRequest(double tokens = 1.0) {
+        return false;
+    }
+
+private:
+    double capacity_;
+    double refill_rate_;
+    double tokens_;
+};
+`,
+          testHarnessCode: `#include <gtest/gtest.h>
+
+TEST(TokenBucketTest, BurstCapacity) {
+    TokenBucketRateLimiter limiter(3, 1);
+    EXPECT_TRUE(limiter.allowRequest(1));
+    EXPECT_TRUE(limiter.allowRequest(1));
+    EXPECT_TRUE(limiter.allowRequest(1));
+    EXPECT_FALSE(limiter.allowRequest(1));
+}
+`,
+        };
+      case "rust":
+        return {
+          starterCode: `pub struct TokenBucketRateLimiter {
+    capacity: f64,
+    refill_rate: f64,
+    tokens: f64,
+}
+
+impl TokenBucketRateLimiter {
+    pub fn new(capacity: f64, refill_rate: f64) -> Self {
+        Self { capacity, refill_rate, tokens: capacity }
+    }
+
+    pub fn allow_request(&mut self, tokens: f64) -> bool {
+        false
+    }
+}
+`,
+          testHarnessCode: `#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_burst() {
+        let mut limiter = TokenBucketRateLimiter::new(3.0, 1.0);
+        assert!(limiter.allow_request(1.0));
+        assert!(limiter.allow_request(1.0));
+        assert!(limiter.allow_request(1.0));
+        assert!(!limiter.allow_request(1.0));
+    }
+}
+`,
+        };
+      case "javascript":
+      case "typescript":
+      default:
+        return {
+          starterCode: `export class TokenBucketRateLimiter {
   private capacity: number;
   private refillRate: number;
   private tokens: number;
@@ -487,37 +972,15 @@ Implement the \`TokenBucketRateLimiter\` class:
     return Math.round(this.tokens * 100) / 100;
   }
 }`,
-      testCases: [
-        { name: "Initial burst allows capacity tokens", input: "allowRequest(5) on capacity 5", expectedOutput: "true", isHidden: false },
-        { name: "Denies request when bucket is empty", input: "allowRequest(1) on capacity 5 after burst", expectedOutput: "false", isHidden: false },
-        { name: "Refills accurately over elapsed time", input: "allowRequest(1) after 1000ms refill", expectedOutput: "true", isHidden: true },
-      ],
-      testHarnessCode: `test("TokenBucket allows initial burst up to capacity", () => {
+          testHarnessCode: `test("TokenBucket allows initial burst up to capacity", () => {
   const limiter = new TokenBucketRateLimiter(3, 1);
   if (!limiter.allowRequest(1)) throw new Error("Expected token 1 to be allowed");
   if (!limiter.allowRequest(1)) throw new Error("Expected token 2 to be allowed");
   if (!limiter.allowRequest(1)) throw new Error("Expected token 3 to be allowed");
   if (limiter.allowRequest(1)) throw new Error("Exceeded capacity, should be denied");
-});
-
-test("TokenBucket caps maximum tokens at capacity ceiling", () => {
-  const limiter = new TokenBucketRateLimiter(5, 10);
-  if (limiter.getAvailableTokens() > 5) throw new Error("Tokens must not exceed capacity");
-});
-
-test("TokenBucket allows partial token consumption", () => {
-  const limiter = new TokenBucketRateLimiter(10, 1);
-  if (!limiter.allowRequest(4)) throw new Error("Expected 4 tokens to be allowed");
-  if (limiter.getAvailableTokens() > 6.1) throw new Error("Remaining tokens exceeded expected");
 });`,
-      hints: [
-        "Hint 1: Do not use setInterval or setTimeout! Calculate newly arrived tokens lazily using (now - lastRefillTimestamp) / 1000 * refillRate.",
-        "Hint 2: Cap the computed tokens at Math.min(capacity, tokens + added).",
-        "Hint 3: Remember to update lastRefillTimestamp = now whenever refill() is called.",
-      ],
-      confidenceScore: 0.95,
-      detectedSource: "System Architecture Design Document",
-    };
+        };
+    }
   }
 
   /**

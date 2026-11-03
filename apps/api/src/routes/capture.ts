@@ -37,6 +37,7 @@ export const captureRoutes: FastifyPluginAsync<{
           title: finalData.title,
           track: finalData.track,
           difficulty: finalData.difficulty,
+          language: finalData.language || "typescript",
           estimatedMinutes: finalData.timeLimitMinutes,
           description: finalData.description,
           starterCode: finalData.starterCode,
