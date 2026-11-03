@@ -2,8 +2,9 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 156 / 156 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 167 / 167 Automated Tests Passing (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
+> **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
 > **Design Standard:** WCAG 2.2 AA Contrast & Focus Accessibility (Light & Dark Themes)
@@ -30,6 +31,8 @@
    - [4.12. User Experience, Dark/Light Theming & Favicon Branding](#412-user-experience-darklight-theming--favicon-branding)
    - [4.13. Candidate Practice Studio & Instant Diagnostic Feedback Engine](#413-candidate-practice-studio--instant-diagnostic-feedback-engine)
    - [4.14. Screen Capture & Multimodal OCR Ingest Engine](#414-screen-capture--multimodal-ocr-ingest-engine)
+   - [4.15. Polyglot Software Domain Engine (Python, Go, Java, C++, Rust, TS/JS)](#415-polyglot-software-domain-engine-python-go-java-c-rust-tsjs)
+   - [4.16. UI Crash Protection & React ErrorBoundary Recovery Engine](#416-ui-crash-protection--react-errorboundary-recovery-engine)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -37,7 +40,7 @@
    - [Workflow 4: Reviewer & Hiring Manager Evaluation Guide](#workflow-4-reviewer--hiring-manager-evaluation-guide)
    - [Workflow 5: Developer Setup & Local Execution Guide](#workflow-5-developer-setup--local-execution-guide)
 6. [API Gateway Endpoints Contract Specification](#6-api-gateway-endpoints-contract-specification)
-7. [Security, Privacy & Compliance Architecture](#7-security-privacy--compliance-architecture)
+7. [Security, Privacy, Compliance & Employer Separation Policy](#7-security-privacy-compliance--employer-separation-policy)
 8. [Automated Verification & Test Matrix](#8-automated-verification--test-matrix)
 9. [Git Commit History & Roadmap Traceability](#9-git-commit-history--roadmap-traceability)
 
@@ -346,22 +349,48 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Brand SVG Favicon:** Custom SVG terminal/brain glyph embedded in `apps/desktop/public/favicon.svg` and `apps/desktop/favicon.svg`.
 
 ### 4.13. Candidate Practice Studio & Instant Diagnostic Feedback Engine (Task 21)
-- **Practice Challenge Catalog:** Curated problem catalog across multiple engineering tracks (`frontend`, `backend`, `fullstack`, `systems`, `algorithms`) and seniority tiers (`Junior`, `Mid`, `Senior`, `Staff`).
+- **Practice Challenge Catalog:** Curated problem catalog across multiple engineering tracks (`frontend`, `backend`, `fullstack`, `systems`, `algorithms`), seniority tiers (`Junior`, `Mid`, `Senior`, `Staff`), and programming languages (`typescript`, `javascript`, `python`, `go`, `java`, `cpp`, `rust`).
+- **Interactive Language & Track Filter Bar:** Allows candidates to filter catalog challenges simultaneously by track, seniority tier, and programming language (`All`, `TypeScript`, `JavaScript`, `Python`, `Go`, `Java`, `C++`, `Rust`).
 - **Preloaded Core Challenges:**
-  1. *React Immutable Ticket Queue* (Frontend, Mid): Diagnose descending priority inversion comparator bug and array mutation.
-  2. *Algorithmic LRU Cache with TTL Eviction* (Backend, Senior): O(1) doubly-linked list with time-to-live expiration and memory limits.
-  3. *Distributed Async Concurrency Limiter* (Systems, Staff): Promise pooling with retry backoff, queue priority, and cooperative cancellation.
+  1. *React Immutable Ticket Queue* (Frontend, Mid, TypeScript): Diagnose descending priority inversion comparator bug and array mutation.
+  2. *Algorithmic LRU Cache with TTL Eviction* (Backend, Senior, TypeScript): $O(1)$ doubly-linked list with time-to-live expiration and memory limits.
+  3. *Distributed Async Concurrency Limiter* (Systems, Staff, TypeScript): Promise pooling with retry backoff, queue priority, and cooperative cancellation.
+  4. *Python LRU Cache with Dict Sliding Window* (Algorithms, Mid, Python 3): High-performance OrderedDict with float TTL expiration and epoch eviction.
+  5. *Go High-Throughput Worker Pool* (Systems, Senior, Go): Bounded goroutine worker pool with channel buffering and graceful `sync.WaitGroup` teardown.
+  6. *Java Thread-Safe Token Bucket Rate Limiter* (Backend, Senior, Java): Atomic operations with `AtomicLong` lazy token refill under high concurrency.
+  7. *C++ Lock-Free Circular Ring Buffer* (Systems, Staff, C++20): Single-producer single-consumer lock-free queue with `std::atomic` acquire-release memory order semantics.
+  8. *Rust Safe Concurrent Deque* (Systems, Senior, Rust): Thread-safe FIFO message queue utilizing `Arc`, `Mutex`, and `Condvar` meeting strict borrow checker invariants.
+  9. *JavaScript Reactive Event Emitter* (Frontend, Mid, JavaScript): Leak-free subscription manager with `Set` callback isolation and $O(1)$ unsubscription.
 - **Simulated AI Token Budget:** Realistic \$0.25 candidate AI budget meter teaching candidates token frugality and prompt engineering before formal enterprise evaluations.
 - **Instant 7-Dimension Diagnostic Feedback Engine:** Immediate rubric scoring card evaluating Code Comprehension, Problem Framing, AI Collaboration, Critical Evaluation, Debugging & Quality, Testing Discipline, and Technical Explanation. Includes an **AI Reliance Index** measuring scrutiny ratio (accepted vs. rejected patches).
 
 ### 4.14. Screen Capture & Multimodal OCR Ingest Engine (Task 22)
-- **Multimodal Question Ingestion (`POST /api/v1/capture/extract-question`):** Ingests screenshot images, base64 payloads, or clipboard pastes from any external source (LeetCode, HackerRank, CodeSignal, system architecture PDFs, or interview docs).
+- **Multimodal Question Ingestion (`POST /api/v1/capture/extract-question`):** Ingests screenshot images, base64 payloads, or clipboard pastes (Ctrl+V) from any external source (LeetCode, HackerRank, CodeSignal, system architecture PDFs, or interview docs).
 - **Multi-Provider Vision Extraction with Heuristic Resilience:**
   - Fast structured parsing leveraging Google Gemini 2.0 Flash (`gemini-2.0-flash`), OpenAI GPT-4o (`gpt-4o`), or Anthropic Claude 3.5 Sonnet (`claude-3-5-sonnet-20241022`).
-  - Offline / test heuristic synthesizer parses problem keywords, generates type-safe starter code, 3–4 unit test assertions, and runner harnesses with 100% offline verification reliability.
+  - Offline / test heuristic synthesizer parses problem keywords, generates language-specific starter boilerplate, unit test suites, and runner harnesses for all 7 programming languages.
+- **7-Language Target Ingestion Selector:** Candidates can explicitly choose their target programming language (`typescript`, `javascript`, `python`, `go`, `java`, `cpp`, `rust`) when snapping or pasting problem screenshots.
 - **Memory Denial-of-Service Defense:** Fastify native body limits and server payload validation strictly reject image data exceeding 10MB to prevent heap memory exhaustion.
 - **1-Click Benchmark Demo Presets (`GET /api/v1/capture/sample-presets`):** Preloaded with LeetCode 146 (LRU Cache), LeetCode 1 (Two Sum), and API Spec (Token Bucket Rate Limiter) with embedded SVG visual thumbnails.
-- **Direct Workspace Hydration:** Extracted problems automatically hydrate Monaco editor starter stubs, isolated Node 22 sandbox test harnesses, and simulated \$0.25 AI token budgets.
+- **Direct Workspace Hydration:** Extracted problems automatically hydrate Monaco editor starter stubs, isolated sandbox test harnesses, dynamic filename extensions, and simulated \$0.25 AI token budgets.
+
+### 4.15. Polyglot Software Domain Engine (Python, Go, Java, C++, Rust, TS/JS)
+- **Universal Software Engineering Scope:** Broadened platform scope beyond frontend to encompass distributed systems, systems programming, backend microservices, and algorithmic data structures.
+- **Native Sandboxed Execution:**
+  - Node 22 native permissions jail for TypeScript and JavaScript code verification.
+  - Python 3.13 subprocess execution harness with resource timeouts and memory caps.
+- **Polyglot Static Verification Engine (`services/code-runner`):**
+  - Structural delimiter balance analysis (`{}`, `()`, `[]`).
+  - Test suite signature extraction for compiled languages (`func Test` for Go, `@Test` for Java, `TEST(Suite, Case)` for C++, and `#[test] fn` for Rust).
+  - Validates sandbox execution contracts so candidates can write and verify code in compiled languages even when system compiler toolchains are absent.
+- **Dynamic Monaco Editor Integration:**
+  - File extension matching (`candidate_solution.py`, `candidate_solution.go`, `CandidateSolution.java`, `candidate_solution.cpp`, `candidate_solution.rs`, `candidateSolution.js`, `candidateSolution.ts`).
+  - Monaco editor syntax highlighting dynamically synchronized with `selectedChallenge.language`.
+
+### 4.16. UI Crash Protection & React ErrorBoundary Recovery Engine
+- **Top-Level ErrorBoundary (`apps/desktop/src/renderer/components/ErrorBoundary.tsx`):** Wraps the desktop and web renderer in an enterprise-grade React Error Boundary.
+- **Zero White-Screen Guarantee:** Completely eliminates blank screen unmount crashes by catching any unhandled runtime render exceptions.
+- **Self-Healing Diagnostic Recovery Console:** Displays error details, formatted stack traces, a 1-click **[Recover Component]** state reset button, a 1-click **[Reload Application]** button, and an accessible **[Copy Stack]** clipboard action.
 
 ---
 
@@ -562,13 +591,18 @@ Fastify API server (`http://127.0.0.1:4000`):
 
 ---
 
-## 7. Security, Privacy & Compliance Architecture
+## 7. Security, Privacy, Compliance & Employer Separation Policy
 
 1. **Credential Scrubbing:** API keys (`GROQ_API_KEY`, `OPENAI_API_KEY`, `JWT_SECRET`) are kept strictly on the backend and are never sent to Electron or renderer bundles.
-2. **Ephemeral Subprocess Sandboxing:** Node 22 native execution runs with zero host environment variables, strict disk permissions, and active socket traps.
+2. **Ephemeral Subprocess Sandboxing:** Node 22 native execution runs with zero host environment variables, strict disk permissions, and active socket traps. Python 3 subprocesses run with strict timeouts.
 3. **Anti-IDOR Authorization:** Candidate tokens are strictly scoped to `sessionId`. Candidates cannot view or submit events to other candidate sessions.
 4. **Data Protection Law Compliance (DPDP Act & GDPR):** Candidate personal identifiers (name, email) can be anonymized or scrubbed on request while preserving cryptographic code hashes for compliance audits.
 5. **Clock Tamper Protection:** Deadlines are stored as server-side UTC timestamps (`expiresAt`). Client machine clock changes have zero effect on remaining time.
+6. **Strict Personal Project & Employer Separation Policy:**
+   - The developer is employed at Mahindra First Choice Wheels (MFCW).
+   - This project is developed 100% independently with ZERO association with employer IP, infrastructure, identity, or resources.
+   - All Git commit authorship strictly uses personal identity (`Samir Saurabh <samirverma527@gmail.com>`) and personal remote (`https://github.com/Samirsaurabh1298/ai-interview-copilot.git`).
+   - Zero employer source code, internal logic, APIs, endpoints, DB schemas, confidential documentation, or customer data is used or reproduced.
 
 ---
 
@@ -579,17 +613,18 @@ All 13 packages maintain **100% passing test suites**:
 | Package / Module | Test Scope | Tests Passed | Status |
 | :--- | :--- | :---: | :---: |
 | `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 | **PASS** |
-| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks) | 4 / 4 | **PASS** |
+| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages) | 4 / 4 | **PASS** |
 | `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
 | `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
-| `services/code-runner` | Node 22 sandbox, watchdog timeouts, secret scrubbing, network socket traps, eval lockout, exit traps | 9 / 9 | **PASS** |
+| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, watchdog timeouts, secret scrubbing, socket traps | 11 / 11 | **PASS** |
 | `packages/ai-provider-groq` | Groq LPU adapter, JSON repair, fallback to GPT-OSS | 3 / 3 | **PASS** |
 | `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 | **PASS** |
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
-| `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations | 3 / 3 | **PASS** |
+| `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations, calibration consensus | 8 / 8 | **PASS** |
 | `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 120 / 120 | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **156 / 156** | **100% PASS** |
+| `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **167 / 167** | **100% PASS** |
 
 ---
 
@@ -597,7 +632,10 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(capture):** implement screen capture & multimodal ocr question ingest engine (Task 22)
+- `HEAD` — **chore(policy):** enforce strict personal project separation from employer policy (`55ad26b`)
+- `6392d17` — **feat(polyglot):** implement full multi-language software domain support (TS, JS, Python, Go, Java, C++, Rust) and bulletproof ErrorBoundary
+- `a408bd7` — **fix(desktop):** resolve maximum call stack size recursion in capture modal
+- `3eefcb5` — **feat(capture):** implement screen capture & multimodal ocr question ingest engine (Task 22)
 - `c3b9ec3` — **feat(practice):** implement candidate practice studio, challenge catalog, and instant diagnostic feedback engine (Task 21)
 - `3fda684` — **feat(analytics):** implement AI cost analytics, token budget forecasting, and company dashboard financial board (Task 20)
 - `b8962fe` — **feat(webhooks):** implement enterprise ATS/HRIS webhook dispatcher with HMAC signatures, retry backoff, and format adapters (Task 19)
