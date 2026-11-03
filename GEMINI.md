@@ -97,6 +97,21 @@ Base decisions on real production needs, not hypothetical scale.
 - All commits and daily work for this project must be committed and pushed to this remote repository and branch.
 </git_repository_rule>
 
+<personal_project_separation_policy>
+# Strict Personal Project & Employer Separation Policy
+- The USER is employed at Mahindra First Choice Wheels (MFCW).
+- All personal projects must be developed 100% independently with ZERO association with employer IP, infrastructure, identity, or resources.
+- NEVER use, configure, include, or reference:
+  - Corporate emails (including `@mahindra.com`), employee IDs, usernames, or corporate identity.
+  - Corporate GitHub/GitLab accounts, access tokens, API keys, credentials, or SSH keys.
+  - Employer-specific commit authorship or signing identities.
+  - Employer-owned repositories, org accounts, or infrastructure.
+- Always verify that Git commits use personal identity (`Samir Saurabh <samirverma527@gmail.com>`) and personal remote (`https://github.com/Samirsaurabh1298/ai-interview-copilot.git`).
+- NEVER use or reproduce employer proprietary source code, internal logic, architecture, APIs, endpoints, DB schemas, confidential documentation, datasets, or customer data.
+- Never inspect, search, or reference employer work directories, tools, or subscriptions.
+- If employer-related material is ever encountered or requested, immediately halt and alert the USER.
+</personal_project_separation_policy>
+
 <override>
 These rules apply to all conversations unless I explicitly override them.
 </override>
