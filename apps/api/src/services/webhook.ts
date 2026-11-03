@@ -9,6 +9,7 @@ import type {
   WebhookEventPayload,
 } from "@ai-copilot/contracts";
 import type { OrganizationService } from "./organization.js";
+import { WebhookRepository } from "../repositories/webhook.repo.js";
 
 export class WebhookSubscriptionNotFoundError extends Error {
   constructor(message = "Webhook subscription not found") {
@@ -26,8 +27,33 @@ export class WebhookService {
   // In-memory bounded audit log of recent deliveries
   private deliveryLogs: WebhookDeliveryLog[] = [];
   private readonly maxLogs = 500;
+  private repo: WebhookRepository;
 
-  constructor(private orgService?: OrganizationService) {}
+  constructor(
+    private orgService?: OrganizationService,
+    repo?: WebhookRepository
+  ) {
+    this.repo = repo ?? new WebhookRepository();
+  }
+
+  public async loadFromDatabase(orgId?: string): Promise<void> {
+    try {
+      if (orgId) {
+        const subs = await this.repo.listByOrg(orgId);
+        let set = this.subscriptionsByOrg.get(orgId);
+        if (!set) {
+          set = new Set();
+          this.subscriptionsByOrg.set(orgId, set);
+        }
+        for (const s of subs) {
+          this.subscriptionsById.set(s.id, s);
+          set.add(s.id);
+        }
+      }
+    } catch (err) {
+      console.error("[WebhookService] Failed to load from database:", err);
+    }
+  }
 
   // ==============================================================================
   // Subscription CRUD
@@ -65,6 +91,11 @@ export class WebhookService {
     }
     this.subscriptionsByOrg.get(req.organizationId)!.add(id);
 
+    // Durable write-through to PostgreSQL
+    this.repo.create(subscription).catch((err) => {
+      console.error("[WebhookService] DB subscription create error:", err);
+    });
+
     return subscription;
   }
 
@@ -98,6 +129,12 @@ export class WebhookService {
 
     this.subscriptionsById.delete(subscriptionId);
     this.subscriptionsByOrg.get(orgId)?.delete(subscriptionId);
+
+    // Durable delete in PostgreSQL
+    this.repo.delete(subscriptionId).catch((err) => {
+      console.error("[WebhookService] DB subscription delete error:", err);
+    });
+
     return true;
   }
 

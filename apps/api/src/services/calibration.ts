@@ -11,6 +11,7 @@ import type {
   SubmissionArtifact,
 } from "@ai-copilot/contracts";
 import { AssessmentEvaluator } from "@ai-copilot/scoring-engine";
+import { CalibrationRepository } from "../repositories/calibration.repo.js";
 import type { AssessmentSessionService } from "./session.js";
 import type { SubmissionService } from "./submission.js";
 import type { SessionEventsService } from "./session-events.js";
@@ -30,13 +31,34 @@ export class CalibrationService {
   private evaluations = new Map<string, ReviewerEvaluation>(); // key: id
   private sessionIndex = new Map<string, Set<string>>(); // key: sessionId -> Set of evalIds
   private aiEvaluator = new AssessmentEvaluator();
+  private repo: CalibrationRepository;
 
   constructor(
     private sessionService: AssessmentSessionService,
     private submissionService: SubmissionService,
     private sessionEventService: SessionEventsService,
-    private orgService?: OrganizationService
-  ) {}
+    private orgService?: OrganizationService,
+    repo?: CalibrationRepository
+  ) {
+    this.repo = repo ?? new CalibrationRepository();
+  }
+
+  public async loadFromDatabase(sessionId: string): Promise<void> {
+    try {
+      const list = await this.repo.listBySession(sessionId);
+      let set = this.sessionIndex.get(sessionId);
+      if (!set) {
+        set = new Set();
+        this.sessionIndex.set(sessionId, set);
+      }
+      for (const ev of list) {
+        this.evaluations.set(ev.id, ev);
+        set.add(ev.id);
+      }
+    } catch (err) {
+      console.error("[CalibrationService] Failed to load from database:", err);
+    }
+  }
 
   public calculateWeightedTotalScore(scores: { dimensionId: RubricDimensionId; rating: number }[]): number {
     let totalScore = 0;
@@ -118,6 +140,11 @@ export class CalibrationService {
       this.sessionIndex.set(sessionId, new Set());
     }
     this.sessionIndex.get(sessionId)!.add(evalId);
+
+    // Durable write-through to PostgreSQL
+    this.repo.create(newEval).catch((err) => {
+      console.error("[CalibrationService] DB evaluation create error:", err);
+    });
 
     return newEval;
   }

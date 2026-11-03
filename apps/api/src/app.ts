@@ -42,6 +42,7 @@ import { AICostAnalyticsService } from "./services/analytics.js";
 import { PracticeStudioService } from "./services/practice.js";
 import { ScreenCaptureIngestService } from "./services/capture.js";
 import type { AppConfig } from "./config.js";
+import { initDatabase, checkDatabaseHealth } from "./db/connection.js";
 
 export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const app = fastify({
@@ -125,31 +126,45 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     }
   }
 
-  // Health check
-  app.get("/health", async () => ({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    version: "0.1.0",
-    defaultProvider: config.DEFAULT_AI_PROVIDER,
-  }));
+  // Initialize Database Persistence Layer
+  await initDatabase(config.DATABASE_URL);
+
+  // Health check with database connectivity
+  app.get("/health", async () => {
+    const dbHealth = await checkDatabaseHealth();
+    return {
+      status: dbHealth.healthy ? "healthy" : "degraded",
+      timestamp: new Date().toISOString(),
+      version: "0.1.0",
+      defaultProvider: config.DEFAULT_AI_PROVIDER,
+      database: dbHealth,
+    };
+  });
 
   const ledger = new UsageLedgerService();
   const gateway = new AIUsageGatewayService();
   const orgService = new OrganizationService();
+  await orgService.loadFromDatabase();
+
   const authService = new AuthService(config.JWT_SECRET);
   const templateService = new AssessmentTemplateService();
+  await templateService.loadFromDatabase();
+
   const versioningService = new AssessmentVersioningService();
   const sessionService = new AssessmentSessionService(
     templateService,
     orgService,
     gateway
   );
+  await sessionService.loadFromDatabase();
+
   const eventsService = new SessionEventsService(sessionService);
   const submissionService = new SubmissionService(
     sessionService,
     templateService,
     eventsService
   );
+  await submissionService.loadFromDatabase();
   const calibrationService = new CalibrationService(
     sessionService,
     submissionService,

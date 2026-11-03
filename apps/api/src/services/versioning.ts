@@ -5,6 +5,7 @@ import type {
   PublishVersionRequest,
 } from "@ai-copilot/contracts";
 import type { AssessmentTemplateService } from "./template.js";
+import { VersioningRepository } from "../repositories/versioning.repo.js";
 
 export class VersionNotFoundError extends Error {
   constructor(message = "Assessment version not found") {
@@ -23,6 +24,25 @@ export class VersionImmutableViolationError extends Error {
 export class AssessmentVersioningService {
   private versionsById = new Map<string, AssessmentVersion>();
   private versionsByTemplateId = new Map<string, AssessmentVersion[]>();
+  private repo: VersioningRepository;
+
+  constructor(repo?: VersioningRepository) {
+    this.repo = repo ?? new VersioningRepository();
+  }
+
+  public async loadFromDatabase(templateId?: string): Promise<void> {
+    try {
+      if (templateId) {
+        const versions = await this.repo.listByTemplate(templateId);
+        this.versionsByTemplateId.set(templateId, versions);
+        for (const v of versions) {
+          this.versionsById.set(v.id, v);
+        }
+      }
+    } catch (err) {
+      console.error("[AssessmentVersioningService] Failed to load from database:", err);
+    }
+  }
 
   public computeContentHash(snapshot: AssessmentVersionSnapshot): string {
     const canonical = {
@@ -113,6 +133,11 @@ export class AssessmentVersioningService {
 
     existingVersions.push(version);
     this.versionsByTemplateId.set(req.templateId, existingVersions);
+
+    // Durable write-through to PostgreSQL
+    this.repo.create(version).catch((err) => {
+      console.error("[AssessmentVersioningService] DB version persistence error:", err);
+    });
 
     // Update parent template status to published
     templateService.publishTemplate(req.organizationId, req.templateId);

@@ -14,6 +14,7 @@ const EnvSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   CODE_RUNNER_URL: z.string().url().default("http://localhost:4100"),
   JWT_SECRET: z.string().default("default-secure-pilot-assessment-jwt-secret-key-32chars"),
+  DATABASE_URL: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

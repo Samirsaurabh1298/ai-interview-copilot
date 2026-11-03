@@ -9,6 +9,7 @@ import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AuthService } from "./auth.js";
 import type { AssessmentSessionService } from "./session.js";
+import { InvitationRepository } from "../repositories/invitation.repo.js";
 
 export class InvitationNotFoundError extends Error {
   constructor(message = "Candidate invitation not found") {
@@ -38,13 +39,37 @@ export class CandidateInvitationService {
   private tokenToId = new Map<string, string>();
   // Key: orgId -> Set<invitationId>
   private orgInvitations = new Map<string, Set<string>>();
+  private repo: InvitationRepository;
 
   constructor(
     private templateService: AssessmentTemplateService,
     private orgService: OrganizationService,
     private authService: AuthService,
-    private sessionService?: AssessmentSessionService
-  ) {}
+    private sessionService?: AssessmentSessionService,
+    repo?: InvitationRepository
+  ) {
+    this.repo = repo ?? new InvitationRepository();
+  }
+
+  public async loadFromDatabase(orgId?: string): Promise<void> {
+    try {
+      if (orgId) {
+        const list = await this.repo.listByOrg(orgId);
+        let orgSet = this.orgInvitations.get(orgId);
+        if (!orgSet) {
+          orgSet = new Set();
+          this.orgInvitations.set(orgId, orgSet);
+        }
+        for (const inv of list) {
+          this.invitationsById.set(inv.id, inv);
+          this.tokenToId.set(inv.invitationToken, inv.id);
+          orgSet.add(inv.id);
+        }
+      }
+    } catch (err) {
+      console.error("[CandidateInvitationService] Failed to load from database:", err);
+    }
+  }
 
   public createInvitation(
     req: CreateInvitationRequest,
@@ -90,6 +115,11 @@ export class CandidateInvitationService {
       this.orgInvitations.set(req.organizationId, orgSet);
     }
     orgSet.add(invitationId);
+
+    // Durable write-through to PostgreSQL
+    this.repo.create(invitation).catch((err) => {
+      console.error("[CandidateInvitationService] DB invitation create error:", err);
+    });
 
     return invitation;
   }
@@ -189,6 +219,18 @@ export class CandidateInvitationService {
     invitation.sessionId = sessionId;
     invitation.acceptedAt = invitation.acceptedAt ?? now;
     invitation.startedAt = invitation.startedAt ?? now;
+
+    // Durable write-through to PostgreSQL
+    this.repo
+      .update(invitation.id, {
+        status: "started",
+        sessionId,
+        acceptedAt: invitation.acceptedAt,
+        startedAt: invitation.startedAt,
+      })
+      .catch((err) => {
+        console.error("[CandidateInvitationService] DB invitation status update error:", err);
+      });
 
     return {
       invitation,

@@ -5,6 +5,7 @@ import type {
   InviteMemberRequest,
   MembershipRole,
 } from "@ai-copilot/contracts";
+import { OrganizationRepository } from "../repositories/organization.repo.js";
 
 export class TenantNotFoundError extends Error {
   constructor(message = "Organization not found") {
@@ -39,6 +40,29 @@ export class OrganizationService {
   private orgIdBySlug = new Map<string, string>();
   // Key: orgId -> Map<memberId, OrganizationMember>
   private membersByOrg = new Map<string, Map<string, OrganizationMember>>();
+  private repo: OrganizationRepository;
+
+  constructor(repo?: OrganizationRepository) {
+    this.repo = repo ?? new OrganizationRepository();
+  }
+
+  public async loadFromDatabase(): Promise<void> {
+    try {
+      const orgs = await this.repo.list();
+      for (const org of orgs) {
+        this.organizations.set(org.id, org);
+        this.orgIdBySlug.set(org.slug.toLowerCase().trim(), org.id);
+        const members = await this.repo.listMembers(org.id);
+        const memberMap = new Map<string, OrganizationMember>();
+        for (const m of members) {
+          memberMap.set(m.id, m);
+        }
+        this.membersByOrg.set(org.id, memberMap);
+      }
+    } catch (err) {
+      console.error("[OrganizationService] Failed to load from database:", err);
+    }
+  }
 
   public createOrganization(req: CreateOrganizationRequest): {
     organization: Organization;
@@ -88,6 +112,11 @@ export class OrganizationService {
     const orgMembers = new Map<string, OrganizationMember>();
     orgMembers.set(ownerMemberId, ownerMember);
     this.membersByOrg.set(orgId, orgMembers);
+
+    // Durable write-through to PostgreSQL
+    this.repo.create(organization, ownerMember).catch((err) => {
+      console.error("[OrganizationService] DB persistence error:", err);
+    });
 
     return { organization, ownerMember };
   }
@@ -172,6 +201,12 @@ export class OrganizationService {
 
     orgMembers.set(memberId, member);
     this.membersByOrg.set(orgId, orgMembers);
+
+    // Durable write-through to PostgreSQL
+    this.repo.addMember(member).catch((err) => {
+      console.error("[OrganizationService] DB member persistence error:", err);
+    });
+
     return member;
   }
 
@@ -217,6 +252,12 @@ export class OrganizationService {
 
     member.role = newRole;
     member.updatedAt = new Date();
+
+    // Durable write-through to PostgreSQL
+    this.repo.updateMemberRole(orgId, memberId, newRole).catch((err) => {
+      console.error("[OrganizationService] DB member role update error:", err);
+    });
+
     return member;
   }
 

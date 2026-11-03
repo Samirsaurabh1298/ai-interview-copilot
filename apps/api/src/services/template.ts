@@ -3,6 +3,7 @@ import type {
   CreateTemplateRequest,
   UpdateTemplateRequest,
 } from "@ai-copilot/contracts";
+import { TemplateRepository } from "../repositories/template.repo.js";
 
 export class TemplateNotFoundError extends Error {
   constructor(message = "Assessment template not found") {
@@ -118,6 +119,27 @@ test("handles tickets with undefined tags array safely", () => {
 export class AssessmentTemplateService {
   // Key: orgId -> Map<templateId, AssessmentTemplate>
   private templatesByOrg = new Map<string, Map<string, AssessmentTemplate>>();
+  private repo: TemplateRepository;
+
+  constructor(repo?: TemplateRepository) {
+    this.repo = repo ?? new TemplateRepository();
+  }
+
+  public async loadFromDatabase(orgId?: string): Promise<void> {
+    try {
+      const templates = orgId ? await this.repo.list(orgId) : await this.repo.listAll();
+      for (const tmpl of templates) {
+        let orgMap = this.templatesByOrg.get(tmpl.organizationId);
+        if (!orgMap) {
+          orgMap = new Map();
+          this.templatesByOrg.set(tmpl.organizationId, orgMap);
+        }
+        orgMap.set(tmpl.id, tmpl);
+      }
+    } catch (err) {
+      console.error("[AssessmentTemplateService] Failed to load from database:", err);
+    }
+  }
 
   public seedDefaultTemplate(orgId: string): AssessmentTemplate {
     const templateId = "tmpl_default_frontend_" + orgId.slice(-6);
@@ -166,6 +188,9 @@ export class AssessmentTemplateService {
       this.templatesByOrg.set(orgId, orgMap);
     }
     orgMap.set(templateId, defaultTemplate);
+    this.repo.create(defaultTemplate).catch((err) => {
+      console.error("[AssessmentTemplateService] DB default template seed error:", err);
+    });
     return defaultTemplate;
   }
 
@@ -228,6 +253,9 @@ export class AssessmentTemplateService {
     };
 
     orgMap.set(templateId, template);
+    this.repo.create(template).catch((err) => {
+      console.error("[AssessmentTemplateService] DB template create error:", err);
+    });
     return template;
   }
 
@@ -278,6 +306,9 @@ export class AssessmentTemplateService {
     if (req.status !== undefined) tmpl.status = req.status;
 
     tmpl.updatedAt = new Date();
+    this.repo.update(orgId, templateId, req).catch((err) => {
+      console.error("[AssessmentTemplateService] DB template update error:", err);
+    });
     return tmpl;
   }
 

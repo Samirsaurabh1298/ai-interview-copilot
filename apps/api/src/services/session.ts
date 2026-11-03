@@ -9,6 +9,7 @@ import type {
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AIUsageGatewayService } from "./gateway.js";
+import { SessionRepository } from "../repositories/session.repo.js";
 
 export class SessionNotFoundError extends Error {
   constructor(message = "Assessment session not found") {
@@ -36,12 +37,34 @@ export class AssessmentSessionService {
   private sessions = new Map<string, AssessmentSession>();
   // Key: orgId -> Set<sessionId>
   private sessionsByOrg = new Map<string, Set<string>>();
+  private repo: SessionRepository;
 
   constructor(
     private templateService: AssessmentTemplateService,
     private orgService: OrganizationService,
-    private gateway: AIUsageGatewayService
-  ) {}
+    private gateway: AIUsageGatewayService,
+    repo?: SessionRepository
+  ) {
+    this.repo = repo ?? new SessionRepository();
+  }
+
+  public async loadFromDatabase(orgId?: string): Promise<void> {
+    try {
+      const list = orgId ? await this.repo.listByOrg(orgId) : await this.repo.listAll();
+      for (const s of list) {
+        this.sessions.set(s.id, s);
+        let orgSet = this.sessionsByOrg.get(s.organizationId);
+        if (!orgSet) {
+          orgSet = new Set();
+          this.sessionsByOrg.set(s.organizationId, orgSet);
+        }
+        orgSet.add(s.id);
+        this.gateway.initializeSession(s.id, s.toolPolicy, s.startedAt);
+      }
+    } catch (err) {
+      console.error("[AssessmentSessionService] Failed to load from database:", err);
+    }
+  }
 
   public createSession(req: CreateSessionRequest): AssessmentSession {
     const org = this.orgService.getOrganizationById(req.organizationId);
@@ -103,6 +126,11 @@ export class AssessmentSessionService {
 
     // Initialize Gateway with strict budget and time boundaries
     this.gateway.initializeSession(sessionId, toolPolicy, startedAt);
+
+    // Durable write-through to PostgreSQL
+    this.repo.create(session).catch((err) => {
+      console.error("[AssessmentSessionService] DB session create error:", err);
+    });
 
     return session;
   }
@@ -219,6 +247,11 @@ export class AssessmentSessionService {
       session.workspaceSnapshot.lastTestPassedCount = req.testResults.filter((t) => t.passed).length;
     }
 
+    // Durable write-through to PostgreSQL
+    this.repo.updateWorkspaceSnapshot(sessionId, session.workspaceSnapshot).catch((err) => {
+      console.error("[AssessmentSessionService] DB snapshot update error:", err);
+    });
+
     return session;
   }
 
@@ -256,6 +289,17 @@ export class AssessmentSessionService {
       session.workspaceSnapshot.lastTestPassedCount = req.testResults.filter((t) => t.passed).length;
     }
 
+    // Durable write-through to PostgreSQL
+    this.repo
+      .update(sessionId, {
+        status: "submitted",
+        submittedAt: submitDate,
+        workspaceSnapshot: session.workspaceSnapshot,
+      })
+      .catch((err) => {
+        console.error("[AssessmentSessionService] DB submit update error:", err);
+      });
+
     return session;
   }
 
@@ -275,6 +319,15 @@ export class AssessmentSessionService {
     session.pausedAt = now;
     session.pauseReason = reason || "Proctor incident pause";
     session.updatedAt = now;
+
+    // Durable write-through to PostgreSQL
+    this.repo.update(sessionId, {
+      status: "paused",
+      pausedAt: now,
+      pauseReason: session.pauseReason,
+    }).catch((err) => {
+      console.error("[AssessmentSessionService] DB pause update error:", err);
+    });
 
     return session;
   }
@@ -297,6 +350,15 @@ export class AssessmentSessionService {
     session.status = "in_progress";
     session.updatedAt = new Date();
 
+    // Durable write-through to PostgreSQL
+    this.repo.update(sessionId, {
+      status: "in_progress",
+      totalPausedMs: session.totalPausedMs,
+      expiresAt: session.expiresAt,
+    }).catch((err) => {
+      console.error("[AssessmentSessionService] DB resume update error:", err);
+    });
+
     return session;
   }
 
@@ -305,6 +367,15 @@ export class AssessmentSessionService {
     session.status = "terminated";
     session.terminationReason = reason;
     session.updatedAt = new Date();
+
+    // Durable write-through to PostgreSQL
+    this.repo.update(sessionId, {
+      status: "terminated",
+      terminationReason: reason,
+    }).catch((err) => {
+      console.error("[AssessmentSessionService] DB terminate update error:", err);
+    });
+
     return session;
   }
 

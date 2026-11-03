@@ -13,6 +13,7 @@ import {
   SessionExpiredError,
   SessionInvalidStateError,
 } from "./session.js";
+import { SubmissionRepository } from "../repositories/submission.repo.js";
 
 export class SubmissionNotFoundError extends Error {
   constructor(message = "Submission not found for this session") {
@@ -95,12 +96,34 @@ export function canonicalizeJson(value: unknown): string {
 
 export class SubmissionService {
   private submissionsBySession = new Map<string, SubmissionArtifact>();
+  private repo: SubmissionRepository;
 
   constructor(
     private sessionService: AssessmentSessionService,
     private templateService: AssessmentTemplateService,
-    private eventsService: SessionEventsService
-  ) { }
+    private eventsService: SessionEventsService,
+    repo?: SubmissionRepository
+  ) {
+    this.repo = repo ?? new SubmissionRepository();
+  }
+
+  public async loadFromDatabase(sessionId?: string): Promise<void> {
+    try {
+      if (sessionId) {
+        const artifact = await this.repo.findBySessionId(sessionId);
+        if (artifact) {
+          this.submissionsBySession.set(sessionId, artifact);
+        }
+      } else {
+        const artifacts = await this.repo.listAll();
+        for (const a of artifacts) {
+          this.submissionsBySession.set(a.sessionId, a);
+        }
+      }
+    } catch (err) {
+      console.error("[SubmissionService] Failed to load from database:", err);
+    }
+  }
 
   public async submitAssessment(
     sessionId: string,
@@ -234,12 +257,16 @@ export class SubmissionService {
     // 8. Persist immutable artifact
     this.submissionsBySession.set(sessionId, finalArtifact);
 
+    // Durable write-through to PostgreSQL
+    this.repo.create(finalArtifact).catch((err) => {
+      console.error("[SubmissionService] DB artifact create error:", err);
+    });
+
     // 9. Update session status to submitted
-    session.status = "submitted";
-    session.submittedAt = submitDate;
-    session.updatedAt = submitDate;
-    session.workspaceSnapshot.currentCode = req.finalCode;
-    session.workspaceSnapshot.lastSavedAt = submitDate;
+    this.sessionService.submitSession(sessionId, {
+      finalCode: req.finalCode,
+      explanation: req.technicalExplanation,
+    });
     session.workspaceSnapshot.lastTestPassedCount = passedCount;
     session.workspaceSnapshot.lastTestTotalCount = totalCount;
 

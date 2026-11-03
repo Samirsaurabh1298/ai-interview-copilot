@@ -3,11 +3,26 @@ import type {
   SessionRecord,
   SessionMessageRecord,
 } from "@ai-copilot/contracts";
+import { LedgerRepository } from "../repositories/ledger.repo.js";
 
 export class UsageLedgerService {
   private events: UsageEventRecord[] = [];
   private sessions = new Map<string, SessionRecord>();
   private messages: SessionMessageRecord[] = [];
+  private repo: LedgerRepository;
+
+  constructor(repo?: LedgerRepository) {
+    this.repo = repo ?? new LedgerRepository();
+  }
+
+  public async loadFromDatabase(orgId?: string): Promise<void> {
+    try {
+      const records = orgId ? await this.repo.listByOrg(orgId) : await this.repo.listAll();
+      this.events = records;
+    } catch (err) {
+      console.error("[UsageLedgerService] Failed to load from database:", err);
+    }
+  }
 
   public recordUsage(event: Omit<UsageEventRecord, "id" | "createdAt">): UsageEventRecord {
     const record: UsageEventRecord = {
@@ -16,6 +31,12 @@ export class UsageLedgerService {
       createdAt: new Date(),
     };
     this.events.push(record);
+
+    // Durable write-through to PostgreSQL
+    this.repo.record(record).catch((err) => {
+      console.error("[UsageLedgerService] DB usage record error:", err);
+    });
+
     return record;
   }
 

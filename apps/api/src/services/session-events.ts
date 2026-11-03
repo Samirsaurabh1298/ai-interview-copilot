@@ -5,6 +5,7 @@ import type {
   IngestEventsResponse,
 } from "@ai-copilot/contracts";
 import type { AssessmentSessionService } from "./session.js";
+import { SessionEventsRepository } from "../repositories/session-events.repo.js";
 
 export class SessionEventsInvalidSequenceError extends Error {
   constructor(message = "Event sequence number is invalid or out of order") {
@@ -16,8 +17,23 @@ export class SessionEventsInvalidSequenceError extends Error {
 export class SessionEventsService {
   // Key: sessionId -> Array of SessionEvent (append-only log)
   private eventsBySession = new Map<string, SessionEvent[]>();
+  private repo: SessionEventsRepository;
 
-  constructor(private sessionService?: AssessmentSessionService) {}
+  constructor(
+    private sessionService?: AssessmentSessionService,
+    repo?: SessionEventsRepository
+  ) {
+    this.repo = repo ?? new SessionEventsRepository();
+  }
+
+  public async loadFromDatabase(sessionId: string): Promise<void> {
+    try {
+      const events = await this.repo.listBySession(sessionId);
+      this.eventsBySession.set(sessionId, events);
+    } catch (err) {
+      console.error("[SessionEventsService] Failed to load from database:", err);
+    }
+  }
 
   public ingestEvents(
     sessionId: string,
@@ -68,6 +84,14 @@ export class SessionEventsService {
     // Keep events strictly sorted by sequenceNumber
     sessionEvents.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
+    // Durable write-through to PostgreSQL
+    const insertedEvents = sessionEvents.slice(-acceptedCount);
+    if (insertedEvents.length > 0) {
+      this.repo.insertBatch(insertedEvents).catch((err) => {
+        console.error("[SessionEventsService] DB events batch insert error:", err);
+      });
+    }
+
     const latestEvent = sessionEvents[sessionEvents.length - 1];
     const latestSeq = latestEvent ? latestEvent.sequenceNumber : 0;
 
@@ -110,6 +134,12 @@ export class SessionEventsService {
     };
 
     sessionEvents.push(event);
+
+    // Durable write-through to PostgreSQL
+    this.repo.insertBatch([event]).catch((err) => {
+      console.error("[SessionEventsService] DB direct event insert error:", err);
+    });
+
     return event;
   }
 }

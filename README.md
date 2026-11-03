@@ -1,8 +1,9 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-167%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-170%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
+[![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20Drizzle%20ORM-336791.svg)](https://orm.drizzle.team)
 [![Accessibility](https://img.shields.io/badge/WCAG-2.2%20AA%20Compliant-purple.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 
 > **A production-grade, Google-bar engineering assessment platform designed to evaluate how software engineers solve real-world problems with managed AI assistance.**
@@ -18,13 +19,14 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 
 ## Key Architectural Highlights
 
-1. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
-2. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-3. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
-4. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
-5. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-6. **Human Reviewer Accountability:** AI scorecards are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-7. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
+1. **Production-Grade Persistence (Drizzle ORM + PostgreSQL):** 11 normalized tables across 10 typed repositories. Features connection pooling (`pg.Pool`), embedded zero-daemon PGlite engine for offline/test environments, graceful shutdown, schema auto-migration, and complete survival across API process restarts.
+2. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
+3. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
+4. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
+5. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
+6. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
+7. **Human Reviewer Accountability:** AI scorecards are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
+8. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
 
 ---
 
@@ -39,7 +41,25 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 pnpm install
 ```
 
-### 3. Build Core Packages
+### 3. Database Setup (PostgreSQL / Drizzle ORM)
+
+The platform supports two persistence modes:
+- **Embedded Zero-Daemon Mode (Default for Dev & Tests):** Uses embedded WebAssembly PostgreSQL 16 (`PGlite`). No external database server required; works completely offline with zero configuration.
+- **Production PostgreSQL:** Provide `DATABASE_URL` in your environment or `.env` file:
+  ```env
+  DATABASE_URL=postgresql://postgres:password@localhost:5432/ai_copilot
+  ```
+
+To generate or run database schema migrations via Drizzle Kit:
+```bash
+# Generate version-controlled SQL migration files
+pnpm --filter @ai-copilot/api exec drizzle-kit generate
+
+# Push schema directly to target database
+pnpm --filter @ai-copilot/api exec drizzle-kit push
+```
+
+### 4. Build Core Packages
 ```bash
 pnpm --filter @ai-copilot/contracts build
 pnpm --filter @ai-copilot/api build
