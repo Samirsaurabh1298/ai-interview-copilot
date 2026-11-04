@@ -51,6 +51,9 @@ import type {
   ProgrammingLanguage,
   ScreenCaptureIngestRequest,
   ExtractedChallengeResponse,
+  IntegrityScoreReport,
+  IntegrityIncident,
+  CreateProctorIncidentRequest,
 } from "@ai-copilot/contracts";
 
 const API_BASE_URL = "http://localhost:4000/api/v1";
@@ -949,6 +952,86 @@ export class ApiClient {
       }>;
       total: number;
     };
+  }
+
+  // ==============================================================================
+  // Real-Time Proctoring & Passive Integrity Pipeline (LOOP 7)
+  // ==============================================================================
+
+  public static async getIntegrityReport(
+    sessionId: string,
+    token?: string
+  ): Promise<IntegrityScoreReport> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/integrity`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to fetch session integrity report");
+    }
+    const data = (await res.json()) as { report: IntegrityScoreReport };
+    return data.report;
+  }
+
+  public static async logProctorIncident(
+    sessionId: string,
+    req: CreateProctorIncidentRequest,
+    token?: string
+  ): Promise<{ incident: IntegrityIncident }> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/incidents`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(req),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to log proctor incident");
+    }
+    return (await res.json()) as { incident: IntegrityIncident };
+  }
+
+  public static async getProctorIncidents(
+    sessionId: string,
+    token?: string
+  ): Promise<{ incidents: IntegrityIncident[] }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/incidents`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to fetch proctor incidents");
+    }
+    return (await res.json()) as { incidents: IntegrityIncident[] };
+  }
+
+  public static async resolveProctorIncident(
+    sessionId: string,
+    incidentId: string,
+    token?: string
+  ): Promise<{ incident: IntegrityIncident }> {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/incidents/${incidentId}/resolve`, {
+      method: "POST",
+      headers,
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      throw new Error(err.message || "Failed to resolve proctor incident");
+    }
+    return (await res.json()) as { incident: IntegrityIncident };
   }
 }
 

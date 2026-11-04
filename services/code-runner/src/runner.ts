@@ -19,7 +19,9 @@ export async function executeCodeInSandbox(
     let binary: string;
     let args: string[];
 
-    if (request.language === "javascript" || request.language === "typescript") {
+    const lang = (request.language || "typescript").toLowerCase().trim();
+
+    if (lang === "javascript" || lang === "typescript") {
       // Use runner.ts with Node's native strip-types support to seamlessly execute both TS and JS
       scriptPath = path.join(tmpDir, "runner.ts");
       // Generate harness file combining security traps, solution, and tests
@@ -123,7 +125,7 @@ run().catch((err) => {
         `--max-old-space-size=${request.memoryLimitMb || 64}`,
         scriptPath,
       ];
-    } else if (request.language === "python") {
+    } else if (lang === "python") {
       scriptPath = path.join(tmpDir, "runner.py");
       const harnessCode = `
 import time
@@ -186,10 +188,10 @@ sys.exit(0 if (all_passed and len(results) > 0) else 1)
       binary = "python";
       args = ["-u", scriptPath];
     } else if (
-      request.language === "go" ||
-      request.language === "java" ||
-      request.language === "cpp" ||
-      request.language === "rust"
+      lang === "go" ||
+      lang === "java" ||
+      lang === "cpp" ||
+      lang === "rust"
     ) {
       return performPolyglotStaticVerification(request, startTime);
     } else {

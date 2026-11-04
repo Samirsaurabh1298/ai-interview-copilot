@@ -302,6 +302,22 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_webhooks_org_status ON webhook_subscriptions (organization_id, status);
+
+    CREATE TABLE IF NOT EXISTS proctor_incidents (
+      id VARCHAR(128) PRIMARY KEY,
+      session_id VARCHAR(128) NOT NULL REFERENCES assessment_sessions(id) ON DELETE CASCADE,
+      organization_id VARCHAR(128) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      severity VARCHAR(20) NOT NULL DEFAULT 'warning',
+      category VARCHAR(50) NOT NULL DEFAULT 'manual_flag',
+      description TEXT NOT NULL,
+      proctor_name VARCHAR(100),
+      metadata JSONB DEFAULT '{}'::jsonb,
+      is_resolved BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_proctor_incidents_session ON proctor_incidents (session_id);
+    CREATE INDEX IF NOT EXISTS idx_proctor_incidents_org ON proctor_incidents (organization_id);
   `;
 
   if (pgliteInstance) {

@@ -403,11 +403,12 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
       const passedCount = finalTestRun.tests.filter((t) => t.passed).length;
       const totalCount = finalTestRun.tests.length;
+      const explanationText = technicalExplanation.trim() || "Candidate practice solution verified and submitted.";
 
       const payload: PracticeSubmissionRequest = {
         challengeId: selectedChallenge.id,
         candidateCode: code,
-        technicalExplanation: technicalExplanation.trim(),
+        technicalExplanation: explanationText,
         elapsedSeconds,
         aiQueriesCount,
         aiBudgetConsumedUsd: consumedBudgetUsd,
@@ -417,12 +418,12 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
         testResults: {
           passed: passedCount,
           total: totalCount,
-          durationMs: finalTestRun.durationMs,
-          tests: finalTestRun.tests.map((t) => ({
-            name: t.name,
-            passed: t.passed,
-            durationMs: t.durationMs,
-            error: t.error,
+          durationMs: finalTestRun.durationMs || 1,
+          tests: (finalTestRun.tests || []).map((t) => ({
+            name: t.name || "Test assertion",
+            passed: Boolean(t.passed),
+            durationMs: t.durationMs || 1,
+            error: t.error || null,
           })),
         },
       };

@@ -158,7 +158,10 @@ export class AIOrchestrationService {
       msg.includes("etimedout") ||
       msg.includes("429") ||
       msg.includes("rate limit") ||
-      msg.includes("fetch failed")
+      msg.includes("fetch failed") ||
+      msg.includes("connection error") ||
+      msg.includes("enotfound") ||
+      msg.includes("network")
     );
   }
 }

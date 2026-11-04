@@ -25,6 +25,7 @@ import { webhooksRoutes } from "./routes/webhooks.js";
 import { analyticsRoutes } from "./routes/analytics.js";
 import { practiceRoutes } from "./routes/practice.js";
 import { captureRoutes } from "./routes/capture.js";
+import { proctorRoutes } from "./routes/proctor.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
@@ -41,6 +42,7 @@ import { WebhookService } from "./services/webhook.js";
 import { AICostAnalyticsService } from "./services/analytics.js";
 import { PracticeStudioService } from "./services/practice.js";
 import { ScreenCaptureIngestService } from "./services/capture.js";
+import { IntegrityService } from "./services/integrity.js";
 import type { AppConfig } from "./config.js";
 import { initDatabase, checkDatabaseHealth } from "./db/connection.js";
 
@@ -199,6 +201,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     authService,
     sessionService
   );
+  const integrityService = new IntegrityService(eventsService, sessionService);
 
   // Route registration
   await app.register(authRoutes, {
@@ -258,6 +261,13 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     reportService,
     authService,
     sessionService,
+  });
+
+  await app.register(proctorRoutes, {
+    prefix: "/api/v1/sessions",
+    integrityService,
+    sessionService,
+    authService,
   });
 
   await app.register(webhooksRoutes, {

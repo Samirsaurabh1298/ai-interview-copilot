@@ -331,3 +331,31 @@ export const webhookSubscriptions = pgTable(
   ]
 );
 
+// ==============================================================================
+// 12. Proctor Incidents & Integrity Table (LOOP 7)
+// ==============================================================================
+export const proctorIncidents = pgTable(
+  "proctor_incidents",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sessionId: varchar("session_id", { length: 128 })
+      .notNull()
+      .references(() => assessmentSessions.id, { onDelete: "cascade" }),
+    organizationId: varchar("organization_id", { length: 128 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    severity: varchar("severity", { length: 20 }).notNull().default("warning"),
+    category: varchar("category", { length: 50 }).notNull().default("manual_flag"),
+    description: text("description").notNull(),
+    proctorName: varchar("proctor_name", { length: 100 }),
+    metadata: jsonb("metadata").default({}),
+    isResolved: boolean("is_resolved").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_proctor_incidents_session").on(table.sessionId),
+    index("idx_proctor_incidents_org").on(table.organizationId),
+  ]
+);
+
+
