@@ -21,6 +21,16 @@ import {
   LogOut,
   Award,
   Hash,
+  Layers,
+  Bot,
+  Shield,
+  Lock,
+  FileText,
+  CheckSquare,
+  HelpCircle,
+  ArrowRight,
+  FolderTree,
+  BookOpen,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
@@ -33,6 +43,7 @@ import type {
   AcceptInvitationResponse,
   AssessmentSessionStatus,
   SubmitAssessmentResponse,
+  AssessmentTask,
 } from "@ai-copilot/contracts";
 
 const STARTER_CODE = `export const PRIORITY_WEIGHTS: Record<string, number> = {
@@ -190,6 +201,172 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [code, setCode] = useState(() => sessionData?.starterCode || STARTER_CODE);
   const verificationTestCode = sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE;
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
+
+  // LOOP 6: Multi-Task Architecture
+  const [tasks] = useState<AssessmentTask[]>(() => {
+    if (sessionData?.tasks && sessionData.tasks.length > 0) {
+      return sessionData.tasks;
+    }
+    return [
+      {
+        id: "task_triage_queue",
+        type: "coding_challenge",
+        title: "Section 1: Support Triage Queue Bugfix",
+        description:
+          "Investigate and resolve priority sorting inversion, array mutation side-effects, and undefined tag filtering crashes.",
+        order: 0,
+        weight: 100,
+        aiPolicy: {
+          enabled: true,
+          mode: "full_copilot",
+          allowedModel: "gpt-4o-mini",
+          maxBudgetUsd: sessionData?.toolPolicy?.maxBudgetUsd ?? 0.25,
+          candidateDisclosure:
+            "Full AI Copilot enabled with proposed code patch reviews.",
+        },
+        config: {
+          starterCode: sessionData?.starterCode || STARTER_CODE,
+          verificationTestCode:
+            sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE,
+          language: "typescript",
+        },
+      },
+    ];
+  });
+  const [activeTaskIndex, setActiveTaskIndex] = useState(0);
+  const activeTask: AssessmentTask = tasks[activeTaskIndex] || tasks[0] || {
+    id: "task_triage_queue",
+    type: "coding_challenge",
+    title: "Section 1: Support Triage Queue Bugfix",
+    description: "Investigate and resolve priority sorting inversion and array mutation side-effects.",
+    order: 0,
+    weight: 100,
+    aiPolicy: {
+      enabled: true,
+      mode: "full_copilot",
+      allowedModel: "gpt-4o-mini",
+      maxBudgetUsd: sessionData?.toolPolicy?.maxBudgetUsd ?? 0.25,
+      candidateDisclosure: "Full AI Copilot enabled with proposed code patch reviews.",
+    },
+    config: {
+      starterCode: sessionData?.starterCode || STARTER_CODE,
+      verificationTestCode: sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE,
+      language: "typescript",
+    },
+  };
+  const [questionAnswers, setQuestionAnswers] = useState<
+    Record<string, { selectedOptionIds?: string[]; textResponse?: string; selectedOptionIndexes?: number[] }>
+  >({});
+
+  // Multi-task Code Buffers
+  const [taskCodes, setTaskCodes] = useState<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const t of tasks) {
+      if (t.type === "coding_challenge") {
+        map[t.id] = t.config?.starterCode || sessionData?.starterCode || STARTER_CODE;
+      }
+    }
+    return map;
+  });
+
+  // Virtual Files for Multi-File Repository Tasks
+  const [repoFiles, setRepoFiles] = useState<Record<string, { content: string; isReadOnly?: boolean }>>(() => {
+    const initialFiles: Record<string, { content: string; isReadOnly?: boolean }> = {};
+    for (const t of tasks) {
+      if (t.type === "repository_task") {
+        if (t.config?.fileTree && Array.isArray(t.config.fileTree)) {
+          for (const f of t.config.fileTree) {
+            initialFiles[f.path] = { content: f.content, isReadOnly: f.isReadOnly };
+          }
+        } else if (t.config?.starterFiles) {
+          for (const [p, content] of Object.entries(t.config.starterFiles)) {
+            initialFiles[p] = { content: content as string, isReadOnly: false };
+          }
+        }
+      }
+    }
+    if (Object.keys(initialFiles).length === 0) {
+      initialFiles["src/index.ts"] = {
+        content: `export function processEvents(events: any[]) {\n  // Implementation here\n  return events;\n}`,
+        isReadOnly: false,
+      };
+      initialFiles["src/types.ts"] = {
+        content: `export interface SystemEvent {\n  id: string;\n  timestamp: number;\n  type: string;\n}`,
+        isReadOnly: true,
+      };
+    }
+    return initialFiles;
+  });
+
+  const [activeRepoFilePath, setActiveRepoFilePath] = useState<string>(() => {
+    const repoTask = tasks.find((t) => t.type === "repository_task");
+    if (repoTask?.config?.primaryFileToEdit) return repoTask.config.primaryFileToEdit;
+    if (repoTask?.config?.fileTree?.[0]?.path) return repoTask.config.fileTree[0].path;
+    return "src/index.ts";
+  });
+
+  // Task Switcher with Code Buffer Persistence
+  const handleSwitchTask = (newIdx: number) => {
+    if (newIdx === activeTaskIndex) return;
+    if (activeTask.type === "coding_challenge") {
+      setTaskCodes((prev) => ({ ...prev, [activeTask.id]: code }));
+    }
+    setActiveTaskIndex(newIdx);
+    const nextTask = tasks[newIdx];
+    if (nextTask && nextTask.type === "coding_challenge") {
+      const nextCode = taskCodes[nextTask.id] || nextTask.config?.starterCode || sessionData?.starterCode || STARTER_CODE;
+      setCode(nextCode);
+    }
+  };
+
+  // Question Set Answer Handlers
+  const handleSelectOption = (questionId: string, optionIdOrIndex: string | number, isMulti: boolean) => {
+    setQuestionAnswers((prev) => {
+      const existing = prev[questionId] || {};
+      const currentIds = existing.selectedOptionIds || [];
+      const currentIdxs = existing.selectedOptionIndexes || [];
+      const idStr = String(optionIdOrIndex);
+      const idxNum = typeof optionIdOrIndex === "number" ? optionIdOrIndex : parseInt(optionIdOrIndex, 10);
+
+      if (isMulti) {
+        const nextIds = currentIds.includes(idStr)
+          ? currentIds.filter((id) => id !== idStr)
+          : [...currentIds, idStr];
+        const nextIdxs = !isNaN(idxNum)
+          ? currentIdxs.includes(idxNum)
+            ? currentIdxs.filter((i) => i !== idxNum)
+            : [...currentIdxs, idxNum]
+          : currentIdxs;
+        return {
+          ...prev,
+          [questionId]: {
+            ...existing,
+            selectedOptionIds: nextIds,
+            selectedOptionIndexes: nextIdxs,
+          },
+        };
+      } else {
+        return {
+          ...prev,
+          [questionId]: {
+            ...existing,
+            selectedOptionIds: [idStr],
+            selectedOptionIndexes: !isNaN(idxNum) ? [idxNum] : [],
+          },
+        };
+      }
+    });
+  };
+
+  const handleUpdateTextResponse = (questionId: string, text: string) => {
+    setQuestionAnswers((prev) => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        textResponse: text,
+      },
+    }));
+  };
 
   // Server-Authoritative Session Lifecycle State
   const [sessionStatus, setSessionStatus] = useState<AssessmentSessionStatus>("in_progress");
@@ -548,8 +725,17 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   // Request Solution Proposal from AI without auto-modifying editor buffer
   const handleRequestSolutionProposal = async () => {
     if (isAskingAI || budgetStatus.isExhausted) return;
+    if (activeTask.aiPolicy?.mode === "prohibited") {
+      alert(activeTask.aiPolicy.candidateDisclosure || "AI assistance is strictly prohibited for this section by company policy.");
+      return;
+    }
+    if (activeTask.aiPolicy?.mode === "restricted_explainer") {
+      alert("AI Explainer Mode: AI can explain architectural trade-offs, but code generation is disabled for this section.");
+      return;
+    }
+
     setLeftTab("ai");
-    const promptText = "Please propose a complete corrected TypeScript solution for filterAndSortTickets to fix descending priority sorting, array mutation in place, and missing tags errors.";
+    const promptText = `Please propose a minimal bugfix or implementation patch for ${activeTask.title}.`;
     setAiHistory((prev) => [...prev, { role: "candidate", text: promptText }]);
     setIsAskingAI(true);
 
@@ -561,9 +747,9 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           code,
           language: "typescript",
           responseStyle: "concise",
-          context: [],
+          context: [{ content: activeTask.description, source: "user" }],
         },
-        "groq",
+        undefined,
         sessionId
       );
 
@@ -614,6 +800,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     e.preventDefault();
     if (!aiQuestion.trim() || isAskingAI) return;
 
+    if (activeTask.aiPolicy?.mode === "prohibited") {
+      alert(activeTask.aiPolicy.candidateDisclosure || "AI assistance is prohibited by company policy for this section.");
+      return;
+    }
+
     if (budgetStatus.isExhausted) {
       alert("AI budget exhausted ($0.25 USD). Further AI queries are locked. You may continue writing code and testing your solution.");
       return;
@@ -638,9 +829,9 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           code,
           language: "typescript",
           responseStyle: "concise",
-          context: [],
+          context: [{ content: activeTask.description, source: "user" }],
         },
-        "groq",
+        undefined,
         sessionId
       );
 
@@ -693,6 +884,47 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         tests = val.tests;
       }
 
+      // Assemble structured multi-task submissions (LOOP 6)
+      const taskSubmissions: Record<string, any> = {};
+      for (const t of tasks) {
+        if (t.type === "question_set") {
+          taskSubmissions[t.id] = {
+            taskId: t.id,
+            taskType: "question_set",
+            status: "completed",
+            answers: questionAnswers,
+            maxPoints: t.weight ?? t.points ?? 30,
+          };
+        } else if (t.type === "coding_challenge") {
+          taskSubmissions[t.id] = {
+            taskId: t.id,
+            taskType: "coding_challenge",
+            status: "completed",
+            codeSubmission: {
+              code: taskCodes[t.id] || code,
+              language: t.config?.language || "typescript",
+            },
+            maxPoints: t.weight ?? t.points ?? 70,
+          };
+        } else if (t.type === "repository_task") {
+          const filesRecord: Record<string, string> = {};
+          for (const [p, f] of Object.entries(repoFiles)) {
+            filesRecord[p] = f.content;
+          }
+          taskSubmissions[t.id] = {
+            taskId: t.id,
+            taskType: "repository_task",
+            status: "completed",
+            finalFiles: filesRecord,
+            codeSubmission: {
+              code: repoFiles[t.config?.primaryFileToEdit || "src/index.ts"]?.content || code,
+              language: t.config?.targetLanguage || "typescript",
+            },
+            maxPoints: t.weight ?? t.points ?? 40,
+          };
+        }
+      }
+
       // Submit to server-authoritative session record with immutable artifact bundling (Task 14)
       try {
         const receipt = await ApiClient.submitAssessment(
@@ -700,6 +932,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           {
             finalCode: code,
             technicalExplanation: explanation.trim(),
+            taskSubmissions,
           },
           sessionData?.candidateToken
         );
@@ -1009,6 +1242,82 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         </div>
       )}
 
+      {/* LOOP 6: Multi-Task Stepper Navigation */}
+      {tasks.length > 1 && (
+        <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between dark:bg-[#0d131f] dark:border-gray-800 text-xs shadow-xs">
+          <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+              Sections:
+            </span>
+            {tasks.map((t, idx) => {
+              const isActive = activeTaskIndex === idx;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => handleSwitchTask(idx)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  <span
+                    className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center font-bold ${
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-300 dark:bg-gray-700 text-slate-700 dark:text-gray-300"
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <span className="line-clamp-1 max-w-[180px]">{t.title}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-200 dark:bg-gray-700 text-slate-600 dark:text-gray-400"
+                    }`}
+                  >
+                    {t.weight ?? t.points ?? 25} pts
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Current Section Policy Badge */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] text-slate-400">Section AI Policy:</span>
+            <span
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold border flex items-center gap-1.5 ${
+                activeTask.aiPolicy?.mode === "prohibited"
+                  ? "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300"
+                  : activeTask.aiPolicy?.mode === "restricted_explainer"
+                  ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
+                  : "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
+              }`}
+            >
+              {activeTask.aiPolicy?.mode === "prohibited" ? (
+                <>
+                  <Shield className="w-3 h-3 text-rose-600" />
+                  <span>AI Assistance Prohibited</span>
+                </>
+              ) : activeTask.aiPolicy?.mode === "restricted_explainer" ? (
+                <>
+                  <Sparkles className="w-3 h-3 text-amber-600" />
+                  <span>AI Explainer Only</span>
+                </>
+              ) : (
+                <>
+                  <Bot className="w-3 h-3 text-emerald-600" />
+                  <span>Full AI Copilot ($0.25)</span>
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Main Workspace Split Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Pane (Task Brief & AI Copilot Chat) */}
@@ -1043,66 +1352,317 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           {/* Left Content Area */}
           <div className="flex-1 overflow-y-auto p-5 text-xs text-slate-700 space-y-4 dark:text-gray-300">
             {leftTab === "brief" && (
-              <div className="space-y-4 leading-relaxed">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 mb-1 dark:text-white">
-                    Scenario & Problem Overview
-                  </h3>
-                  <p className="text-slate-600 dark:text-gray-400">
-                    You are maintaining the internal Customer Support Engineering dashboard. After a recent state refactor in <code className="bg-slate-100 dark:bg-gray-800 px-1 py-0.5 rounded font-mono text-indigo-600 dark:text-indigo-300">useTicketQueue.ts</code>, customer success reported two critical regressions in the triage list:
-                  </p>
-                </div>
+              activeTask.type === "question_set" ? (
+                <div className="space-y-6 leading-relaxed">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                        Task Family: Technical Questions
+                      </span>
+                      <span className="text-slate-400 text-xs">
+                        {activeTask.config?.questions?.length || 0} Questions
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {activeTask.title}
+                    </h3>
+                    <p className="text-slate-600 dark:text-gray-400 mt-1">
+                      {activeTask.description}
+                    </p>
+                  </div>
 
-                <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-2 dark:border-rose-900/50 dark:bg-rose-950/20">
-                  <h4 className="font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-rose-600" />
-                    <span>Reported Regressions:</span>
-                  </h4>
-                  <ul className="list-disc list-inside space-y-1 text-slate-700 dark:text-gray-300">
-                    <li>
-                      <strong>Priority Inversion:</strong> When sorted descending (<code className="font-mono">order: "desc"</code>), urgent incidents appear at the bottom instead of the top.
-                    </li>
-                    <li>
-                      <strong>Array Mutation:</strong> Calling sort directly modifies the input tickets array in place, causing unpredictable re-renders.
-                    </li>
-                    <li>
-                      <strong>Unhandled Empty Tags:</strong> Filtering by multi-tags throws exceptions when tickets omit the tags array.
-                    </li>
-                  </ul>
-                </div>
+                  {/* List of Questions */}
+                  <div className="space-y-5">
+                    {(!activeTask.config?.questions || activeTask.config.questions.length === 0) ? (
+                      <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-gray-800 text-center text-slate-500">
+                        No questions configured for this section.
+                      </div>
+                    ) : (
+                      activeTask.config.questions.map((q: any, qIdx: number) => {
+                        const ans = questionAnswers[q.id] || {};
+                        const selectedIdxs = ans.selectedOptionIndexes || [];
+                        const selectedIds = ans.selectedOptionIds || [];
+                        const textAns = ans.textResponse || "";
+                        const isAnswered = selectedIds.length > 0 || selectedIdxs.length > 0 || textAns.trim().length > 0;
 
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-900 dark:text-white">Your Objectives:</h4>
+                        return (
+                          <div
+                            key={q.id || qIdx}
+                            id={`question-card-${q.id || qIdx}`}
+                            className={`p-4 rounded-xl border transition-all ${
+                              isAnswered
+                                ? "border-emerald-200 bg-white shadow-xs dark:border-emerald-950/70 dark:bg-[#0f1522]"
+                                : "border-slate-200 bg-slate-50/60 dark:border-gray-800 dark:bg-gray-900/30"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <span className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 flex items-center justify-center text-[10px] font-bold">
+                                  {qIdx + 1}
+                                </span>
+                                <span>{q.title || `Question ${qIdx + 1}`}</span>
+                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isAnswered && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                    <span>Answered</span>
+                                  </span>
+                                )}
+                                <span className="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800">
+                                  {q.marks ?? q.points ?? 10} pts
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-xs text-slate-800 dark:text-gray-200 mb-3 font-medium leading-relaxed">
+                              {q.prompt}
+                            </p>
+
+                            {/* Multiple Choice / Single Select */}
+                            {(q.format === "multiple_choice" || q.format === "mcq_single") && (
+                              <div className="space-y-2">
+                                {(q.options || []).map((opt: any, optIdx: number) => {
+                                  const optText = typeof opt === "string" ? opt : opt.text;
+                                  const optId = typeof opt === "object" && opt.id ? opt.id : String(optIdx);
+                                  const isSelected = selectedIds.includes(optId) || selectedIdxs.includes(optIdx);
+
+                                  return (
+                                    <label
+                                      key={optIdx}
+                                      onClick={() => handleSelectOption(q.id, optId, false)}
+                                      className={`flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                                        isSelected
+                                          ? "bg-indigo-50 border-indigo-400 text-indigo-950 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-200 font-medium shadow-xs"
+                                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 dark:bg-gray-900/80 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-850"
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`q_${q.id}`}
+                                        checked={isSelected}
+                                        onChange={() => {}}
+                                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="flex-1 leading-normal">{optText}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Multiple Select */}
+                            {(q.format === "multiple_select" || q.format === "mcq_multi") && (
+                              <div className="space-y-2">
+                                {(q.options || []).map((opt: any, optIdx: number) => {
+                                  const optText = typeof opt === "string" ? opt : opt.text;
+                                  const optId = typeof opt === "object" && opt.id ? opt.id : String(optIdx);
+                                  const isSelected = selectedIds.includes(optId) || selectedIdxs.includes(optIdx);
+
+                                  return (
+                                    <label
+                                      key={optIdx}
+                                      onClick={() => handleSelectOption(q.id, optId, true)}
+                                      className={`flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all ${
+                                        isSelected
+                                          ? "bg-indigo-50 border-indigo-400 text-indigo-950 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-200 font-medium shadow-xs"
+                                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 dark:bg-gray-900/80 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-850"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => {}}
+                                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                      />
+                                      <span className="flex-1 leading-normal">{optText}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Short Text */}
+                            {q.format === "short_text" && (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  value={textAns}
+                                  onChange={(e) => handleUpdateTextResponse(q.id, e.target.value)}
+                                  placeholder="Type your structured technical response here..."
+                                  rows={4}
+                                  maxLength={q.maxCharacters || q.charLimit || 1500}
+                                  className="w-full rounded-lg border border-slate-300 bg-white p-3 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-[#0c1017] dark:text-white leading-relaxed resize-y"
+                                />
+                                <div className="flex justify-between text-[11px] text-slate-400">
+                                  <span>Minimum 10 characters required for automated rubric credit</span>
+                                  <span>{textAns.length} / {q.maxCharacters || q.charLimit || 1500} chars</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : activeTask.type === "repository_task" ? (
+                <div className="space-y-4 leading-relaxed">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                        Codebase Task • Action: {activeTask.config?.taskAction || activeTask.config?.action || "Implement"}
+                      </span>
+                      <span className="text-slate-400 text-xs">
+                        Target Language: {activeTask.config?.targetLanguage || "typescript"}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      {activeTask.title}
+                    </h3>
+                    <p className="text-slate-600 dark:text-gray-400 mt-1">
+                      {activeTask.description || activeTask.config?.taskDescription}
+                    </p>
+                  </div>
+
+                  {/* Acceptance Criteria Checklist */}
+                  {activeTask.config?.acceptanceCriteria && activeTask.config.acceptanceCriteria.length > 0 && (
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-2 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                      <h4 className="font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                        <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Acceptance Criteria:</span>
+                      </h4>
+                      <ul className="space-y-1.5 text-slate-700 dark:text-gray-300">
+                        {activeTask.config.acceptanceCriteria.map((crit: string, cIdx: number) => (
+                          <li key={cIdx} className="flex items-start gap-2">
+                            <span className="text-indigo-600 dark:text-indigo-400 mt-0.5">•</span>
+                            <span>{crit}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Permitted Documentation URLs */}
+                  {activeTask.config?.permittedDocumentationUrls && activeTask.config.permittedDocumentationUrls.length > 0 && (
+                    <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2 dark:border-gray-800 dark:bg-gray-900/40">
+                      <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-gray-200">
+                        <BookOpen className="w-4 h-4 text-indigo-500" />
+                        <span>Permitted Documentation & References:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {activeTask.config.permittedDocumentationUrls.map((url: string, uIdx: number) => (
+                          <a
+                            key={uIdx}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 bg-white dark:bg-gray-800 px-2.5 py-1 rounded border border-slate-200 dark:border-gray-700"
+                          >
+                            <span>{url}</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 dark:border-gray-800 dark:bg-gray-900/40">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-gray-200">
+                      <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                      <span>Evaluation Standards:</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      Evaluated on architectural fidelity, edge case resilience, clean separation of concerns, and passing all hidden verification assertions.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                /* Standard Coding Challenge View */
+                <div className="space-y-4 leading-relaxed">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 mb-1 dark:text-white">
+                      {activeTask.title || "Scenario & Problem Overview"}
+                    </h3>
+                    <p className="text-slate-600 dark:text-gray-400">
+                      {activeTask.description || "Implement the required solution fulfilling all constraints and passing all verification assertions."}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-2 dark:border-rose-900/50 dark:bg-rose-950/20">
+                    <h4 className="font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600" />
+                      <span>Reported Regressions & Edge Cases:</span>
+                    </h4>
+                    <ul className="list-disc list-inside space-y-1 text-slate-700 dark:text-gray-300">
+                      <li>
+                        <strong>Priority Inversion:</strong> When sorted descending (<code className="font-mono">order: "desc"</code>), urgent incidents must strictly appear at the top.
+                      </li>
+                      <li>
+                        <strong>Array Mutation:</strong> Calling sort directly modifies the input tickets array in place, causing unpredictable re-renders.
+                      </li>
+                      <li>
+                        <strong>Unhandled Empty Tags:</strong> Filtering by multi-tags throws exceptions when tickets omit the tags array.
+                      </li>
+                    </ul>
+                  </div>
+
                   <div className="space-y-2">
-                    <div className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>Fix priority order to strictly prioritize <strong>urgent</strong> &gt; <strong>high</strong> &gt; <strong>medium</strong> &gt; <strong>low</strong>.</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>Ensure pure, non-mutating array sorting using copied array spreads (<code className="font-mono">[...result].sort(...)</code>).</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>Defensively guard optional ticket tags.</span>
+                    <h4 className="font-bold text-slate-900 dark:text-white">Your Objectives:</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>Fix priority order to strictly prioritize <strong>urgent</strong> &gt; <strong>high</strong> &gt; <strong>medium</strong> &gt; <strong>low</strong>.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>Ensure pure, non-mutating array sorting using copied array spreads (<code className="font-mono">[...result].sort(...)</code>).</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>Defensively guard optional ticket tags.</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 dark:border-gray-800 dark:bg-gray-900/40">
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-gray-200">
-                    <ShieldCheck className="w-4 h-4 text-indigo-500" />
-                    <span>Rubric Dimensions Measured:</span>
+                  <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5 dark:border-gray-800 dark:bg-gray-900/40">
+                    <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-gray-200">
+                      <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                      <span>Rubric Dimensions Measured:</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      Code Comprehension (20%) • Problem Framing (10%) • AI Collaboration (15%) • Critical Evaluation (15%) • Debugging & Quality (20%) • Testing Discipline (15%) • Technical Explanation (5%).
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                    Code Comprehension (20%) • Problem Framing (10%) • AI Collaboration (15%) • Critical Evaluation (15%) • Debugging & Quality (20%) • Testing Discipline (15%) • Technical Explanation (5%).
-                  </p>
                 </div>
-              </div>
+              )
             )}
 
             {leftTab === "ai" && (
               <div className="flex flex-col h-full space-y-3">
+                {/* Task AI Policy Banner */}
+                {activeTask.aiPolicy?.mode === "prohibited" ? (
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs dark:bg-rose-950/40 dark:border-rose-900 dark:text-rose-300 flex items-start gap-2.5 shrink-0 shadow-xs">
+                    <Shield className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">AI Assistance Prohibited for this Section</div>
+                      <div className="text-[11px] opacity-90 mt-0.5">
+                        {activeTask.aiPolicy.candidateDisclosure ||
+                          "The company has configured this section to be solved independently without AI generation."}
+                      </div>
+                    </div>
+                  </div>
+                ) : activeTask.aiPolicy?.mode === "restricted_explainer" ? (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-300 flex items-start gap-2.5 shrink-0 shadow-xs">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">AI Explainer Mode Active</div>
+                      <div className="text-[11px] opacity-90 mt-0.5">
+                        AI assistance is restricted to explaining architectural concepts and debugging patterns. Direct code generation and patch proposals are disabled for this section.
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                   {aiHistory.map((msg, idx) => (
                     <div
@@ -1206,6 +1766,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     disabled={
                       isAskingAI ||
                       budgetStatus.isExhausted ||
+                      activeTask.aiPolicy?.mode === "prohibited" ||
                       isExpired ||
                       sessionStatus === "submitted"
                     }
@@ -1214,9 +1775,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                         ? "Assessment is submitted (AI locked)"
                         : isExpired
                           ? "Assessment time elapsed — AI assistance is locked"
-                          : budgetStatus.isExhausted
-                            ? "AI Quota Exhausted ($0.25 USD limit reached)"
-                            : "Ask AI for explanation, edge cases, or code proposals..."
+                          : activeTask.aiPolicy?.mode === "prohibited"
+                            ? "AI assistance is locked for this section by company policy"
+                            : budgetStatus.isExhausted
+                              ? "AI Quota Exhausted ($0.25 USD limit reached)"
+                              : "Ask AI for explanation, edge cases, or code proposals..."
                     }
                     className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50"
                   />
@@ -1225,11 +1788,12 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     disabled={
                       isAskingAI ||
                       !aiQuestion.trim() ||
+                      activeTask.aiPolicy?.mode === "prohibited" ||
                       budgetStatus.isExhausted ||
                       isExpired ||
                       sessionStatus === "submitted"
                     }
-                    className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors disabled:opacity-50"
+                    className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -1239,138 +1803,461 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Right Pane (Code Editor & Verification Runner) */}
-        <div className="w-1/2 flex flex-col bg-[#0d121c] overflow-hidden text-gray-100">
-          {/* Top Editor Toolbar */}
-          <div className="h-10 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between text-xs">
-            <span className="font-mono text-indigo-400 font-semibold flex items-center gap-1.5">
-              <FileCode className="w-3.5 h-3.5" />
-              <span>src/useTicketQueue.ts</span>
-            </span>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleRequestSolutionProposal}
-                disabled={
-                  isAskingAI ||
-                  budgetStatus.isExhausted ||
-                  isPaused ||
-                  isExpired ||
-                  sessionStatus === "submitted"
-                }
-                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
-                title="Ask AI for a solution proposal to inspect and review"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Propose Solution with AI</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm("Reset code back to original starter code?")) {
-                    setCode(STARTER_CODE);
-                    setAppliedNotice("Starter code restored.");
-                    setTimeout(() => setAppliedNotice(null), 3000);
-                  }
-                }}
-                disabled={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
-                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset Starter</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Applied Code Notice Banner */}
-          {appliedNotice && (
-            <div className="bg-emerald-500/10 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-emerald-400 flex items-center justify-between">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{appliedNotice}</span>
+        {/* Right Pane (Dynamic by Task Type) */}
+        {activeTask.type === "question_set" ? (
+          <div className="w-1/2 flex flex-col bg-slate-50 dark:bg-[#0c1017] border-l border-slate-200 dark:border-gray-800 overflow-hidden">
+            {/* Top Toolbar */}
+            <div className="h-10 border-b border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900/80 px-4 flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
+                <ListFilter className="w-4 h-4 text-indigo-500" />
+                <span>Section Overview & Question Navigator</span>
               </span>
-              <button
-                type="button"
-                onClick={() => handleRunVerification()}
-                className="text-[11px] underline hover:text-emerald-300 font-semibold"
-              >
-                Run Tests
-              </button>
-            </div>
-          )}
-
-          {/* Code Editor Area */}
-          <div className="flex-1 overflow-hidden p-2">
-            <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              readOnly={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
-              spellCheck={false}
-              className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)
-                  ? "opacity-75 cursor-not-allowed bg-slate-950/80"
-                  : ""
-                }`}
-            />
-          </div>
-
-          {/* Bottom Test Results Bar */}
-          <div className="h-44 border-t border-slate-800 bg-[#0c1017] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 text-xs">
-              <span className="font-semibold text-gray-300 flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Isolated Sandbox Verification Test Suite</span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                {activeTask.weight ?? activeTask.points ?? 30} Points Total
               </span>
-
-              {testResult && (
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${testResult.passed ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
-                    }`}
-                >
-                  {testResult.passed
-                    ? "5/5 TESTS PASSED"
-                    : `${testResult.tests.filter((t) => t.passed).length}/${testResult.tests.length || 5} PASSED`}
-                </span>
-              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
-              {!testResult && (
-                <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-1">
-                  <span>Click "Run Tests" in top bar to execute code against unit tests.</span>
-                </div>
-              )}
+            {/* Section Progress & Navigator */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {/* Progress Summary Card */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white dark:border-gray-800 dark:bg-gray-900/50 shadow-xs space-y-3">
+                {(() => {
+                  const questions = activeTask.config?.questions || [];
+                  const answeredCount = questions.filter((q: any) => {
+                    const ans = questionAnswers[q.id];
+                    return (
+                      (ans?.selectedOptionIds && ans.selectedOptionIds.length > 0) ||
+                      (ans?.selectedOptionIndexes && ans.selectedOptionIndexes.length > 0) ||
+                      (ans?.textResponse && ans.textResponse.trim().length > 0)
+                    );
+                  }).length;
+                  const percent = questions.length > 0 ? Math.round((answeredCount / questions.length) * 100) : 0;
 
-              {testResult && (
-                <div className="space-y-1.5">
-                  {testResult.tests.map((t, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between px-3 py-1.5 rounded bg-slate-900/60 border border-slate-800/80 font-mono text-[11px]"
-                    >
-                      <div className="flex items-center gap-2">
-                        {t.passed ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        ) : (
-                          <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                        )}
-                        <span className={t.passed ? "text-gray-200" : "text-rose-300"}>{t.name}</span>
+                  return (
+                    <>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-800 dark:text-white">
+                          Section Completion Progress
+                        </span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {answeredCount} / {questions.length} Answered ({percent}%)
+                        </span>
                       </div>
-                      <span className="text-gray-500">{t.durationMs}ms</span>
-                    </div>
-                  ))}
+                      <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-gray-800 overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-600 dark:bg-indigo-500 transition-all duration-300"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
 
-                  {testResult.stderr && (
-                    <div className="p-2 rounded bg-rose-950/40 border border-rose-900 font-mono text-[11px] text-rose-300 whitespace-pre-wrap">
-                      {testResult.stderr}
-                    </div>
-                  )}
+              {/* Questions Checklist */}
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-slate-700 dark:text-gray-300 uppercase tracking-wider">
+                  Questions in this Section:
                 </div>
-              )}
+                <div className="space-y-2">
+                  {(activeTask.config?.questions || []).map((q: any, qIdx: number) => {
+                    const ans = questionAnswers[q.id];
+                    const isAnswered =
+                      (ans?.selectedOptionIds && ans.selectedOptionIds.length > 0) ||
+                      (ans?.selectedOptionIndexes && ans.selectedOptionIndexes.length > 0) ||
+                      (ans?.textResponse && ans.textResponse.trim().length > 0);
+
+                    return (
+                      <div
+                        key={q.id || qIdx}
+                        onClick={() => {
+                          const elem = document.getElementById(`question-card-${q.id || qIdx}`);
+                          elem?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        }}
+                        className={`p-3 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-all ${
+                          isAnswered
+                            ? "bg-white border-emerald-200 dark:bg-gray-900/60 dark:border-emerald-900/60 shadow-xs"
+                            : "bg-white border-slate-200 dark:bg-gray-900/30 dark:border-gray-800 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              isAnswered
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                : "bg-slate-100 text-slate-500 dark:bg-gray-800 dark:text-gray-400"
+                            }`}
+                          >
+                            {qIdx + 1}
+                          </span>
+                          <span className="font-medium text-slate-800 dark:text-gray-200 line-clamp-1 max-w-[280px]">
+                            {q.title || q.prompt}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {q.marks ?? q.points ?? 10} pts
+                          </span>
+                          {isAnswered ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                          ) : (
+                            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Company Section Policy Card */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-white dark:border-gray-800 dark:bg-gray-900/40 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-white">
+                  <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                  <span>Company Assessment Policy</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-gray-400 leading-relaxed">
+                  {activeTask.aiPolicy?.mode === "prohibited"
+                    ? "AI assistance is locked for this technical questions section to evaluate core engineering fundamentals directly."
+                    : "Responses are evaluated against deterministic rubrics and calibration thresholds upon submission."}
+                </p>
+              </div>
+
+              {/* Section Transition Action */}
+              <div className="pt-2">
+                {activeTaskIndex < tasks.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchTask(activeTaskIndex + 1)}
+                    className="w-full py-2.5 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                  >
+                    <span>Proceed to Next Section: {tasks[activeTaskIndex + 1]?.title}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsSubmitModalOpen(true)}
+                    className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Review & Submit Final Assessment</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        ) : activeTask.type === "repository_task" ? (
+          <div className="w-1/2 flex flex-col bg-[#0d121c] overflow-hidden text-gray-100">
+            {/* Virtual File Tabs Toolbar */}
+            <div className="h-10 border-b border-slate-800 bg-slate-900/90 px-3 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1 overflow-x-auto py-1">
+                {Object.keys(repoFiles).map((filePath) => {
+                  const isCur = activeRepoFilePath === filePath;
+                  const isRO = repoFiles[filePath]?.isReadOnly;
+
+                  return (
+                    <button
+                      key={filePath}
+                      type="button"
+                      onClick={() => setActiveRepoFilePath(filePath)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-[11px] transition-all cursor-pointer ${
+                        isCur
+                          ? "bg-indigo-600 text-white font-semibold shadow-xs"
+                          : "text-gray-400 hover:text-gray-200 hover:bg-slate-800"
+                      }`}
+                    >
+                      <FileCode className="w-3 h-3" />
+                      <span>{filePath}</span>
+                      {isRO && <Lock className="w-2.5 h-2.5 text-amber-400 ml-0.5" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRequestSolutionProposal}
+                  disabled={
+                    isAskingAI ||
+                    budgetStatus.isExhausted ||
+                    activeTask.aiPolicy?.mode === "prohibited" ||
+                    isPaused ||
+                    isExpired ||
+                    sessionStatus === "submitted"
+                  }
+                  className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
+                  title="Ask AI for a solution proposal to inspect and review"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Propose with AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Reset current file back to initial starter contents?")) {
+                      const orig =
+                        activeTask.config?.starterFiles?.[activeRepoFilePath] ||
+                        activeTask.config?.fileTree?.find((f: any) => f.path === activeRepoFilePath)?.content ||
+                        "";
+                      setRepoFiles((prev) => ({
+                        ...prev,
+                        [activeRepoFilePath]: { ...prev[activeRepoFilePath], content: orig },
+                      }));
+                      setAppliedNotice("File reset to starter state.");
+                      setTimeout(() => setAppliedNotice(null), 3000);
+                    }
+                  }}
+                  disabled={
+                    sessionStatus === "submitted" ||
+                    isPaused ||
+                    (isExpired && !inGracePeriod) ||
+                    repoFiles[activeRepoFilePath]?.isReadOnly
+                  }
+                  className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Read-only Banner if applicable */}
+            {repoFiles[activeRepoFilePath]?.isReadOnly && (
+              <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-[11px] text-amber-300 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  <strong>Read-Only File:</strong> This repository file is locked for reference. Modify your target implementation files.
+                </span>
+              </div>
+            )}
+
+            {/* Editor Area */}
+            <div className="flex-1 overflow-hidden p-2">
+              <textarea
+                value={repoFiles[activeRepoFilePath]?.content || ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setRepoFiles((prev) => ({
+                    ...prev,
+                    [activeRepoFilePath]: { ...prev[activeRepoFilePath], content: val },
+                  }));
+                }}
+                readOnly={
+                  sessionStatus === "submitted" ||
+                  isPaused ||
+                  (isExpired && !inGracePeriod) ||
+                  Boolean(repoFiles[activeRepoFilePath]?.isReadOnly)
+                }
+                spellCheck={false}
+                className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
+                  sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod) || repoFiles[activeRepoFilePath]?.isReadOnly
+                    ? "opacity-75 cursor-not-allowed bg-slate-950/80"
+                    : ""
+                }`}
+              />
+            </div>
+
+            {/* Bottom Test Suite Bar */}
+            <div className="h-44 border-t border-slate-800 bg-[#0c1017] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 text-xs">
+                <span className="font-semibold text-gray-300 flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Repository Acceptance Test Suite</span>
+                </span>
+                {testResult && (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      testResult.passed ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                    }`}
+                  >
+                    {testResult.passed
+                      ? "ALL TESTS PASSED"
+                      : `${testResult.tests.filter((t) => t.passed).length}/${testResult.tests.length || 1} PASSED`}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+                {!testResult && (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-1">
+                    <span>Click "Run Tests" in top bar to execute acceptance tests in sandbox.</span>
+                  </div>
+                )}
+                {testResult && (
+                  <div className="space-y-1.5">
+                    {testResult.tests.map((t, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between px-3 py-1.5 rounded bg-slate-900/60 border border-slate-800/80 font-mono text-[11px]"
+                      >
+                        <div className="flex items-center gap-2">
+                          {t.passed ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          )}
+                          <span className={t.passed ? "text-gray-200" : "text-rose-300"}>{t.name}</span>
+                        </div>
+                        <span className="text-gray-500">{t.durationMs}ms</span>
+                      </div>
+                    ))}
+                    {testResult.stderr && (
+                      <div className="p-2 rounded bg-rose-950/40 border border-rose-900 font-mono text-[11px] text-rose-300 whitespace-pre-wrap">
+                        {testResult.stderr}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Standard Coding Challenge Right Pane */
+          <div className="w-1/2 flex flex-col bg-[#0d121c] overflow-hidden text-gray-100">
+            {/* Top Editor Toolbar */}
+            <div className="h-10 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between text-xs">
+              <span className="font-mono text-indigo-400 font-semibold flex items-center gap-1.5">
+                <FileCode className="w-3.5 h-3.5" />
+                <span>
+                  {activeTask.config?.language === "java"
+                    ? "CandidateSolution.java"
+                    : activeTask.config?.language === "python"
+                    ? "solution.py"
+                    : "src/useTicketQueue.ts"}
+                </span>
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRequestSolutionProposal}
+                  disabled={
+                    isAskingAI ||
+                    budgetStatus.isExhausted ||
+                    activeTask.aiPolicy?.mode === "prohibited" ||
+                    isPaused ||
+                    isExpired ||
+                    sessionStatus === "submitted"
+                  }
+                  className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
+                  title="Ask AI for a solution proposal to inspect and review"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Propose Solution with AI</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("Reset code back to original starter code?")) {
+                      const orig = activeTask.config?.starterCode || sessionData?.starterCode || STARTER_CODE;
+                      setCode(orig);
+                      setAppliedNotice("Starter code restored.");
+                      setTimeout(() => setAppliedNotice(null), 3000);
+                    }
+                  }}
+                  disabled={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
+                  className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Reset Starter</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Applied Code Notice Banner */}
+            {appliedNotice && (
+              <div className="bg-emerald-500/10 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-emerald-400 flex items-center justify-between">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{appliedNotice}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRunVerification()}
+                  className="text-[11px] underline hover:text-emerald-300 font-semibold"
+                >
+                  Run Tests
+                </button>
+              </div>
+            )}
+
+            {/* Code Editor Area */}
+            <div className="flex-1 overflow-hidden p-2">
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                readOnly={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
+                spellCheck={false}
+                className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
+                  sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)
+                    ? "opacity-75 cursor-not-allowed bg-slate-950/80"
+                    : ""
+                }`}
+              />
+            </div>
+
+            {/* Bottom Test Results Bar */}
+            <div className="h-44 border-t border-slate-800 bg-[#0c1017] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 text-xs">
+                <span className="font-semibold text-gray-300 flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Isolated Sandbox Verification Test Suite</span>
+                </span>
+
+                {testResult && (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      testResult.passed ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"
+                    }`}
+                  >
+                    {testResult.passed
+                      ? "ALL TESTS PASSED"
+                      : `${testResult.tests.filter((t) => t.passed).length}/${testResult.tests.length || 5} PASSED`}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+                {!testResult && (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 space-y-1">
+                    <span>Click "Run Tests" in top bar to execute code against unit tests.</span>
+                  </div>
+                )}
+
+                {testResult && (
+                  <div className="space-y-1.5">
+                    {testResult.tests.map((t, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between px-3 py-1.5 rounded bg-slate-900/60 border border-slate-800/80 font-mono text-[11px]"
+                      >
+                        <div className="flex items-center gap-2">
+                          {t.passed ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          )}
+                          <span className={t.passed ? "text-gray-200" : "text-rose-300"}>{t.name}</span>
+                        </div>
+                        <span className="text-gray-500">{t.durationMs}ms</span>
+                      </div>
+                    ))}
+
+                    {testResult.stderr && (
+                      <div className="p-2 rounded bg-rose-950/40 border border-rose-900 font-mono text-[11px] text-rose-300 whitespace-pre-wrap">
+                        {testResult.stderr}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Proposed Solution Patch Review Inspector Modal (Decision #7) */}

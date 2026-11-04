@@ -4,7 +4,7 @@ import { assessmentTemplates } from "../db/schema.js";
 import type { AssessmentTemplate } from "@ai-copilot/contracts";
 
 export class TemplateRepository {
-  constructor(private dbProvider: () => Promise<AppDatabase> = getDb) {}
+  constructor(private dbProvider: () => Promise<AppDatabase> = getDb) { }
 
   public async create(template: AssessmentTemplate): Promise<AssessmentTemplate> {
     const db = await this.dbProvider();
@@ -87,7 +87,7 @@ export class TemplateRepository {
   public async update(
     orgId: string,
     templateId: string,
-    patch: Partial<Record<keyof AssessmentTemplate, unknown>>
+    patch: Partial<AssessmentTemplate>
   ): Promise<AssessmentTemplate | null> {
     const db = await this.dbProvider();
     const now = new Date();
@@ -108,7 +108,7 @@ export class TemplateRepository {
       updateValues.submissionDeadlineDays = patch.submissionDeadlineDays;
     if (patch.tasks !== undefined) updateValues.tasks = patch.tasks;
     if (patch.defaultAiBudgetUsd !== undefined)
-      updateValues.defaultAiBudgetUsd = Number(patch.defaultAiBudgetUsd).toFixed(4);
+      updateValues.defaultAiBudgetUsd = patch.defaultAiBudgetUsd.toFixed(4);
     if (patch.starterCode !== undefined) updateValues.starterCode = patch.starterCode;
     if (patch.solutionCode !== undefined) updateValues.solutionCode = patch.solutionCode;
     if (patch.verificationTestCode !== undefined)
