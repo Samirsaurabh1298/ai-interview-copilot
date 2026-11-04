@@ -46,6 +46,7 @@ export class AssessmentVersioningService {
 
   public computeContentHash(snapshot: AssessmentVersionSnapshot): string {
     const canonical = {
+      attemptDurationMinutes: snapshot.attemptDurationMinutes ?? snapshot.durationMinutes,
       durationMinutes: snapshot.durationMinutes,
       language: snapshot.language,
       rubricDimensionWeights: Object.keys(snapshot.rubricDimensionWeights)
@@ -54,7 +55,18 @@ export class AssessmentVersioningService {
           acc[key] = snapshot.rubricDimensionWeights[key]!;
           return acc;
         }, {} as Record<string, number>),
-      starterCode: snapshot.starterCode.trim(),
+      starterCode: (snapshot.starterCode || "").trim(),
+      submissionDeadlineDays: snapshot.submissionDeadlineDays ?? 7,
+      tasks: (snapshot.tasks || []).map((t) => ({
+        id: t.id,
+        type: t.type,
+        title: t.title,
+        orderIndex: t.orderIndex,
+        points: t.points,
+        isRequired: t.isRequired,
+        aiPolicy: t.aiPolicy,
+        config: t.config,
+      })),
       targetRole: snapshot.targetRole.trim(),
       title: snapshot.title.trim(),
       toolPolicy: {
@@ -64,7 +76,7 @@ export class AssessmentVersioningService {
         timeLimitSeconds: snapshot.toolPolicy.timeLimitSeconds,
         warningThresholdPercent: snapshot.toolPolicy.warningThresholdPercent,
       },
-      verificationTestCode: snapshot.verificationTestCode.trim(),
+      verificationTestCode: (snapshot.verificationTestCode || "").trim(),
     };
 
     return crypto
@@ -92,6 +104,9 @@ export class AssessmentVersioningService {
       difficulty: template.difficulty,
       language: template.language,
       durationMinutes: template.durationMinutes,
+      attemptDurationMinutes: template.attemptDurationMinutes ?? template.durationMinutes ?? 90,
+      submissionDeadlineDays: template.submissionDeadlineDays ?? 7,
+      tasks: template.tasks ?? [],
       starterCode: template.starterCode,
       solutionCode: template.solutionCode,
       verificationTestCode: template.verificationTestCode,

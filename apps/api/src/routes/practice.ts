@@ -65,7 +65,11 @@ export const practiceRoutes: FastifyPluginAsync<PracticeRouteOptions> = async (
   fastify.post("/evaluate", async (request, reply) => {
     const parseResult = PracticeSubmissionRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
-      const firstErrorMessage = parseResult.error.errors[0]?.message || "Invalid practice submission payload";
+      const firstIssue = parseResult.error.errors[0];
+      const firstErrorMessage = firstIssue
+        ? `${firstIssue.path.length > 0 ? firstIssue.path.join(".") + ": " : ""}${firstIssue.message}`
+        : "Invalid practice submission payload";
+      request.log.warn({ issues: parseResult.error.format() }, "Practice submission validation failed");
       return reply.status(400).send({
         error: "VALIDATION_ERROR",
         message: firstErrorMessage,

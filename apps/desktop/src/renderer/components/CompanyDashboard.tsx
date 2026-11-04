@@ -49,6 +49,7 @@ import {
   Zap,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
+import { CompanyAssessmentStudio } from "./CompanyAssessmentStudio.js";
 import type {
   Organization,
   OrganizationMember,
@@ -188,6 +189,8 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [templates, setTemplates] = useState<AssessmentTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<AssessmentTemplate | null>(null);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [studioTemplateToEdit, setStudioTemplateToEdit] = useState<AssessmentTemplate | null>(null);
   const [versions, setVersions] = useState<AssessmentVersion[]>([]);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [invitations, setInvitations] = useState<CandidateInvitation[]>([]);
@@ -742,11 +745,14 @@ describe("useDebouncedFetch verification suite", () => {
         targetRole: formRole.trim(),
         difficulty: formDifficulty,
         durationMinutes: formDuration,
+        attemptDurationMinutes: formDuration,
+        submissionDeadlineDays: 7,
         defaultAiBudgetUsd: formBudget,
         description: formDescription.trim(),
         starterCode: formStarterCode,
         verificationTestCode: formTestCode,
         language: "typescript",
+        tasks: [],
       };
 
       const newTemplate = await ApiClient.createTemplate(req);
@@ -880,6 +886,29 @@ describe("useDebouncedFetch verification suite", () => {
     }
   };
 
+  if (isStudioOpen && selectedOrg) {
+    return (
+      <CompanyAssessmentStudio
+        organization={selectedOrg}
+        initialTemplate={studioTemplateToEdit}
+        onClose={() => {
+          setIsStudioOpen(false);
+          setStudioTemplateToEdit(null);
+        }}
+        onSaved={(tmpl) => {
+          loadTemplates(selectedOrg.id);
+          setSelectedTemplate(tmpl);
+          setSuccessMessage(`Assessment "${tmpl.title}" saved successfully!`);
+        }}
+        onPublished={(tmpl) => {
+          loadTemplates(selectedOrg.id);
+          setSelectedTemplate(tmpl);
+          setSuccessMessage(`Assessment "${tmpl.title}" published as immutable version!`);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-gray-100 overflow-hidden">
       {/* Top Organization Context Bar */}
@@ -987,13 +1016,26 @@ describe("useDebouncedFetch verification suite", () => {
           </div>
 
           {activeTab === "templates" && (
-            <button
-              onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 font-semibold text-xs text-white shadow-md shadow-indigo-600/20 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Template</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setStudioTemplateToEdit(null);
+                  setIsStudioOpen(true);
+                }}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 px-4 py-2 font-bold text-xs text-white shadow-md shadow-indigo-600/25 transition-all cursor-pointer"
+                title="Open Role-Specific Assessment Builder Studio"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Assessment Studio (Custom Builder)</span>
+              </button>
+              <button
+                onClick={handleOpenCreateModal}
+                className="flex items-center gap-2 rounded-xl border border-slate-300 dark:border-gray-700 hover:bg-slate-100 dark:hover:bg-gray-800 px-3 py-2 font-semibold text-xs text-slate-700 dark:text-gray-200 transition-all cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Quick Template</span>
+              </button>
+            </div>
           )}
 
           {activeTab === "invitations" && (
@@ -1198,6 +1240,18 @@ describe("useDebouncedFetch verification suite", () => {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setStudioTemplateToEdit(selectedTemplate);
+                        setIsStudioOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                      title="Open in Assessment Studio"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Edit in Studio</span>
+                    </button>
+
                     <button
                       onClick={() => handleOpenCandidateInvite(selectedTemplate)}
                       className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-all"

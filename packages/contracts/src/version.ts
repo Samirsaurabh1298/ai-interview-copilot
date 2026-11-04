@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ChallengeDifficultySchema } from "./template.js";
 import { ToolPolicySchema } from "./assessment.js";
+import { AssessmentTaskSchema } from "./task.js";
 
 export const AssessmentVersionSnapshotSchema = z.object({
   title: z.string(),
@@ -9,9 +10,12 @@ export const AssessmentVersionSnapshotSchema = z.object({
   difficulty: ChallengeDifficultySchema,
   language: z.enum(["typescript", "javascript", "python"]),
   durationMinutes: z.number(),
+  attemptDurationMinutes: z.number().default(90),
+  submissionDeadlineDays: z.number().default(7),
   starterCode: z.string(),
   solutionCode: z.string().optional(),
   verificationTestCode: z.string(),
+  tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema,
   rubricDimensionWeights: z.record(z.string(), z.number()),
 });

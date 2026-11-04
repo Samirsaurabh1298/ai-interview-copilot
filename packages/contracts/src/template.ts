@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ToolPolicySchema } from "./assessment.js";
+import { AssessmentTaskSchema } from "./task.js";
 
 export const ChallengeDifficultySchema = z.enum(["junior", "mid", "senior", "staff"]);
 export type ChallengeDifficulty = z.infer<typeof ChallengeDifficultySchema>;
@@ -17,10 +18,13 @@ export const AssessmentTemplateSchema = z.object({
   difficulty: ChallengeDifficultySchema.default("mid"),
   language: z.enum(["typescript", "javascript", "python"]).default("typescript"),
   durationMinutes: z.number().int().min(15).max(240).default(60),
+  attemptDurationMinutes: z.number().int().min(15).max(360).default(90),
+  submissionDeadlineDays: z.number().int().min(1).max(30).default(7),
   defaultAiBudgetUsd: z.number().min(0.05).max(5.0).default(0.25),
-  starterCode: z.string().min(1),
+  starterCode: z.string().default("// Default starter boilerplate"),
   solutionCode: z.string().optional(),
-  verificationTestCode: z.string().min(1),
+  verificationTestCode: z.string().default("// Verification test suite"),
+  tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema.default({
     allowedProvider: "openai",
     allowedModel: "gpt-4o-mini",
@@ -62,14 +66,18 @@ export const CreateTemplateRequestSchema = z.object({
   difficulty: ChallengeDifficultySchema.optional().default("mid"),
   language: z.enum(["typescript", "javascript", "python"]).optional().default("typescript"),
   durationMinutes: z.number().int().min(15).max(240).optional().default(60),
+  attemptDurationMinutes: z.number().int().min(15).max(360).optional().default(90),
+  submissionDeadlineDays: z.number().int().min(1).max(30).optional().default(7),
   defaultAiBudgetUsd: z.number().min(0.05).max(5.0).optional().default(0.25),
-  starterCode: z.string().min(1),
+  starterCode: z.string().optional().default("// Default starter boilerplate"),
   solutionCode: z.string().optional(),
-  verificationTestCode: z.string().min(1),
+  verificationTestCode: z.string().optional().default("// Verification test suite"),
+  tasks: z.array(AssessmentTaskSchema).optional().default([]),
   toolPolicy: ToolPolicySchema.optional(),
   rubricDimensionWeights: z.record(z.string(), z.number().min(1).max(30)).optional(),
 });
-export type CreateTemplateRequest = z.infer<typeof CreateTemplateRequestSchema>;
+export type CreateTemplateRequest = z.input<typeof CreateTemplateRequestSchema>;
+export type CreateTemplateOutput = z.infer<typeof CreateTemplateRequestSchema>;
 
 export const UpdateTemplateRequestSchema = z.object({
   title: z.string().min(3).max(120).optional(),
@@ -78,13 +86,17 @@ export const UpdateTemplateRequestSchema = z.object({
   difficulty: ChallengeDifficultySchema.optional(),
   language: z.enum(["typescript", "javascript", "python"]).optional(),
   durationMinutes: z.number().int().min(15).max(240).optional(),
+  attemptDurationMinutes: z.number().int().min(15).max(360).optional(),
+  submissionDeadlineDays: z.number().int().min(1).max(30).optional(),
   defaultAiBudgetUsd: z.number().min(0.05).max(5.0).optional(),
-  starterCode: z.string().min(1).optional(),
+  starterCode: z.string().optional(),
   solutionCode: z.string().optional(),
-  verificationTestCode: z.string().min(1).optional(),
+  verificationTestCode: z.string().optional(),
+  tasks: z.array(AssessmentTaskSchema).optional(),
   toolPolicy: ToolPolicySchema.optional(),
   rubricDimensionWeights: z.record(z.string(), z.number().min(1).max(30)).optional(),
   status: TemplateStatusSchema.optional(),
 });
-export type UpdateTemplateRequest = z.infer<typeof UpdateTemplateRequestSchema>;
+export type UpdateTemplateRequest = z.input<typeof UpdateTemplateRequestSchema>;
+export type UpdateTemplateOutput = z.infer<typeof UpdateTemplateRequestSchema>;
 

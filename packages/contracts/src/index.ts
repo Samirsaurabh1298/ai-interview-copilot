@@ -1,4 +1,5 @@
 export * from "./tasks.js";
+export * from "./task.js";
 export * from "./answer.js";
 export * from "./request.js";
 export * from "./extraction.js";

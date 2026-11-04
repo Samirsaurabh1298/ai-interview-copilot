@@ -5,6 +5,7 @@ import type {
   VerifyInvitationResponse,
   AcceptInvitationResponse,
 } from "@ai-copilot/contracts";
+import { scrubTaskForCandidate } from "@ai-copilot/contracts";
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AuthService } from "./auth.js";
@@ -159,6 +160,8 @@ export class CandidateInvitationService {
       throw new InvitationNotFoundError("Associated assessment challenge or organization not found");
     }
 
+    const tasks = (template.tasks && template.tasks.length > 0 ? template.tasks : []).map(scrubTaskForCandidate);
+
     return {
       invitation,
       templateTitle: template.title,
@@ -166,6 +169,9 @@ export class CandidateInvitationService {
       targetRole: template.targetRole,
       difficulty: template.difficulty,
       durationMinutes: template.durationMinutes,
+      attemptDurationMinutes: template.attemptDurationMinutes ?? template.durationMinutes ?? 90,
+      submissionDeadlineDays: template.submissionDeadlineDays ?? 7,
+      tasks,
       toolPolicy: template.toolPolicy,
       organizationName: org.name,
     };
@@ -187,6 +193,9 @@ export class CandidateInvitationService {
       throw new InvitationNotFoundError("Assessment challenge template not found");
     }
 
+    const tasks = (template.tasks && template.tasks.length > 0 ? template.tasks : []).map(scrubTaskForCandidate);
+    const durationMinutes = template.attemptDurationMinutes ?? template.durationMinutes ?? 90;
+
     // Provision candidate session if not already created
     let sessionId = invitation.sessionId;
     if (!sessionId) {
@@ -198,7 +207,7 @@ export class CandidateInvitationService {
           invitationId: invitation.id,
           candidateEmail: invitation.candidateEmail,
           candidateName: invitation.candidateName,
-          durationMinutes: template.durationMinutes,
+          durationMinutes,
         });
         sessionId = session.id;
       } else {
@@ -211,7 +220,7 @@ export class CandidateInvitationService {
       candidateEmail: invitation.candidateEmail,
       organizationId: invitation.organizationId,
       sessionId,
-      validitySeconds: template.durationMinutes * 60,
+      validitySeconds: durationMinutes * 60,
     });
 
     const now = new Date();
@@ -240,7 +249,10 @@ export class CandidateInvitationService {
       starterCode: template.starterCode,
       verificationTestCode: template.verificationTestCode,
       toolPolicy: template.toolPolicy,
-      durationMinutes: template.durationMinutes,
+      durationMinutes,
+      attemptDurationMinutes: durationMinutes,
+      submissionDeadlineDays: template.submissionDeadlineDays ?? 7,
+      tasks,
     };
   }
 

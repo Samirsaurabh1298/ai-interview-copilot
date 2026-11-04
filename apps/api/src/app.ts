@@ -287,6 +287,8 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     prefix: "/api/v1/answers",
     orchestrator,
     gateway,
+    sessionService,
+    templateService,
   });
 
   await app.register(providersRoutes, {

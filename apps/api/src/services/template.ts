@@ -2,6 +2,7 @@ import type {
   AssessmentTemplate,
   CreateTemplateRequest,
   UpdateTemplateRequest,
+  AssessmentTask,
 } from "@ai-copilot/contracts";
 import { TemplateRepository } from "../repositories/template.repo.js";
 
@@ -145,6 +146,102 @@ export class AssessmentTemplateService {
     const templateId = "tmpl_default_frontend_" + orgId.slice(-6);
     const now = new Date();
 
+    const defaultTasks: AssessmentTask[] = [
+      {
+        id: "task_qset_fundamentals",
+        type: "question_set",
+        title: "Technical Architecture & Frontend Fundamentals",
+        description: "Evaluate core React concurrency, async queue lifecycle, and state immutability trade-offs.",
+        orderIndex: 0,
+        estimatedMinutes: 15,
+        points: 30,
+        isRequired: true,
+        aiPolicy: {
+          mode: "prohibited",
+          disclosureNotice: "AI assistance is strictly prohibited during technical architecture questions.",
+        },
+        config: {
+          questions: [
+            {
+              id: "q1_event_loop",
+              format: "mcq_single",
+              prompt: "In a high-throughput queue UI, which React 18+ primitive prevents urgent user interactions from lagging behind background batch sorting?",
+              points: 10,
+              isRequired: true,
+              options: [
+                { id: "opt_a", text: "useTransition or startTransition", isCorrect: true },
+                { id: "opt_b", text: "useLayoutEffect synchronously blocking paint", isCorrect: false },
+                { id: "opt_c", text: "setInterval with 0ms delay", isCorrect: false },
+                { id: "opt_d", text: "Direct DOM mutation via ref.current", isCorrect: false },
+              ],
+              explanation: "useTransition marks state updates as non-blocking transitions, yielding execution to urgent user events.",
+            },
+            {
+              id: "q2_immutability",
+              format: "mcq_multi",
+              prompt: "Which array operations directly mutate state in place and violate React immutability invariants? (Select all that apply)",
+              points: 10,
+              isRequired: true,
+              options: [
+                { id: "opt_splice", text: "Array.prototype.splice()", isCorrect: true },
+                { id: "opt_sort", text: "Array.prototype.sort() without slice/spread", isCorrect: true },
+                { id: "opt_filter", text: "Array.prototype.filter()", isCorrect: false },
+                { id: "opt_reverse", text: "Array.prototype.reverse()", isCorrect: true },
+              ],
+              explanation: "splice, sort, and reverse mutate the underlying array in-place, causing stale memoization references.",
+            },
+            {
+              id: "q3_tradeoffs",
+              format: "short_text",
+              prompt: "Explain why client-side priority inversion occurs when tickets with equal priority are sorted without a secondary deterministic key.",
+              points: 10,
+              isRequired: true,
+              charLimit: 500,
+              evaluationCriteria: "Candidate should explain unstable sort behavior, browser engine variance (V8 Timsort), and importance of timestamp secondary ordering.",
+            },
+          ],
+        },
+      },
+      {
+        id: "task_repo_triage",
+        type: "repository_task",
+        title: "Codebase Comprehension & Triage Queue Debug",
+        description: "Investigate and resolve priority inversion and array mutation defects in the support ticket queue module.",
+        orderIndex: 1,
+        estimatedMinutes: 45,
+        points: 70,
+        isRequired: true,
+        aiPolicy: {
+          mode: "full_copilot",
+          maxBudgetUsd: 0.25,
+          disclosureNotice: "Full AI Copilot assistance is enabled for codebase triage ($0.25 budget). Proposed code patches require explicit review.",
+        },
+        config: {
+          action: "debug",
+          primaryFilePath: "src/useTicketQueue.ts",
+          fileTree: [
+            {
+              path: "src/useTicketQueue.ts",
+              content: DEFAULT_FRONTEND_STARTER,
+              isReadOnly: false,
+            },
+            {
+              path: "src/types.ts",
+              content: "export type Priority = 'low' | 'medium' | 'high' | 'urgent';\nexport interface Ticket { id: string; title: string; priority: Priority; }",
+              isReadOnly: true,
+            },
+          ],
+          acceptanceCriteria: [
+            "sortTickets preserves input array immutability without side effects",
+            "Orders tickets descending by priority (urgent > high > medium > low)",
+            "Ties in priority are deterministically sorted by createdAt ascending",
+            "resolveTicket returns a fresh array reference without in-place mutation",
+          ],
+          verificationTestCode: DEFAULT_FRONTEND_TESTS,
+        },
+      },
+    ];
+
     const defaultTemplate: AssessmentTemplate = {
       id: templateId,
       organizationId: orgId,
@@ -156,7 +253,10 @@ export class AssessmentTemplateService {
       difficulty: "mid",
       language: "typescript",
       durationMinutes: 60,
+      attemptDurationMinutes: 60,
+      submissionDeadlineDays: 7,
       defaultAiBudgetUsd: 0.25,
+      tasks: defaultTasks,
       starterCode: DEFAULT_FRONTEND_STARTER,
       verificationTestCode: DEFAULT_FRONTEND_TESTS,
       toolPolicy: {
@@ -214,6 +314,33 @@ export class AssessmentTemplateService {
     const templateId = "tmpl_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
     const now = new Date();
 
+    const tasks = req.tasks && req.tasks.length > 0 ? req.tasks : [
+      {
+        id: "task_challenge_1",
+        type: "coding_challenge" as const,
+        title: req.title.trim(),
+        description: req.description.trim(),
+        orderIndex: 0,
+        estimatedMinutes: req.attemptDurationMinutes ?? req.durationMinutes ?? 60,
+        points: 100,
+        isRequired: true,
+        aiPolicy: {
+          mode: "full_copilot" as const,
+          maxBudgetUsd: req.defaultAiBudgetUsd ?? 0.25,
+          disclosureNotice: "AI assistance is permitted within your allocated budget.",
+        },
+        config: {
+          language: req.language ?? "typescript",
+          starterCode: req.starterCode ?? DEFAULT_FRONTEND_STARTER,
+          verificationTestCode: req.verificationTestCode ?? DEFAULT_FRONTEND_TESTS,
+          solutionTemplate: req.solutionCode,
+          testCases: [
+            { name: "Public Test Suite", isHidden: false },
+          ],
+        },
+      },
+    ];
+
     const template: AssessmentTemplate = {
       id: templateId,
       organizationId: req.organizationId,
@@ -224,10 +351,13 @@ export class AssessmentTemplateService {
       difficulty: req.difficulty ?? "mid",
       language: req.language ?? "typescript",
       durationMinutes: req.durationMinutes ?? 60,
+      attemptDurationMinutes: req.attemptDurationMinutes ?? req.durationMinutes ?? 60,
+      submissionDeadlineDays: req.submissionDeadlineDays ?? 7,
       defaultAiBudgetUsd: req.defaultAiBudgetUsd ?? 0.25,
-      starterCode: req.starterCode,
+      tasks,
+      starterCode: req.starterCode ?? (tasks[0]?.type === "coding_challenge" ? tasks[0].config.starterCode : DEFAULT_FRONTEND_STARTER),
       solutionCode: req.solutionCode,
-      verificationTestCode: req.verificationTestCode,
+      verificationTestCode: req.verificationTestCode ?? (tasks[0]?.type === "coding_challenge" ? tasks[0].config.verificationTestCode : DEFAULT_FRONTEND_TESTS),
       toolPolicy: req.toolPolicy ?? {
         allowedProvider: "openai",
         allowedModel: "gpt-4o-mini",
@@ -299,6 +429,9 @@ export class AssessmentTemplateService {
     if (req.difficulty !== undefined) tmpl.difficulty = req.difficulty;
     if (req.language !== undefined) tmpl.language = req.language;
     if (req.durationMinutes !== undefined) tmpl.durationMinutes = req.durationMinutes;
+    if (req.attemptDurationMinutes !== undefined) tmpl.attemptDurationMinutes = req.attemptDurationMinutes;
+    if (req.submissionDeadlineDays !== undefined) tmpl.submissionDeadlineDays = req.submissionDeadlineDays;
+    if (req.tasks !== undefined) tmpl.tasks = req.tasks;
     if (req.defaultAiBudgetUsd !== undefined) tmpl.defaultAiBudgetUsd = req.defaultAiBudgetUsd;
     if (req.starterCode !== undefined) tmpl.starterCode = req.starterCode;
     if (req.solutionCode !== undefined) tmpl.solutionCode = req.solutionCode;

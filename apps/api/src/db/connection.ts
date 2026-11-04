@@ -126,10 +126,13 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
       difficulty VARCHAR(20) NOT NULL DEFAULT 'mid',
       language VARCHAR(30) NOT NULL DEFAULT 'typescript',
       duration_minutes INTEGER NOT NULL DEFAULT 60,
+      attempt_duration_minutes INTEGER NOT NULL DEFAULT 90,
+      submission_deadline_days INTEGER NOT NULL DEFAULT 7,
       default_ai_budget_usd NUMERIC(6, 4) NOT NULL DEFAULT 0.2500,
       starter_code TEXT NOT NULL,
       solution_code TEXT,
       verification_test_code TEXT NOT NULL,
+      tasks JSONB NOT NULL DEFAULT '[]'::jsonb,
       tool_policy JSONB NOT NULL,
       rubric_dimension_weights JSONB NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'draft',
@@ -235,11 +238,18 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
       technical_explanation TEXT NOT NULL,
       telemetry_summary JSONB NOT NULL,
       template_content_hash CHAR(64) NOT NULL,
-      submission_fingerprint CHAR(64) NOT NULL
+      submission_fingerprint CHAR(64) NOT NULL,
+      task_submissions JSONB DEFAULT '{}'::jsonb
     );
 
     CREATE INDEX IF NOT EXISTS idx_submissions_org_id ON submission_artifacts (organization_id);
     CREATE INDEX IF NOT EXISTS idx_submissions_session_id ON submission_artifacts (session_id);
+
+    -- Safe idempotent migrations for existing databases
+    ALTER TABLE assessment_templates ADD COLUMN IF NOT EXISTS tasks JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE assessment_templates ADD COLUMN IF NOT EXISTS attempt_duration_minutes INTEGER NOT NULL DEFAULT 90;
+    ALTER TABLE assessment_templates ADD COLUMN IF NOT EXISTS submission_deadline_days INTEGER NOT NULL DEFAULT 7;
+    ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS task_submissions JSONB DEFAULT '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS reviewer_evaluations (
       id VARCHAR(128) PRIMARY KEY,

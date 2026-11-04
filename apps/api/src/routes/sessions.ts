@@ -170,6 +170,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
         const artifact = await submissionService.submitAssessment(sessionId, {
           finalCode: parse.data.finalCode,
           technicalExplanation: normalizedBody.explanation,
+          taskSubmissions: rawBody.taskSubmissions,
         });
 
         return reply.status(200).send({

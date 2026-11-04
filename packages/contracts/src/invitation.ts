@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ChallengeDifficultySchema } from "./template.js";
 import { ToolPolicySchema } from "./assessment.js";
+import { AssessmentTaskSchema } from "./task.js";
 
 export const InvitationStatusSchema = z.enum([
   "pending",
@@ -47,6 +48,7 @@ export const VerifyInvitationResponseSchema = z.object({
   targetRole: z.string(),
   difficulty: ChallengeDifficultySchema,
   durationMinutes: z.number(),
+  tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema,
   organizationName: z.string(),
 });
@@ -66,6 +68,7 @@ export const AcceptInvitationResponseSchema = z.object({
   templateId: z.string(),
   starterCode: z.string(),
   verificationTestCode: z.string(),
+  tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema,
   durationMinutes: z.number(),
 });

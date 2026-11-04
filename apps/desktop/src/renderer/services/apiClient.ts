@@ -15,6 +15,7 @@ import type {
   AuthUserContext,
   AssessmentTemplate,
   CreateTemplateRequest,
+  UpdateTemplateRequest,
   AssessmentVersion,
   PublishVersionRequest,
   CandidateInvitation,
@@ -26,6 +27,7 @@ import type {
   SessionHeartbeatResponse,
   UpdateWorkspaceRequest,
   SubmitSessionRequest,
+  SubmitAssessmentRequest,
   IngestEventsRequest,
   IngestEventsResponse,
   GetSessionEventsResponse,
@@ -213,6 +215,42 @@ export class ApiClient {
         error?: string;
       };
       throw new Error(errorData.message || errorData.error || `Failed to create template`);
+    }
+    return (await res.json()) as AssessmentTemplate;
+  }
+
+  public static async getTemplate(
+    organizationId: string,
+    templateId: string
+  ): Promise<AssessmentTemplate> {
+    const res = await fetch(
+      `${API_BASE_URL}/templates/${templateId}?organizationId=${organizationId}`
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch template: ${res.statusText}`);
+    }
+    return (await res.json()) as AssessmentTemplate;
+  }
+
+  public static async updateTemplate(
+    organizationId: string,
+    templateId: string,
+    req: UpdateTemplateRequest
+  ): Promise<AssessmentTemplate> {
+    const res = await fetch(
+      `${API_BASE_URL}/templates/${templateId}?organizationId=${organizationId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req),
+      }
+    );
+    if (!res.ok) {
+      const errorData = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      throw new Error(errorData.message || errorData.error || `Failed to update template`);
     }
     return (await res.json()) as AssessmentTemplate;
   }
@@ -522,7 +560,7 @@ export class ApiClient {
 
   public static async submitAssessment(
     sessionId: string,
-    req: { finalCode: string; technicalExplanation?: string },
+    req: SubmitAssessmentRequest,
     token?: string
   ): Promise<SubmitAssessmentResponse> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };

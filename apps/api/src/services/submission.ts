@@ -3,6 +3,7 @@ import type {
   SubmissionArtifact,
   SubmitAssessmentRequest,
   CodeDiffSummary,
+  TaskSubmissionResult,
 } from "@ai-copilot/contracts";
 import { executeCodeInSandbox } from "@ai-copilot/code-runner";
 import type { AssessmentSessionService } from "./session.js";
@@ -156,9 +157,94 @@ export class SubmissionService {
       throw new Error(`Template '${session.templateId}' not found in organization '${session.organizationId}'`);
     }
 
+    // 1b. Evaluate multi-task submissions if present
+    const evaluatedTaskSubmissions: Record<string, TaskSubmissionResult> = {};
+    if (req.taskSubmissions) {
+      for (const [tId, rawTaskSub] of Object.entries(req.taskSubmissions)) {
+        const taskDef = template.tasks?.find((t) => t.id === tId);
+        if (!taskDef) {
+          evaluatedTaskSubmissions[tId] = rawTaskSub;
+          continue;
+        }
+
+        if (taskDef.type === "question_set" && taskDef.config.questions) {
+          let earned = 0;
+          for (const q of taskDef.config.questions) {
+            const candidateAns = rawTaskSub.answers?.[q.id];
+            if (!candidateAns) continue;
+            if (q.format === "mcq_single") {
+              const correctOpt = q.options?.find((o) => o.isCorrect)?.id;
+              if (correctOpt && candidateAns.selectedOptionIds?.[0] === correctOpt) {
+                earned += q.points;
+              }
+            } else if (q.format === "mcq_multi") {
+              const correctOpts = (q.options?.filter((o) => o.isCorrect).map((o) => o.id) || []).sort();
+              const candOpts = [...(candidateAns.selectedOptionIds || [])].sort();
+              if (JSON.stringify(correctOpts) === JSON.stringify(candOpts)) {
+                earned += q.points;
+              }
+            } else if (q.format === "short_text") {
+              if (candidateAns.textResponse && candidateAns.textResponse.trim().length >= 10) {
+                earned += Math.round(q.points * 0.8);
+              }
+            }
+          }
+          evaluatedTaskSubmissions[tId] = {
+            ...rawTaskSub,
+            earnedPoints: earned,
+            maxPoints: taskDef.points,
+            status: "completed",
+            completedAt: new Date(),
+          };
+        } else if (taskDef.type === "coding_challenge" && rawTaskSub.codeSubmission) {
+          const codeToValidate = rawTaskSub.codeSubmission.code;
+          const fullTestCode = (taskDef.config.verificationTestCode || "") + (taskDef.config.hiddenTestCode ? "\n" + taskDef.config.hiddenTestCode : "");
+          try {
+            const taskSandbox = await executeCodeInSandbox({
+              code: codeToValidate,
+              testCode: fullTestCode || template.verificationTestCode,
+              language: taskDef.config.language || template.language || "typescript",
+              timeoutMs: 5000,
+              memoryLimitMb: 128,
+            });
+            const pCount = taskSandbox.tests.filter((t) => t.passed).length;
+            const tCount = taskSandbox.tests.length;
+            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskDef.points) : 0;
+            evaluatedTaskSubmissions[tId] = {
+              ...rawTaskSub,
+              earnedPoints: earned,
+              maxPoints: taskDef.points,
+              status: "completed",
+              completedAt: new Date(),
+              codeSubmission: {
+                ...rawTaskSub.codeSubmission,
+                testResults: {
+                  passed: taskSandbox.passed,
+                  passedCount: pCount,
+                  totalCount: tCount,
+                  durationMs: taskSandbox.durationMs,
+                  tests: taskSandbox.tests,
+                },
+              },
+            };
+          } catch {
+            evaluatedTaskSubmissions[tId] = {
+              ...rawTaskSub,
+              status: "completed",
+              completedAt: new Date(),
+            };
+          }
+        } else {
+          evaluatedTaskSubmissions[tId] = rawTaskSub;
+        }
+      }
+    }
+
+    const effectiveCode = req.finalCode || Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code || template.starterCode;
+
     // 2. Execute final code inside the isolated Node 22 sandbox to get authoritative test results
     const sandboxResult = await executeCodeInSandbox({
-      code: req.finalCode,
+      code: effectiveCode,
       testCode: template.verificationTestCode,
       language: "typescript",
       timeoutMs: 5000,
@@ -169,7 +255,7 @@ export class SubmissionService {
     const totalCount = sandboxResult.tests.length;
 
     // 3. Compute code diff against template starterCode
-    const codeDiff = computeLineDiff(template.starterCode, req.finalCode);
+    const codeDiff = computeLineDiff(template.starterCode, effectiveCode);
 
     // 4. Retrieve and aggregate all recorded telemetry events
     const events = this.eventsService.getEvents(sessionId);
@@ -223,9 +309,10 @@ export class SubmissionService {
       candidateName: session.candidateName,
       candidateEmail: session.candidateEmail,
       submittedAt: submitDate,
-      finalCode: req.finalCode,
+      finalCode: effectiveCode,
       starterCode: template.starterCode,
       codeDiff,
+      taskSubmissions: Object.keys(evaluatedTaskSubmissions).length > 0 ? evaluatedTaskSubmissions : undefined,
       testExecutionLog: {
         success: sandboxResult.success,
         passed: sandboxResult.passed,

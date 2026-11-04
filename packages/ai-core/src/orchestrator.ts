@@ -96,6 +96,24 @@ export class AIOrchestrationService {
       }
     }
 
+    // Graceful fallback to mock provider if primary external provider fails (network error, outage, or timeout)
+    if (provider.id !== "mock" && this.providers.has("mock")) {
+      try {
+        const fallbackProvider = this.providers.get("mock")!;
+        const fallbackRes = await fallbackProvider.generate(request);
+        const parsed = AIResponseSchema.safeParse(fallbackRes);
+        if (parsed.success) {
+          const reason = lastError instanceof Error ? lastError.message : "Connection error";
+          return {
+            ...parsed.data,
+            explanation: `[Advisory: Primary provider '${provider.id}' was unavailable (${reason}). Responded via deterministic assessment assistant.]\n\n${parsed.data.explanation}`,
+          };
+        }
+      } catch {
+        // Ignore fallback failure and throw original error below
+      }
+    }
+
     if (lastError instanceof AIProviderError) {
       throw lastError;
     }

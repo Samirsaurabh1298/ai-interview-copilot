@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SingleTestResultSchema } from "./validation.js";
+import { TaskSubmissionResultSchema } from "./task.js";
 
 // ==============================================================================
 // Code Diff Summary Contract
@@ -56,6 +57,7 @@ export const SubmissionArtifactSchema = z.object({
   }),
   templateContentHash: z.string(),
   submissionFingerprint: z.string(), // Canonical SHA-256 fingerprint
+  taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
 });
 
 export type SubmissionArtifact = z.infer<typeof SubmissionArtifactSchema>;
@@ -65,10 +67,12 @@ export type SubmissionArtifact = z.infer<typeof SubmissionArtifactSchema>;
 // ==============================================================================
 
 export const SubmitAssessmentRequestSchema = z.object({
-  finalCode: z.string().min(1, "Final code cannot be empty"),
+  finalCode: z.string().optional().default(""),
   technicalExplanation: z
     .string()
-    .min(10, "Please provide a technical explanation of your changes (at least 10 characters)"),
+    .optional()
+    .default("Candidate completed assessment tasks."),
+  taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
 });
 
 export type SubmitAssessmentRequest = z.infer<typeof SubmitAssessmentRequestSchema>;

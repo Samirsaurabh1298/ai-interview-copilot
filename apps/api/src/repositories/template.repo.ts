@@ -18,10 +18,13 @@ export class TemplateRepository {
       difficulty: template.difficulty,
       language: template.language,
       durationMinutes: template.durationMinutes,
+      attemptDurationMinutes: template.attemptDurationMinutes || template.durationMinutes || 90,
+      submissionDeadlineDays: template.submissionDeadlineDays || 7,
       defaultAiBudgetUsd: template.defaultAiBudgetUsd.toFixed(4),
       starterCode: template.starterCode,
       solutionCode: template.solutionCode ?? null,
       verificationTestCode: template.verificationTestCode,
+      tasks: (template.tasks as any) || [],
       toolPolicy: template.toolPolicy,
       rubricDimensionWeights: template.rubricDimensionWeights,
       status: template.status,
@@ -99,6 +102,11 @@ export class TemplateRepository {
     if (patch.difficulty !== undefined) updateValues.difficulty = patch.difficulty;
     if (patch.language !== undefined) updateValues.language = patch.language;
     if (patch.durationMinutes !== undefined) updateValues.durationMinutes = patch.durationMinutes;
+    if (patch.attemptDurationMinutes !== undefined)
+      updateValues.attemptDurationMinutes = patch.attemptDurationMinutes;
+    if (patch.submissionDeadlineDays !== undefined)
+      updateValues.submissionDeadlineDays = patch.submissionDeadlineDays;
+    if (patch.tasks !== undefined) updateValues.tasks = patch.tasks;
     if (patch.defaultAiBudgetUsd !== undefined)
       updateValues.defaultAiBudgetUsd = Number(patch.defaultAiBudgetUsd).toFixed(4);
     if (patch.starterCode !== undefined) updateValues.starterCode = patch.starterCode;
@@ -136,10 +144,13 @@ export class TemplateRepository {
       difficulty: row.difficulty as AssessmentTemplate["difficulty"],
       language: row.language as AssessmentTemplate["language"],
       durationMinutes: row.durationMinutes,
+      attemptDurationMinutes: row.attemptDurationMinutes || row.durationMinutes || 90,
+      submissionDeadlineDays: row.submissionDeadlineDays || 7,
       defaultAiBudgetUsd: Number(row.defaultAiBudgetUsd),
       starterCode: row.starterCode,
       solutionCode: row.solutionCode ?? undefined,
       verificationTestCode: row.verificationTestCode,
+      tasks: (row.tasks as any) || [],
       toolPolicy: row.toolPolicy as AssessmentTemplate["toolPolicy"],
       rubricDimensionWeights: row.rubricDimensionWeights as AssessmentTemplate["rubricDimensionWeights"],
       status: row.status as AssessmentTemplate["status"],
