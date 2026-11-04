@@ -24,6 +24,7 @@ export class SubmissionRepository {
       telemetrySummary: artifact.telemetrySummary,
       templateContentHash: artifact.templateContentHash,
       submissionFingerprint: artifact.submissionFingerprint,
+      taskSubmissions: artifact.taskSubmissions || {},
     });
     return artifact;
   }
@@ -72,6 +73,7 @@ export class SubmissionRepository {
       telemetrySummary: row.telemetrySummary as SubmissionArtifact["telemetrySummary"],
       templateContentHash: row.templateContentHash,
       submissionFingerprint: row.submissionFingerprint,
+      taskSubmissions: (row.taskSubmissions as SubmissionArtifact["taskSubmissions"]) || {},
     };
   }
 }
