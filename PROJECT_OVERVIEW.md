@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 167 / 167 Automated Tests Passing (100% Pass Rate)  
+> **Automated Test Suite:** 168 / 168 Automated Tests Passing across 20 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -33,12 +33,16 @@
    - [4.14. Screen Capture & Multimodal OCR Ingest Engine](#414-screen-capture--multimodal-ocr-ingest-engine)
    - [4.15. Polyglot Software Domain Engine (Python, Go, Java, C++, Rust, TS/JS)](#415-polyglot-software-domain-engine-python-go-java-c-rust-tsjs)
    - [4.16. UI Crash Protection & React ErrorBoundary Recovery Engine](#416-ui-crash-protection--react-errorboundary-recovery-engine)
+   - [4.17. Company Assessment Studio & Extensible Multi-Task Authoring Engine (LOOP 6)](#417-company-assessment-studio--extensible-multi-task-authoring-engine-loop-6)
+   - [4.18. Production-Grade Dual-Engine PostgreSQL Persistence & DDL Auto-Sync (LOOP 6.1)](#418-production-grade-dual-engine-postgresql-persistence--ddl-auto-sync-loop-61)
+   - [4.19. Real-Time Proctoring, Passive Integrity & Anti-Cheat Evidence Pipeline (LOOP 7)](#419-real-time-proctoring-passive-integrity--anti-cheat-evidence-pipeline-loop-7)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
-   - [Workflow 3: Interviewer & Proctor Real-Time Monitoring Guide](#workflow-3-interviewer--proctor-real-time-monitoring-guide)
+   - [Workflow 3: Interviewer & Proctor Real-Time Monitoring & Integrity Room Guide](#workflow-3-interviewer--proctor-real-time-monitoring--integrity-room-guide)
    - [Workflow 4: Reviewer & Hiring Manager Evaluation Guide](#workflow-4-reviewer--hiring-manager-evaluation-guide)
    - [Workflow 5: Developer Setup & Local Execution Guide](#workflow-5-developer-setup--local-execution-guide)
+   - [Workflow 6: Authoring Role-Specific Multi-Task Assessments in Assessment Studio](#workflow-6-authoring-role-specific-multi-task-assessments-in-assessment-studio)
 6. [API Gateway Endpoints Contract Specification](#6-api-gateway-endpoints-contract-specification)
 7. [Security, Privacy, Compliance & Employer Separation Policy](#7-security-privacy-compliance--employer-separation-policy)
 8. [Automated Verification & Test Matrix](#8-automated-verification--test-matrix)
@@ -122,10 +126,12 @@ c:\samir\ai-interview-copilot/
 ├── apps/
 │   ├── api/                              # Fastify v5 REST & WebSocket Backend Server
 │   │   ├── src/
-│   │   │   ├── routes/                   # API Route Controllers (auth, orgs, templates, versions, sessions, telemetry, runner)
-│   │   │   ├── services/                 # Business Logic Services (token budget, sandbox runner, session events)
+│   │   │   ├── db/                       # Drizzle ORM Schema, Dual-Engine Connection (PostgreSQL / PGlite)
+│   │   │   ├── repositories/             # Typed Repositories (templates, versions, sessions, incidents, submissions)
+│   │   │   ├── routes/                   # API Route Controllers (auth, orgs, studio, proctor, sessions, telemetry, runner)
+│   │   │   ├── services/                 # Business Logic (integrity engine, token budget, sandbox runner, session events)
 │   │   │   └── server.ts                 # Fastify HTTP bootstrap, CORS & provider registration
-│   │   └── test/                         # 41 Unit & Integration Test Suites
+│   │   └── test/                         # 20 Test Suites with 127 Integration Tests Passing
 │   └── desktop/                          # Electron 34 + React 19 Frontend Application
 │       ├── public/
 │       │   └── favicon.svg               # Production Brand SVG Favicon (Terminal/Brain glyph)
@@ -134,10 +140,12 @@ c:\samir\ai-interview-copilot/
 │       │   ├── preload/                  # IPC Context Isolation Bridge
 │       │   └── renderer/                 # React 19 Client UI
 │       │       ├── components/
-│       │       │   ├── AssessmentWorkspace.tsx  # 60-Minute Candidate Challenge Workspace
-│       │       │   ├── CompanyDashboard.tsx     # Enterprise Admin, RBAC, Templates & Audit Portal
-│       │       │   ├── CandidateGateway.tsx     # Candidate Onboarding & Integrity Agreement
-│       │       │   └── ScorecardModal.tsx       # 7-Dimension Reviewer Scorecard Modal
+│       │       │   ├── AssessmentWorkspace.tsx    # Multi-Task Dynamic Candidate Workspace & Virtual Filesystem
+│       │       │   ├── CompanyAssessmentStudio.tsx# Recruiter/Hiring Manager Multi-Task Assessment Builder
+│       │       │   ├── CompanyDashboard.tsx       # Enterprise Admin, RBAC, Live Proctor Room & Audit Portal
+│       │       │   ├── CandidateGateway.tsx       # Candidate Onboarding & Integrity Agreement
+│       │       │   ├── PracticeStudio.tsx         # Free Practice Studio & Multimodal Ingest
+│       │       │   └── ScorecardModal.tsx         # 7-Dimension Reviewer Scorecard Modal
 │       │       ├── services/             # Type-Safe ApiClient & Buffered TelemetryClient
 │       │       └── index.css             # WCAG 2.2 AA Contrast Tokens (Tailwind CSS)
 │       └── scripts/
@@ -148,6 +156,7 @@ c:\samir\ai-interview-copilot/
 │   │       ├── answer.ts                 # 15-field InterviewAnswer schema contract
 │   │       ├── assessment.ts             # AssessmentSession, AssessmentTemplate, Scorecard schemas
 │   │       ├── events.ts                 # SessionEvent telemetry schemas & event types
+│   │       ├── integrity.ts              # Real-Time Proctoring, Risk Levels & Incident contracts (LOOP 7)
 │   │       ├── invitations.ts            # CandidateInvitation schemas & 32-byte token contracts
 │   │       ├── organizations.ts          # Multi-tenant Organization & Member schemas
 │   │       ├── provider.ts               # AI Provider capability & model contracts
@@ -156,7 +165,7 @@ c:\samir\ai-interview-copilot/
 │   │       └── versions.ts               # Immutable version snapshot & SHA-256 schemas
 │   ├── ai-core/                          # Provider-Agnostic LLM Orchestrator
 │   │   └── src/
-│   │       ├── orchestrator.ts           # Token economy, fallback engine & model router
+│   │       ├── orchestrator.ts           # Token economy, resilient mock fallback & model router
 │   │       ├── prompts.ts                # System prompts & schema contract boundaries
 │   │       └── errors.ts                 # Typed AIProviderError hierarchy
 │   ├── ai-provider-groq/                 # Ultra-Fast Groq LPU Provider Adapter (Sub-second inference)
@@ -168,7 +177,7 @@ c:\samir\ai-interview-copilot/
 ├── services/
 │   └── code-runner/                      # Ephemeral Process Sandboxed Code Execution Service
 │       └── src/
-│           └── runner.ts                 # Node 22 Native Type-Stripping Runner & Security Traps
+│           └── runner.ts                 # Node 22 Native Type-Stripping Runner & Polyglot Verifier
 └── tasks/
     └── frontend-ticket-queue/            # Pilot Assessment Challenge
         └── src/
@@ -392,6 +401,89 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Zero White-Screen Guarantee:** Completely eliminates blank screen unmount crashes by catching any unhandled runtime render exceptions.
 - **Self-Healing Diagnostic Recovery Console:** Displays error details, formatted stack traces, a 1-click **[Recover Component]** state reset button, a 1-click **[Reload Application]** button, and an accessible **[Copy Stack]** clipboard action.
 
+### 4.17. Company Assessment Studio & Extensible Multi-Task Authoring Engine (LOOP 6)
+- **Configurable Assessment Studio (`CompanyAssessmentStudio.tsx`):**
+  - Transitions the platform from a single fixed coding challenge into an enterprise Assessment Studio. Recruiters and engineering managers can build role-specific multi-task assessments customized to their exact hiring rubrics.
+  - Non-Developer Visual Authoring: Replaces manual JSON files with an accessible, high-contrast visual card builder featuring field-level validation, 1-click task duplication, drag-free reordering (`[↑ Move Up]`, `[↓ Move Down]`), and confirmation modals for task deletion.
+  - Assessment-Level Parameters: Title, Target Job Role (e.g. *Senior Distributed Systems Engineer*, *Frontend React Architect*), Difficulty tier (`junior`, `mid`, `senior`, `lead`), Total Assessment Duration (e.g. 90 minutes), and Overall AI Token Budget cap (default $0.25 USD).
+- **Extensible 3-Family Task Registry:**
+  1. **Question Set Task (`question_set`):**
+     - Evaluates foundational architectural and conceptual knowledge without sandbox compilation overhead.
+     - Question formats: Single-choice MCQ (`mcq_single`), Multiple-select MCQ (`mcq_multi`), and Short Text Technical Response (`short_text`).
+     - Configuration: Question prompt, choice options, correct option index/keys (strictly scrubbed from candidate API responses), point values, required vs. optional toggle, and maximum response length limits.
+  2. **Coding Challenge Task (`coding_challenge`):**
+     - Algorithmic or unit-test driven programming challenges.
+     - Configuration: Problem statement, polyglot language selector (TypeScript, JavaScript, Python, Go, Java, C++, Rust), starter boilerplate, private verification test suite, test assertion expectations, and execution timeout.
+  3. **Repository / Codebase Task (`repository_task`):**
+     - Real-world production engineering tasks evaluating code comprehension, bug fixing, refactoring, feature implementation, code review, or test authoring.
+     - Configuration: Multi-file virtual project snapshot (`virtualFiles`), entrypoint file, read-only file guards for shared dependencies, acceptance criteria checklist, private grading rubric, and task-specific AI permissions.
+- **Per-Task AI Policy Engine:**
+  - Companies configure AI permissions independently per task:
+    - `prohibited`: AI Engineering Assistant is completely locked and hidden from candidate view.
+    - `restricted`: AI is restricted to conceptual code explanation and syntax queries; automated patch generation is disabled.
+    - `enabled`: Full collaborative AI assistant with unified diff proposals, budget metering, and 1-click test runs.
+  - Candidate Pre-Flight Disclosure: Prior to starting each task, the candidate workspace renders an explicit disclosure banner detailing the applicable AI policy.
+- **Dynamic Candidate Multi-Task Workspace (`AssessmentWorkspace.tsx`):**
+  - Task Navigation Tab Bar: Top-level navigation allows candidates to switch between active tasks with point badges and completion status indicators.
+  - Multi-File Virtual File Tree: Tabbed editor bar for repository tasks enabling candidates to browse, inspect read-only specifications, and modify editable implementation files.
+  - Independent Task Timing: Supports optional task-specific time limits alongside the overall server-authoritative assessment deadline.
+  - Unified Submission Packaging: Submissions bundle individual `task_submissions` alongside overall candidate metadata and compute a canonical SHA-256 fingerprint.
+- **Cryptographic Version Immutability & Hash Locking:**
+  - Published assessment templates are strictly immutable. Once published, any subsequent edits generate a new draft revision, preserving existing candidate invitations pinned to their original canonical version hash.
+
+### 4.18. Production-Grade Dual-Engine PostgreSQL Persistence & DDL Auto-Sync (LOOP 6.1)
+- **Production Relational Architecture:**
+  - Replaces volatile in-memory caching with production-grade relational persistence using **Drizzle ORM** across 10 typed repositories.
+- **Dual-Engine Persistence Strategy:**
+  - **Production PostgreSQL:** Connects via connection pooling (`pg.Pool`) using `DATABASE_URL` for enterprise production deployments with high concurrency and replication.
+  - **Embedded Zero-Daemon PGlite Engine:** Uses WebAssembly-compiled PostgreSQL 16 (`@electric-sql/pglite`) for local developer workflows, offline execution, and deterministic CI test execution without requiring Docker or external database services.
+- **11 Normalized Database Schema Tables (`apps/api/src/db/schema.ts`):**
+  1. `organizations`: Tenant metadata, company names, slugs, billing plans.
+  2. `organization_members`: User accounts, emails, password hashes, and assigned RBAC roles (`owner`, `admin`, `interviewer`, `reviewer`).
+  3. `assessment_templates`: Assessment definitions, job roles, difficulty levels, task payloads (`assessment_tasks` JSONB).
+  4. `assessment_versions`: Immutable published version snapshots with canonical SHA-256 content hashes.
+  5. `candidate_invitations`: 32-byte cryptographic invite tokens, candidate identity, expiry timestamps, acceptance states.
+  6. `assessment_sessions`: Live candidate runtime sessions, server-calculated `expiresAt` deadlines, active task pointers, paused duration accumulators.
+  7. `session_events`: Append-only monotonic telemetry audit streams with sequence numbers and event payloads.
+  8. `submissions`: Final candidate submission bundles, overall scores, candidate technical explanations, artifact SHA-256 fingerprints.
+  9. `task_submissions`: Normalized per-task answers, code buffers, test execution results, and task-level scores.
+  10. `proctor_incidents`: Logged automated or interviewer integrity flags, severity ratings, resolution states, and timestamps.
+  11. `webhook_subscriptions`: Enterprise ATS/HRIS webhook endpoints with HMAC-SHA256 signing keys and delivery logs.
+- **Automatic DDL Schema Synchronization (`apps/api/src/db/connection.ts`):**
+  - On API gateway boot, `initializeDatabase()` auto-detects missing tables and safely executes declarative DDL statements (`CREATE TABLE IF NOT EXISTS`, index creations, and foreign key cascades).
+  - Eliminates migration drift during continuous integration and local developer onboarding.
+- **Graceful Shutdown & Pool Teardown:** Fastify server lifecycle hooks (`onClose`) close the connection pool and release file locks cleanly, preventing dangling connections.
+
+### 4.19. Real-Time Proctoring, Passive Integrity & Anti-Cheat Evidence Pipeline (LOOP 7)
+- **Passive Anti-Cheat Philosophy (Advisory vs. Algorithmic Disqualification):**
+  - In strict compliance with **AD #10 (Human Reviewer Accountability)**, the platform rejects automated disqualification bots.
+  - Behavioral anomalies (window blurs, external copy-pastes, offscreen dwell) are treated purely as **evidentiary signals** for human interviewer review. The candidate is never automatically kicked out or failed by an algorithm.
+- **Deterministic 0–100 Integrity Scoring Algorithm (`IntegrityService`):**
+  - Real-time score calculated on a scale of 0 to 100 with deduction weights:
+    - **Window Blurs & Off-Screen Dwell:** -2 points per blur event exceeding 10 seconds of off-screen duration.
+    - **Unattributed Clipboard Paste Bursts:** -5 points for every external paste burst $>50$ characters not originating from an accepted AI Copilot diff patch (`isFromCopilotPatch: false`).
+    - **Proctor Manual Incident Deductions:** Critical incident (-25 points), Warning incident (-10 points), Info incident (-2 points). Resolved incidents have their deduction penalties dynamically restored.
+  - **4 Calibrated Risk Classification Bands:**
+    - `clean` (Score 90–100): Minimal to no off-screen activity; disciplined typing cadence; all pastes attributed to approved AI diffs.
+    - `low` (Score 75–89): Occasional brief window switches (e.g. checking system notifications); small external code snippets.
+    - `medium` (Score 50–74): Frequent window blurring; extended offscreen dwell time; multiple large unattributed paste bursts.
+    - `high` (Score < 50): Persistent offscreen dwell; massive external paste injections without incremental typing; critical proctor flags.
+- **Client-Side Passive Telemetry Engine (`AssessmentWorkspace.tsx`):**
+  - Passive event listeners track `window.addEventListener("blur")` and `window.addEventListener("focus")`, computing exact offscreen dwell milliseconds.
+  - Clipboard `paste` event interception compares pasted text length against recent Copilot patches. If length exceeds 50 characters and does not match an accepted diff patch, an `unattributed_paste` telemetry event is queued.
+- **Company Dashboard Live Proctor Control Room (`CompanyDashboard.tsx`):**
+  - **Dynamic 0–100 SVG Risk Dial:** Color-coded circular gauge visualizing candidate integrity score with dynamic green/yellow/orange/red status badges.
+  - **4 Live Metric Cards:** Focus Rate %, External Paste count, Total Off-Screen Dwell duration, and Flagged Incident count.
+  - **Chronological Incident Feed:** Real-time log of security events with timestamp, category, severity badge (`info`, `warning`, `critical`), and resolution status.
+  - **Interviewer Incident Logging Modal:** Allows interviewers to record manual observations (e.g. *"Candidate looking off-camera continuously"*, *"Technical Wi-Fi issue reported"*).
+  - **Interactive Incident Resolution:** Reviewers can mark incidents as resolved (e.g. *"Candidate verified using external scratchpad"*), which automatically re-evaluates the score.
+- **Server-Authoritative Session Pausing & Technical Credit Extension:**
+  - When an interviewer pauses an active session (`POST /api/v1/sessions/:sessionId/pause`), the server records `pausedAt` and freezes the countdown timer.
+  - On resumption (`POST /api/v1/sessions/:sessionId/resume`), the server computes the exact paused duration:
+    $$\text{creditMs} = \text{resumedAt} - \text{pausedAt}$$
+    $$\text{expiresAt}_{\text{new}} = \text{expiresAt}_{\text{old}} + \text{creditMs}$$
+  - Guarantees fairness during technical incidents without granting untracked extra time.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -456,26 +548,28 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 
 ---
 
-### Workflow 3: Interviewer & Proctor Real-Time Monitoring Guide
+### Workflow 3: Interviewer & Proctor Real-Time Monitoring & Integrity Room Guide
 1. **Open Active Sessions Monitor:**
    - Interviewer logs into Company Dashboard and selects the **`[Evidence & Audit Log]`** tab.
 2. **Select Candidate Session:**
-   - Select candidate (e.g. *"Jordan Lee"*).
+   - Select candidate (e.g. *"Jordan Lee"* or *"Elena Rostova"*).
    - View live elapsed timer, status (`active`, `grace_period`, `submitted`), and consumed AI budget.
-3. **Stream Telemetry Checkpoints:**
-   - Inspect the chronological event feed:
-     - Checkpoint `#1`: `session_started`
-     - Checkpoint `#4`: `ai_query` (inspect exact prompt asked)
-     - Checkpoint `#5`: `ai_patch_proposed`
-     - Checkpoint `#6`: `ai_patch_decision` (`accepted`)
-     - Checkpoint `#7`: `test_run` (`3/5 passed`)
-     - Checkpoint `#12`: `test_run` (`5/5 passed`)
-4. **Inspect Passive Integrity Signals:**
-   - Check `window_blur` and `window_focus` counts.
-   - Verify if large blocks of external code were pasted via `paste_detected`.
-5. **Handle Incidents (Proctor Controls):**
-   - If candidate experiences Wi-Fi failure, click **`[Pause Session]`**.
-   - Once resolved, click **`[Resume Session]`** (server deadline automatically adjusts).
+3. **Inspect Real-Time Integrity & Anti-Cheat Control Room (LOOP 7):**
+   - Click **`[Live Proctor & Integrity]`** to open the real-time proctoring console.
+   - **Dynamic 0–100 Risk Dial:** Gauge visually displays candidate integrity score with dynamic status indicator (`clean`, `low`, `medium`, `high`).
+   - **4 Live Metric Breakdown Cards:**
+     - *Focus Rate %:* Percentage of elapsed time candidate remained actively focused on the assessment workspace.
+     - *External Pastes:* Count and character volume of clipboard pastes not originating from accepted AI diff proposals.
+     - *Off-Screen Dwell:* Total cumulative seconds spent outside the assessment window.
+     - *Active Incidents:* Number of unresolved proctor or automated integrity flags.
+4. **Log & Resolve Proctor Incidents:**
+   - Click **`[+ Log Proctor Note]`** to log an observation (e.g., *"Candidate reported temporary home Wi-Fi dropout"* or *"Candidate switching to external secondary monitor"*).
+   - Select category (`technical_issue`, `manual_flag`, `rapid_keystrokes`, `window_blur`) and severity (`info`, `warning`, `critical`).
+   - For false alarms, click **`[Resolve]`** on any incident card to dismiss the penalty and restore the candidate's integrity score.
+5. **Handle Technical Emergencies (Proctor Pause/Resume):**
+   - If a candidate experiences a technical disruption, click **`[Pause Session]`** and provide an incident justification.
+   - Server freezes the countdown timer and displays an incident hold banner on the candidate workspace.
+   - Once resolved, click **`[Resume Session]`**. The server automatically calculates the paused elapsed time and extends the candidate's expiration deadline by the exact credit amount.
 
 ---
 
@@ -533,7 +627,7 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
    ```bash
    pnpm --filter @ai-copilot/desktop start
    ```
-8. **Run Complete Automated Test Suite (77 Tests):**
+8. **Run Complete Automated Test Suite (168 Tests):**
    ```bash
    pnpm test
    ```
@@ -541,6 +635,45 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
    ```bash
    pnpm run typecheck
    ```
+
+---
+
+### Workflow 6: Authoring Role-Specific Multi-Task Assessments in Assessment Studio (LOOP 6)
+1. **Navigate to Assessment Studio:**
+   - Log into the Company Dashboard (`http://localhost:5173`) with an `owner` or `admin` role.
+   - Click the **`[Assessment Studio]`** navigation tab.
+2. **Configure Assessment Master Details:**
+   - Enter Assessment Title (e.g. *"Principal Systems Engineer — Distributed KV Store"*).
+   - Select Target Job Role and Difficulty Level (`junior`, `mid`, `senior`, `lead`).
+   - Set Global Assessment Duration (e.g. 90 minutes) and Global AI Budget cap ($0.25 USD).
+3. **Assemble Multi-Task Pipeline:**
+   - **Task 1: Add a Question Set (`[+ Add Question Set]`):**
+     - Enter title: *"Section 1: Concurrency Primitives & Distributed Consensus"*.
+     - Set task weight: 25 points, estimated duration: 20 minutes.
+     - Select AI Policy: `prohibited` (ensures candidate demonstrates unassisted foundational comprehension).
+     - Add Questions:
+       - MCQ 1: *"Which synchronization primitive guarantees wait-free execution on x86-64?"* (Options: CAS, Mutex, Spinlock, Semaphore).
+       - Short Text: *"Explain the difference between Raft linearizable reads and Paxos lease reads."* (Max 300 characters).
+   - **Task 2: Add a Coding Challenge (`[+ Add Coding Challenge]`):**
+     - Enter title: *"Section 2: High-Throughput Token Bucket Rate Limiter"*.
+     - Select Language: `Go` (or `TypeScript` / `Python` / `Java` / `C++` / `Rust`).
+     - Set task weight: 35 points, estimated duration: 30 minutes.
+     - Provide starter code stub and private verification test cases.
+     - Select AI Policy: `restricted` (AI answers syntax and algorithmic questions but cannot propose full patches).
+   - **Task 3: Add a Repository / Codebase Task (`[+ Add Codebase Task]`):**
+     - Enter title: *"Section 3: Distributed KV Store Debugging & In-Place Mutation Fix"*.
+     - Set task weight: 40 points, estimated duration: 40 minutes.
+     - Define virtual multi-file starter structure (`src/storage/engine.ts`, `src/types/record.ts`, `src/index.ts`).
+     - Set `src/types/record.ts` to `isReadOnly: true` to prevent candidate from mutating type definitions.
+     - Add acceptance criteria: *"Preserve memory immutability; ensure O(1) key lookups; pass all 5 verification tests."*
+     - Select AI Policy: `enabled` (Candidate can collaborate with AI, inspect unified diffs, and apply approved patches).
+4. **Reorder, Validate & Preview:**
+   - Use `[↑ Move Up]` and `[↓ Move Down]` buttons to fine-tune section sequencing.
+   - Click **`[Preview Candidate Experience]`** to interactively test the candidate's exact split-screen view before publishing.
+5. **Publish & Lock Immutable Version:**
+   - Click **`[Publish Assessment Version]`**.
+   - System computes a canonical SHA-256 fingerprint across all tasks, files, questions, rubrics, and AI policies.
+   - Published version is permanently locked (`published`) and immediately available for candidate invitation dispatch.
 
 ---
 
@@ -588,6 +721,10 @@ Fastify API server (`http://127.0.0.1:4000`):
 | `POST` | `/api/v1/code/validate` | Candidate / Bearer | Executes code inside Node 22 native isolated sandbox. |
 | `POST` | `/api/v1/answers/generate` | Candidate / Bearer | Generates AI assistant responses within budget cap. |
 | `POST` | `/api/v1/assessment/evaluate` | Reviewer / Interviewer / Admin | Evaluates submission and computes 7-dimension scorecard. |
+| `GET` | `/api/v1/sessions/:sessionId/integrity` | Bearer (`interviewer`, `admin`, `owner`) | Real-time candidate integrity score (0–100), risk band, and dwell/paste metrics (LOOP 7). |
+| `POST` | `/api/v1/sessions/:sessionId/incidents` | Bearer (`interviewer`, `admin`, `owner`) | Records proctor observation flag or technical incident annotation (LOOP 7). |
+| `GET` | `/api/v1/sessions/:sessionId/incidents` | Bearer JWT | Retrieves chronological list of proctor flags and integrity incidents (LOOP 7). |
+| `POST` | `/api/v1/sessions/:sessionId/incidents/:incidentId/resolve` | Bearer (`interviewer`, `admin`, `owner`) | Resolves or dismisses false-positive incident and recalculates integrity score (LOOP 7). |
 
 ---
 
@@ -613,7 +750,7 @@ All 13 packages maintain **100% passing test suites**:
 | Package / Module | Test Scope | Tests Passed | Status |
 | :--- | :--- | :---: | :---: |
 | `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 | **PASS** |
-| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages) | 4 / 4 | **PASS** |
+| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages, integrity) | 4 / 4 | **PASS** |
 | `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
 | `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
 | `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, watchdog timeouts, secret scrubbing, socket traps | 11 / 11 | **PASS** |
@@ -622,9 +759,9 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations, calibration consensus | 8 / 8 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates, versions, sessions, invitations, telemetry events, submission bundling, proctor controls, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 120 / 120 | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 127 / 127 (20 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **167 / 167** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **168 / 168** | **100% PASS** |
 
 ---
 
@@ -632,7 +769,11 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **chore(policy):** enforce strict personal project separation from employer policy (`55ad26b`)
+- `HEAD` — **feat(loop-7):** complete real-time proctoring and passive integrity control room in Company Dashboard (`c3fefba`)
+- `c1c4c7c` — **fix(practice):** resolve polyglot java verification, resilient AI connection fallback, and schema submission payload
+- `5d808ad` — **feat(loop-6):** implement company assessment studio and dynamic candidate task workspace
+- `e4a3df1` — **feat(loop-6.1):** add dual-engine PostgreSQL & PGlite persistence with DDL auto-sync
+- `55ad26b` — **chore(policy):** enforce strict personal project separation from employer policy
 - `6392d17` — **feat(polyglot):** implement full multi-language software domain support (TS, JS, Python, Go, Java, C++, Rust) and bulletproof ErrorBoundary
 - `a408bd7` — **fix(desktop):** resolve maximum call stack size recursion in capture modal
 - `3eefcb5` — **feat(capture):** implement screen capture & multimodal ocr question ingest engine (Task 22)

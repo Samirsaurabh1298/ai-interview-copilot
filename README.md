@@ -1,6 +1,6 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-170%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-168%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20Drizzle%20ORM-336791.svg)](https://orm.drizzle.team)
@@ -19,14 +19,16 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 
 ## Key Architectural Highlights
 
-1. **Production-Grade Persistence (Drizzle ORM + PostgreSQL):** 11 normalized tables across 10 typed repositories. Features connection pooling (`pg.Pool`), embedded zero-daemon PGlite engine for offline/test environments, graceful shutdown, schema auto-migration, and complete survival across API process restarts.
-2. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
-3. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-4. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
-5. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
-6. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-7. **Human Reviewer Accountability:** AI scorecards are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-8. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
+1. **Company Assessment Studio & Multi-Task Authoring (LOOP 6):** Enables recruiters and engineering managers to author role-tailored engineering evaluations spanning **Question Sets** (MCQ single/multi, short text), **Coding Challenges** (polyglot languages, unit tests), and **Repository / Codebase Tasks** (multi-file virtual filesystems, read-only file guards) with per-task time limits and granular AI policies (`prohibited`, `restricted`, `enabled`).
+2. **Production-Grade Persistence (Drizzle ORM + PostgreSQL / PGlite) (LOOP 6.1):** 11 normalized database tables across 10 typed repositories. Features connection pooling (`pg.Pool`), embedded zero-daemon PGlite engine for offline/test environments, graceful shutdown, schema auto-migration, and complete survival across API process restarts.
+3. **Real-Time Proctoring, Passive Integrity & Anti-Cheat Pipeline (LOOP 7):** Evidentiary passive observation pipeline featuring a deterministic 0–100 integrity scoring algorithm, off-screen dwell tracking, unattributed external clipboard paste detection ($>50$ chars), Company Dashboard live proctor control room with dynamic 0–100 risk dial, incident logging & resolution, and server-authoritative session pause with automatic technical credit extension.
+4. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
+5. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
+6. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
+7. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
+8. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
+9. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
+10. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
 
 ---
 
@@ -102,14 +104,14 @@ pnpm run typecheck
 
 ## Core Personas & Workflows Supported
 
-- **Company Admin / Recruiter:** Set up organizations, manage RBAC, create assessment templates, lock immutable SHA-256 versions, and issue 32-byte cryptographic candidate invite links.
-- **Candidate:** Open secure invite gateway, review objectives and agree to integrity terms, launch 60-minute workspace, ask AI questions, inspect diffs, run tests, and submit solution with 20-second autosave protection.
-- **Interviewer / Proctor:** Live monitor sessions, track consumed AI budget, review chronological telemetry checkpoints, detect window blurs/pastes, and pause/resume sessions during technical incidents.
+- **Company Admin / Recruiter:** Set up organizations, manage RBAC, author custom multi-task assessments in **Assessment Studio** (Question Sets, Coding Challenges, Repository Tasks), configure task-level AI policies, lock immutable SHA-256 versions, and issue 32-byte cryptographic candidate invite links.
+- **Candidate:** Open secure invite gateway, review objectives and agree to integrity terms, launch multi-task dynamic workspace, solve questions, navigate multi-file virtual repository projects, collaborate with AI, inspect diffs, run tests, and submit solution with 20-second autosave protection.
+- **Interviewer / Proctor:** Live monitor sessions, inspect real-time 0–100 integrity risk dial, track window blurs, off-screen dwell time, and unattributed external clipboard pastes, record proctor notes, resolve false alarms, and pause/resume sessions with automatic technical credit time extension during incidents.
 - **Reviewer / Hiring Manager:** Inspect candidate code AST diffs, evaluate 7-dimension rubric scores, calibrate anchors, verify cryptographic hashes, and export compliance reports.
 - **Talent Operations / ATS Integration:** Dispatch cryptographically signed HMAC-SHA256 webhook payloads directly to Greenhouse, Lever, Workday, or custom HRIS webhooks with exponential retry backoff (Task 19).
 - **Finance & Engineering Leadership:** Inspect real-time token spend ledgers, 30-day linear burn rate forecasting, unit economics ($/session), and automated runaway prompt anomaly alerts (Task 20).
 
-All **142 automated tests across 13 packages** are passing (100% pass rate).
+All **168 automated tests across 13 packages** are passing (100% pass rate).
 
 For in-depth operational instructions, refer to **[PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)**.
 
