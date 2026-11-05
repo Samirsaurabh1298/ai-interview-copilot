@@ -63,7 +63,15 @@ export const reportsRoutes: FastifyPluginAsync<{
     const { sessionId } = request.params as { sessionId: string };
     const query = request.query as { token?: string };
 
-    // Support query token or header authorization
+    // Production Hardening: Disallow passing reusable bearer tokens through URL query parameters
+    if (process.env.NODE_ENV === "production" && query.token) {
+      return reply.status(400).send({
+        error: "INSECURE_QUERY_TOKEN_PROHIBITED",
+        message: "Passing reusable authentication tokens in URL query strings is prohibited in production. Pass the Authorization header.",
+      });
+    }
+
+    // Support query token (dev/test only) or header authorization
     const tokenHeader = request.headers.authorization || (query.token ? `Bearer ${query.token}` : undefined);
     if (authService && tokenHeader) {
       try {

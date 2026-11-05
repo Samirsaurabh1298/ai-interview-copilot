@@ -47,16 +47,23 @@ export type CreateProctorIncidentRequest = z.infer<typeof CreateProctorIncidentR
 export const IntegrityRiskLevelSchema = z.enum(["clean", "low", "medium", "high"]);
 export type IntegrityRiskLevel = z.infer<typeof IntegrityRiskLevelSchema>;
 
+export const IntegrityReviewStatusSchema = z.enum(["verified", "review_recommended", "unresolved_incident"]);
+export type IntegrityReviewStatus = z.infer<typeof IntegrityReviewStatusSchema>;
+
 export const IntegrityScoreReportSchema = z.object({
   sessionId: z.string(),
   candidateName: z.string(),
   candidateEmail: z.string(),
   status: z.string(),
+  // Maintained as an advisory evidence-confidence index for backward compatibility;
+  // NOT a candidate performance grade, rank, or automated disqualification factor.
   integrityScore: z.number().int().min(0).max(100),
   riskLevel: IntegrityRiskLevelSchema,
+  reviewStatus: IntegrityReviewStatusSchema.default("verified"),
   metrics: z.object({
     totalBlurCount: z.number().int().default(0),
     totalOffScreenDurationSeconds: z.number().default(0),
+    focusRatePercent: z.number().min(0).max(100).default(100),
     unattributedPasteCount: z.number().int().default(0),
     unattributedPasteChars: z.number().int().default(0),
     incidentFlagsCount: z.number().int().default(0),

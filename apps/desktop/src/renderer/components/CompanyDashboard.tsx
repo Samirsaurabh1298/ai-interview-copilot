@@ -1231,23 +1231,25 @@ describe("useDebouncedFetch verification suite", () => {
           )}
         </div>
 
-        {/* Persona quick switch buttons */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-slate-500 dark:text-gray-400 mr-1">Switch Role:</span>
-          {members.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => handleSelectPersona(m)}
-              className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
-                activeAuthUser?.email === m.email
-                  ? "bg-indigo-600 text-white shadow-xs font-bold"
-                  : "bg-white dark:bg-gray-800 text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-gray-700 hover:border-indigo-400"
-              }`}
-            >
-              {m.role.toUpperCase()}
-            </button>
-          ))}
-        </div>
+        {/* Persona quick switch buttons (Dev / Simulation mode only) */}
+        {!Boolean((import.meta as any).env?.PROD) && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-500 dark:text-gray-400 mr-1">Switch Role:</span>
+            {members.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => handleSelectPersona(m)}
+                className={`px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                  activeAuthUser?.email === m.email
+                    ? "bg-indigo-600 text-white shadow-xs font-bold"
+                    : "bg-white dark:bg-gray-800 text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-gray-700 hover:border-indigo-400"
+                }`}
+              >
+                {m.role.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Alerts */}
@@ -1711,17 +1713,23 @@ describe("useDebouncedFetch verification suite", () => {
                       Current Cryptographic JWT Session Token
                     </h4>
                   </div>
-                  <button
-                    onClick={() => handleCopy(activeJwtToken || "", "jwt")}
-                    className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-                  >
-                    {copiedKey === "jwt" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedKey === "jwt" ? "Copied Token!" : "Copy Bearer Token"}</span>
-                  </button>
+                  {!Boolean((import.meta as any).env?.PROD) && (
+                    <button
+                      onClick={() => handleCopy(activeJwtToken || "", "jwt")}
+                      className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                    >
+                      {copiedKey === "jwt" ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedKey === "jwt" ? "Copied Token!" : "Copy Bearer Token"}</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] break-all border border-slate-800">
-                  {activeJwtToken || "No token issued. Select a persona above to authenticate."}
+                  {Boolean((import.meta as any).env?.PROD)
+                    ? activeJwtToken
+                      ? `${activeJwtToken.slice(0, 16)}...[REDACTED_IN_PRODUCTION]...${activeJwtToken.slice(-8)}`
+                      : "No active token."
+                    : activeJwtToken || "No token issued. Select a persona above to authenticate."}
                 </div>
 
                 {activeAuthUser && (

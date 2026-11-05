@@ -56,49 +56,54 @@ export class IntegrityService {
       }
     }
 
-    // Deterministic Score Calculation
-    // Base 100
-    let penalty = 0;
+    // Phase 3 Proctoring & Integrity Redesign:
+    // Behavioral observations (blurs, dwell, paste events) are evidentiary signals for human reviewers,
+    // NEVER candidate performance grades, rankings, or automated disqualification bots.
+    const totalDurationSec = Math.max(60, (session.durationMinutes || 60) * 60);
+    const focusRatePercent = Math.max(
+      0,
+      Math.min(100, Math.round(((totalDurationSec - totalOffScreenDurationSeconds) / totalDurationSec) * 100))
+    );
 
-    // Window blur penalty (3 pts each, max 20)
-    penalty += Math.min(20, totalBlurCount * 3);
+    const hasUnresolvedCritical = incidents.some((i) => i.severity === "critical" && !i.isResolved);
+    const hasUnresolvedWarning = incidents.some((i) => i.severity === "warning" && !i.isResolved);
+    const hasUnresolvedTechnical = incidents.some((i) => i.category === "technical_issue" && !i.isResolved);
 
-    // Off-screen dwell penalty (1 pt per 15s away, max 25)
-    penalty += Math.min(25, Math.floor(totalOffScreenDurationSeconds / 15));
-
-    // Unattributed paste penalty (10 pts per paste > 50 chars, max 30)
-    penalty += Math.min(30, unattributedPasteCount * 10);
-
-    // Proctor incident penalty
-    for (const inc of incidents) {
-      if (!inc.isResolved) {
-        if (inc.severity === "critical") penalty += 25;
-        else if (inc.severity === "warning") penalty += 10;
-        else penalty += 3;
-      }
+    let reviewStatus: "verified" | "review_recommended" | "unresolved_incident" = "verified";
+    if (hasUnresolvedCritical) {
+      reviewStatus = "unresolved_incident";
+    } else if (hasUnresolvedWarning || unattributedPasteCount >= 3 || focusRatePercent < 80) {
+      reviewStatus = "review_recommended";
     }
-
-    const rawScore = Math.max(0, Math.min(100, 100 - penalty));
 
     let riskLevel: IntegrityRiskLevel = "clean";
-    if (rawScore < 50 || incidents.some((i) => i.severity === "critical" && !i.isResolved)) {
+    if (hasUnresolvedCritical || (unattributedPasteCount >= 3 && focusRatePercent < 60)) {
       riskLevel = "high";
-    } else if (rawScore < 70) {
+    } else if (hasUnresolvedWarning || unattributedPasteCount >= 2 || focusRatePercent < 80) {
       riskLevel = "medium";
-    } else if (rawScore < 85) {
+    } else if (totalBlurCount > 3 || unattributedPasteCount >= 1 || hasUnresolvedTechnical) {
       riskLevel = "low";
     }
+
+    // Deprecated advisory index maintained for contract backwards-compatibility:
+    // Reflects observation clarity, NOT candidate capability or guilt.
+    let advisoryIndex = 100;
+    if (riskLevel === "high") advisoryIndex = 45;
+    else if (riskLevel === "medium") advisoryIndex = 70;
+    else if (riskLevel === "low") advisoryIndex = 80;
 
     return {
       sessionId: session.id,
       candidateName: session.candidateName,
       candidateEmail: session.candidateEmail,
       status: session.status,
-      integrityScore: rawScore,
+      integrityScore: advisoryIndex,
       riskLevel,
+      reviewStatus,
       metrics: {
         totalBlurCount,
         totalOffScreenDurationSeconds,
+        focusRatePercent,
         unattributedPasteCount,
         unattributedPasteChars,
         incidentFlagsCount: incidents.length,

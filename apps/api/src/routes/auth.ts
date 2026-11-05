@@ -23,6 +23,15 @@ export const authRoutes: FastifyPluginAsync<{
     }
 
     const { organizationId, email } = parse.data;
+
+    // Production Hardening: Persona switching without credentials is strictly disabled in production
+    if (process.env.NODE_ENV === "production" && !process.env.ALLOW_DEMO_LOGIN) {
+      return reply.status(403).send({
+        error: "DEMO_LOGIN_DISABLED_IN_PRODUCTION",
+        message: "Direct persona token generation without credentials is disabled in production environments.",
+      });
+    }
+
     const org = orgService.getOrganizationById(organizationId);
     if (!org) {
       return reply.status(404).send({

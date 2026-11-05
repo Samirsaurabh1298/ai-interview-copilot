@@ -11,6 +11,7 @@ export interface EvaluationOptions {
   totalCostUsd?: number;
   prompts?: string[];
   referencePassingTestsCount?: number;
+  aiPolicyMode?: "enabled" | "restricted" | "prohibited";
 }
 
 export class AssessmentEvaluator {
@@ -29,8 +30,45 @@ export class AssessmentEvaluator {
 
     const promptCount = options.aiPromptCount ?? 0;
     const totalCost = options.totalCostUsd ?? 0;
+    const policyMode = options.aiPolicyMode ?? "enabled";
 
-    // 1. Code Comprehension (Weight: 20)
+    const isAiProhibited = policyMode === "prohibited";
+    const isAiRestricted = policyMode === "restricted";
+
+    // Dynamic Rubric Weighting Policy (Phase 2 / Fairness & Scoring Integrity)
+    // When AI is prohibited, AI Collaboration (15) and Critical Evaluation (15) are N/A.
+    // Weights are cleanly redistributed to technical engineering dimensions so total remains 100.
+    const weights = isAiProhibited
+      ? {
+          codeComprehension: 30,
+          problemFraming: 10,
+          aiCollaboration: 0,
+          criticalEvaluation: 0,
+          debuggingImplementation: 30,
+          testingVerification: 25,
+          explanationJudgment: 5,
+        }
+      : isAiRestricted
+      ? {
+          codeComprehension: 25,
+          problemFraming: 10,
+          aiCollaboration: 15,
+          criticalEvaluation: 0, // Patch generation is prohibited under restricted mode
+          debuggingImplementation: 25,
+          testingVerification: 20,
+          explanationJudgment: 5,
+        }
+      : {
+          codeComprehension: 20,
+          problemFraming: 10,
+          aiCollaboration: 15,
+          criticalEvaluation: 15,
+          debuggingImplementation: 20,
+          testingVerification: 15,
+          explanationJudgment: 5,
+        };
+
+    // 1. Code Comprehension & Localization
     let compRating: RubricRatingAnchor = 2;
     const compCitations: string[] = [];
     if (addedLines + removedLines > 0 && addedLines + removedLines < 80) {
@@ -48,7 +86,7 @@ export class AssessmentEvaluator {
       compCitations.push("No code changes or diff provided for review.");
     }
 
-    // 2. Problem Framing & Strategy (Weight: 10)
+    // 2. Problem Framing & Strategy
     let framingRating: RubricRatingAnchor = 2;
     const framingCitations: string[] = [];
     if (wordCount >= 50 && (submission.explanation.toLowerCase().includes("root cause") || submission.explanation.toLowerCase().includes("reproduce"))) {
@@ -62,72 +100,80 @@ export class AssessmentEvaluator {
       framingCitations.push("Explanation lacked structured root-cause analysis or problem framing.");
     }
 
-    // 3. AI Collaboration & Inquiry Strategy (Weight: 15)
-    // Architectural Decision #4: Token expenditure is a company cost control, NOT a candidate performance score.
-    // Score purely on inquiry specificity, prompt intent, and iterative decomposition.
-    let aiCollabRating: RubricRatingAnchor = 3;
+    // 3. AI Collaboration & Inquiry Strategy
+    // Architectural Invariant AD #4 & LOOP 8 Scoring Integrity:
+    // 1. Token use is ONLY operational cost telemetry. Candidates are NEVER rewarded or penalized for token volume.
+    // 2. Candidates who solve problems autonomously without AI must NEVER be penalized.
+    // 3. High prompt count must not be arbitrarily penalized if inquiries are targeted and disciplined.
+    let aiCollabRating: RubricRatingAnchor = 4;
     const aiCollabCitations: string[] = [];
 
-    const prompts = options.prompts ?? [];
-    const hasStructuredPrompts = prompts.length > 0;
-    const targetedKeywords = ["root cause", "edge case", "type", "sort", "comparator", "tags", "mutation", "why", "explain"];
-    const highQualityInquiries = prompts.filter((p) =>
-      targetedKeywords.some((kw) => p.toLowerCase().includes(kw))
-    ).length;
+    if (isAiProhibited) {
+      aiCollabRating = 4; // Non-punitive baseline for N/A dimension
+      aiCollabCitations.push("[N/A] AI Assistant was prohibited for this task by company policy.");
+    } else {
+      const prompts = options.prompts ?? [];
+      const targetedKeywords = ["root cause", "edge case", "type", "sort", "comparator", "tags", "mutation", "why", "explain", "complexity", "interface", "null", "undefined"];
 
-    if (hasStructuredPrompts) {
-      if (highQualityInquiries >= 2 || (prompts.length >= 2 && prompts.length <= 8 && highQualityInquiries >= 1)) {
+      if (prompts.length > 0) {
+        const targetedInquiries = prompts.filter((p) =>
+          targetedKeywords.some((kw) => p.toLowerCase().includes(kw))
+        ).length;
+
+        if (targetedInquiries >= 1 || prompts.length <= 6) {
+          aiCollabRating = 4;
+          aiCollabCitations.push(
+            `Effective AI collaboration: Candidate formulated ${prompts.length} focused inquiry iteration(s) advancing task investigation.`
+          );
+        } else {
+          aiCollabRating = 3;
+          aiCollabCitations.push(
+            `Collaborative inquiries: Formulated ${prompts.length} prompt(s) during task execution.`
+          );
+        }
+      } else if (promptCount > 0) {
         aiCollabRating = 4;
         aiCollabCitations.push(
-          `Strong AI collaboration: Candidate formulated ${prompts.length} focused prompt(s) targeting specific edge cases and architecture patterns.`
-        );
-      } else if (prompts.length > 8) {
-        aiCollabRating = 2;
-        aiCollabCitations.push(
-          `Developing AI collaboration: High prompt churn (${prompts.length} prompts) with low query specificity, suggesting trial-and-error.`
+          `Effective inquiry cadence: Candidate used ${promptCount} targeted inquiry iteration(s).`
         );
       } else {
-        aiCollabRating = 3;
+        // Autonomy fairness rule: Never penalize a candidate for solving problems independently
+        aiCollabRating = 4;
         aiCollabCitations.push(
-          `Effective AI collaboration: Formulated ${prompts.length} clear prompt(s) to guide investigation.`
+          "Complete engineering autonomy: Candidate resolved the challenge independently without requiring AI assistant queries."
         );
       }
-    } else if (promptCount >= 1 && promptCount <= 8) {
-      // Fallback when only count telemetry is available
-      aiCollabRating = 4;
-      aiCollabCitations.push(
-        `Effective query cadence: Candidate used ${promptCount} targeted inquiry iterations to advance task.`
-      );
-    } else if (promptCount > 8) {
-      aiCollabRating = 2;
-      aiCollabCitations.push(
-        `High query churn: ${promptCount} prompt iterations indicates excessive dependence on AI generation over structured reasoning.`
-      );
-    } else {
-      aiCollabRating = 3;
-      aiCollabCitations.push("Candidate completed engineering task autonomously with minimal AI assistance.");
+
+      // Append company budget audit telemetry strictly as non-scoring metadata
+      if (totalCost > 0) {
+        aiCollabCitations.push(`[Company Audit] Total AI compute cost incurred: $${totalCost.toFixed(4)} USD.`);
+      }
     }
 
-    // Append company budget audit telemetry strictly as non-scoring metadata
-    if (totalCost > 0) {
-      aiCollabCitations.push(`[Company Audit] Total AI compute cost incurred: $${totalCost.toFixed(4)} USD.`);
-    }
-
-    // 4. Critical Evaluation of AI (Weight: 15)
+    // 4. Critical Evaluation of AI Output
     let critRating: RubricRatingAnchor = 3;
     const critCitations: string[] = [];
-    if (passRatio === 1 && wordCount >= 30) {
+
+    if (isAiProhibited) {
       critRating = 4;
-      critCitations.push("Verified candidate tailored and verified implementation rather than blindly trusting output.");
-    } else if (passRatio >= 0.5) {
-      critRating = 3;
-      critCitations.push("Candidate adjusted AI code; some tests remain failing.");
+      critCitations.push("[N/A] AI patch generation was prohibited for this task by company policy.");
+    } else if (isAiRestricted) {
+      critRating = 4;
+      critCitations.push("[N/A] AI code patch generation was restricted for this task.");
     } else {
-      critRating = 2;
-      critCitations.push("High failure rate suggests unvalidated adoption of AI-generated suggestions.");
+      if (passRatio === 1 && wordCount >= 30) {
+        critRating = 4;
+        critCitations.push("Verified candidate tailored, verified, and validated implementation rather than blindly trusting output.");
+      } else if (passRatio >= 0.5) {
+        critRating = 3;
+        critCitations.push("Candidate adjusted AI code; some tests remain failing.");
+      } else {
+        critRating = 2;
+        critCitations.push("High failure rate suggests unvalidated adoption of AI-generated suggestions.");
+      }
     }
 
-    // 5. Debugging & Implementation (Weight: 20)
+    // 5. Debugging & Implementation Quality
     let debugRating: RubricRatingAnchor = 1;
     const debugCitations: string[] = [];
     if (passRatio === 1) {
@@ -144,7 +190,7 @@ export class AssessmentEvaluator {
       debugCitations.push(`Failing majority of tests (${passedTests}/${totalTests} tests passed).`);
     }
 
-    // 6. Testing & Verification Discipline (Weight: 15)
+    // 6. Testing & Verification Discipline
     let testRating: RubricRatingAnchor = 1;
     const testCitations: string[] = [];
     if (totalTests > 0 && passRatio === 1) {
@@ -158,7 +204,7 @@ export class AssessmentEvaluator {
       testCitations.push("No test execution results recorded prior to submission.");
     }
 
-    // 7. Technical Explanation & Judgment (Weight: 5)
+    // 7. Technical Explanation & Judgment
     let explRating: RubricRatingAnchor = 2;
     const explCitations: string[] = [];
     if (wordCount >= 40) {
@@ -173,7 +219,7 @@ export class AssessmentEvaluator {
     }
 
     const calculatePoints = (weight: number, rating: RubricRatingAnchor): number => {
-      // 1 -> 25%, 2 -> 50%, 3 -> 75%, 4 -> 100%
+      if (weight === 0) return 0;
       const multiplier = rating / 4;
       return Math.round(weight * multiplier * 10) / 10;
     };
@@ -182,57 +228,59 @@ export class AssessmentEvaluator {
       {
         dimensionId: "code-comprehension",
         name: "Code Comprehension & Localization",
-        weight: 20,
+        weight: weights.codeComprehension,
         rating: compRating,
-        points: calculatePoints(20, compRating),
+        points: calculatePoints(weights.codeComprehension, compRating),
         evidenceCitations: compCitations,
       },
       {
         dimensionId: "problem-framing",
         name: "Problem Framing & Strategy",
-        weight: 10,
+        weight: weights.problemFraming,
         rating: framingRating,
-        points: calculatePoints(10, framingRating),
+        points: calculatePoints(weights.problemFraming, framingRating),
         evidenceCitations: framingCitations,
       },
       {
         dimensionId: "ai-collaboration",
         name: "AI Collaboration Efficiency",
-        weight: 15,
+        weight: weights.aiCollaboration,
         rating: aiCollabRating,
-        points: calculatePoints(15, aiCollabRating),
+        points: calculatePoints(weights.aiCollaboration, aiCollabRating),
         evidenceCitations: aiCollabCitations,
+        isNotApplicable: isAiProhibited,
       },
       {
         dimensionId: "critical-evaluation",
         name: "Critical Evaluation of AI Output",
-        weight: 15,
+        weight: weights.criticalEvaluation,
         rating: critRating,
-        points: calculatePoints(15, critRating),
+        points: calculatePoints(weights.criticalEvaluation, critRating),
         evidenceCitations: critCitations,
+        isNotApplicable: isAiProhibited || isAiRestricted,
       },
       {
         dimensionId: "debugging-implementation",
         name: "Debugging & Implementation Quality",
-        weight: 20,
+        weight: weights.debuggingImplementation,
         rating: debugRating,
-        points: calculatePoints(20, debugRating),
+        points: calculatePoints(weights.debuggingImplementation, debugRating),
         evidenceCitations: debugCitations,
       },
       {
         dimensionId: "testing-verification",
         name: "Testing & Verification Discipline",
-        weight: 15,
+        weight: weights.testingVerification,
         rating: testRating,
-        points: calculatePoints(15, testRating),
+        points: calculatePoints(weights.testingVerification, testRating),
         evidenceCitations: testCitations,
       },
       {
         dimensionId: "explanation-judgment",
         name: "Technical Explanation & Judgment",
-        weight: 5,
+        weight: weights.explanationJudgment,
         rating: explRating,
-        points: calculatePoints(5, explRating),
+        points: calculatePoints(weights.explanationJudgment, explRating),
         evidenceCitations: explCitations,
       },
     ];
@@ -244,12 +292,13 @@ export class AssessmentEvaluator {
     const summaryNotes =
       `Automated AI-assisted evaluation draft for session ${submission.sessionId}. ` +
       `Test suite pass rate: ${Math.round(passRatio * 100)}% (${passedTests}/${totalTests}). ` +
+      `Policy: ${policyMode.toUpperCase()}. ` +
       `Human interviewer review is required prior to candidate hiring calibration.`;
 
     return {
       sessionId: submission.sessionId,
       candidateId: submission.candidateId,
-      rubricVersion: "1.0.0",
+      rubricVersion: "1.1.0",
       dimensions,
       weightedTotalScore,
       scoringMethod: "ai_draft",

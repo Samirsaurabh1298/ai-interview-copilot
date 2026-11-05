@@ -56,11 +56,12 @@ export type RubricRatingAnchor = z.infer<typeof RubricRatingAnchorSchema>;
 export const RubricDimensionScoreSchema = z.object({
   dimensionId: RubricDimensionIdSchema,
   name: z.string(),
-  weight: z.number().min(1).max(30),
+  weight: z.number().min(0).max(100),
   rating: RubricRatingAnchorSchema,
-  points: z.number().min(0).max(30),
+  points: z.number().min(0).max(100),
   evidenceCitations: z.array(z.string()).default([]),
   reviewerNotes: z.string().optional(),
+  isNotApplicable: z.boolean().optional(),
 });
 
 export type RubricDimensionScore = z.infer<typeof RubricDimensionScoreSchema>;

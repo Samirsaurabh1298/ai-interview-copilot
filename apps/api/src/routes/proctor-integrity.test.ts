@@ -160,4 +160,18 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
     const resolved = JSON.parse(resolveRes.body);
     expect(resolved.isResolved).toBe(true);
   });
+
+  it("provides evidentiary observation report without algorithmic candidate disqualification", async () => {
+    const { session, interviewerToken } = await createSessionFixture();
+
+    const repRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/sessions/${session.id}/integrity`,
+      headers: { Authorization: `Bearer ${interviewerToken}` },
+    });
+
+    const report = JSON.parse(repRes.body);
+    expect(report.reviewStatus).toBe("verified");
+    expect(report.metrics.focusRatePercent).toBe(100);
+  });
 });
