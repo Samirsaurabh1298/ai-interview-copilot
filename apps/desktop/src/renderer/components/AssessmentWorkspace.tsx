@@ -500,18 +500,33 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       true
     );
 
+    let blurStart = 0;
     const handleBlur = () => {
-      client.record("window_blur", { timestamp: Date.now() });
+      blurStart = Date.now();
+      client.record("window_blur", { timestamp: blurStart });
     };
 
     const handleFocus = () => {
-      client.record("window_focus", { timestamp: Date.now() });
+      const now = Date.now();
+      const offScreenMs = blurStart > 0 ? now - blurStart : 0;
+      blurStart = 0;
+      client.record("window_focus", {
+        timestamp: now,
+        durationMs: offScreenMs,
+        offScreenDurationMs: offScreenMs,
+      });
     };
 
     const handlePaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData("text") || "";
       if (text.length > 20) {
-        client.record("paste_detected", { characterCount: text.length, snippet: text.slice(0, 40) });
+        client.record("paste_detected", {
+          length: text.length,
+          charactersInserted: text.length,
+          characterCount: text.length,
+          isFromCopilotPatch: false,
+          snippet: text.slice(0, 40),
+        });
       }
     };
 

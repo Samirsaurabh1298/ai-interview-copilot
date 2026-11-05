@@ -67,3 +67,4 @@ export const IntegrityScoreReportSchema = z.object({
   evaluatedAt: z.coerce.date().default(() => new Date()),
 });
 export type IntegrityScoreReport = z.infer<typeof IntegrityScoreReportSchema>;
+

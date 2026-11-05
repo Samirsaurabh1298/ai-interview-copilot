@@ -47,6 +47,10 @@ import {
   Webhook,
   Trash2,
   Zap,
+  ShieldAlert,
+  Flag,
+  ShieldX,
+  ShieldOff,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { CompanyAssessmentStudio } from "./CompanyAssessmentStudio.js";
@@ -81,6 +85,12 @@ import type {
   WebhookFormat,
   WebhookEventType,
   CreateWebhookSubscriptionRequest,
+  IntegrityScoreReport,
+  IntegrityIncident,
+  IntegrityCategory,
+  IntegritySeverity,
+  CreateProctorIncidentRequest,
+  IntegrityRiskLevel,
 } from "@ai-copilot/contracts";
 
 const RUBRIC_DIMENSIONS: {
@@ -260,8 +270,19 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // LOOP 7: Real-Time Proctoring & Passive Anti-Cheat State
+  const [selectedSessionForProctor, setSelectedSessionForProctor] = useState<AssessmentSession | null>(null);
+  const [integrityReport, setIntegrityReport] = useState<IntegrityScoreReport | null>(null);
+  const [proctorIncidents, setProctorIncidents] = useState<IntegrityIncident[]>([]);
+  const [isLoadingIntegrity, setIsLoadingIntegrity] = useState(false);
+  const [isLogIncidentModalOpen, setIsLogIncidentModalOpen] = useState(false);
+  const [incidentCategory, setIncidentCategory] = useState<IntegrityCategory>("manual_flag");
+  const [incidentSeverity, setIncidentSeverity] = useState<IntegritySeverity>("warning");
+  const [incidentDescription, setIncidentDescription] = useState("");
+  const [isSubmittingIncident, setIsSubmittingIncident] = useState(false);
+
   // Tab State
-  const [activeTab, setActiveTab] = useState<"templates" | "rbac" | "audit" | "invitations" | "analytics" | "webhooks">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "rbac" | "audit" | "invitations" | "analytics" | "webhooks" | "proctor">("templates");
   const [activeTemplateTab, setActiveTemplateTab] = useState<"brief" | "starter" | "tests" | "rubric">("brief");
 
   // Modal State
@@ -493,6 +514,72 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
       setSessionEvents([]);
     } finally {
       setIsLoadingEvents(false);
+    }
+  };
+
+  const handleSelectSessionForProctor = async (session: AssessmentSession) => {
+    setSelectedSessionForProctor(session);
+    try {
+      setIsLoadingIntegrity(true);
+      const [report, incResp] = await Promise.all([
+        ApiClient.getIntegrityReport(session.id, activeJwtToken || undefined),
+        ApiClient.getProctorIncidents(session.id, activeJwtToken || undefined),
+      ]);
+      setIntegrityReport(report);
+      setProctorIncidents(incResp.incidents);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load session integrity data");
+    } finally {
+      setIsLoadingIntegrity(false);
+    }
+  };
+
+  const handleRefreshProctorData = async () => {
+    if (!selectedSessionForProctor) return;
+    await handleSelectSessionForProctor(selectedSessionForProctor);
+  };
+
+  const handleLogProctorIncident = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSessionForProctor) return;
+    if (!incidentDescription.trim()) {
+      setError("Please describe the observed incident.");
+      return;
+    }
+    try {
+      setIsSubmittingIncident(true);
+      setError(null);
+      await ApiClient.logProctorIncident(
+        selectedSessionForProctor.id,
+        {
+          category: incidentCategory,
+          severity: incidentSeverity,
+          description: incidentDescription.trim(),
+        },
+        activeJwtToken || undefined
+      );
+      setIsLogIncidentModalOpen(false);
+      setIncidentDescription("");
+      setSuccessMessage(`Proctor incident logged: ${incidentCategory} (${incidentSeverity})`);
+      setTimeout(() => setSuccessMessage(null), 3500);
+      await handleRefreshProctorData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to log proctor incident");
+    } finally {
+      setIsSubmittingIncident(false);
+    }
+  };
+
+  const handleResolveIncident = async (incidentId: string) => {
+    if (!selectedSessionForProctor) return;
+    try {
+      setError(null);
+      await ApiClient.resolveProctorIncident(selectedSessionForProctor.id, incidentId, activeJwtToken || undefined);
+      setSuccessMessage("Proctor incident marked as resolved.");
+      setTimeout(() => setSuccessMessage(null), 3000);
+      await handleRefreshProctorData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to resolve proctor incident");
     }
   };
 
@@ -1013,6 +1100,25 @@ describe("useDebouncedFetch verification suite", () => {
               <Webhook className="w-3.5 h-3.5 text-violet-500" />
               <span>Webhooks & ATS ({webhooks.length})</span>
             </button>
+            <button
+              onClick={() => {
+                setActiveTab("proctor");
+                if (selectedOrg) {
+                  loadSessions(selectedOrg.id);
+                  if (sessions.length > 0 && !selectedSessionForProctor) {
+                    handleSelectSessionForProctor(sessions[0]!);
+                  }
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "proctor"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400 font-bold"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
+              <span>Live Proctor & Integrity</span>
+            </button>
           </div>
 
           {activeTab === "templates" && (
@@ -1076,6 +1182,25 @@ describe("useDebouncedFetch verification suite", () => {
               <Plus className="w-4 h-4" />
               <span>Add Webhook</span>
             </button>
+          )}
+
+          {activeTab === "proctor" && selectedSessionForProctor && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRefreshProctorData}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-300 dark:border-gray-700 hover:bg-slate-50 dark:hover:bg-gray-800 px-3 py-2 font-semibold text-xs text-slate-700 dark:text-gray-200 transition-all"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIntegrity ? "animate-spin text-indigo-600" : ""}`} />
+                <span>Refresh Telemetry</span>
+              </button>
+              <button
+                onClick={() => setIsLogIncidentModalOpen(true)}
+                className="flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-4 py-2 font-semibold text-xs text-white shadow-md shadow-rose-600/20 transition-all focus:outline-none focus:ring-2 focus:ring-rose-400"
+              >
+                <Flag className="w-4 h-4" />
+                <span>Log Incident</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -2699,8 +2824,479 @@ describe("useDebouncedFetch verification suite", () => {
               </div>
             </div>
           </div>
+        ) : activeTab === "proctor" ? (
+          /* LOOP 7: Live Proctoring & Passive Anti-Cheat Evidence Pipeline */
+          <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="max-w-6xl mx-auto space-y-6">
+              {/* Header & Policy Notice */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-rose-500" />
+                    <span>Live Proctoring & Passive Anti-Cheat Evidence Pipeline</span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50">
+                      LOOP 7
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                    Passive, server-authoritative integrity telemetry: window blur tracking, unattributed paste detection, and real-time interviewer intervention controls.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-[11px] font-medium flex items-center gap-1.5 max-w-md">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>
+                      <strong>Human Accountability:</strong> Integrity metrics are evidentiary audit aids. Human interviewers remain strictly accountable for hiring decisions; candidates are never auto-disqualified algorithmically.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Two-Column Monitor */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Left: Active Session List */}
+                <div className="lg:col-span-4 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
+                        Candidate Sessions
+                      </h4>
+                      <p className="text-[11px] text-slate-400 dark:text-gray-500">
+                        Select a session to inspect live integrity signals
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => selectedOrg && loadSessions(selectedOrg.id)}
+                      className="p-1.5 rounded-lg border border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 transition-colors"
+                      title="Refresh Sessions"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 dark:divide-gray-800/60 max-h-[640px] overflow-y-auto">
+                    {sessions.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-400 space-y-1">
+                        <Users className="w-8 h-8 mx-auto text-slate-300 dark:text-gray-600" />
+                        <p className="font-semibold text-slate-700 dark:text-gray-300">No active sessions</p>
+                        <p>Invite a candidate to start monitoring live integrity.</p>
+                      </div>
+                    ) : (
+                      sessions.map((sess) => {
+                        const isSelected = selectedSessionForProctor?.id === sess.id;
+                        return (
+                          <div
+                            key={sess.id}
+                            onClick={() => handleSelectSessionForProctor(sess)}
+                            className={`p-4 transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-indigo-50/70 dark:bg-indigo-950/30 border-l-4 border-indigo-600 dark:border-indigo-500"
+                                : "hover:bg-slate-50 dark:hover:bg-gray-800/30 border-l-4 border-transparent"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h5 className="font-bold text-xs text-slate-900 dark:text-white">
+                                  {sess.candidateName}
+                                </h5>
+                                <p className="text-[11px] text-slate-500 dark:text-gray-400">{sess.candidateEmail}</p>
+                              </div>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  sess.status === "in_progress"
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                    : sess.status === "paused"
+                                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                                    : sess.status === "submitted"
+                                    ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                                    : "bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300"
+                                }`}
+                              >
+                                {sess.status.replace("_", " ")}
+                              </span>
+                            </div>
+
+                            <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                              <span>ID: {sess.id.slice(0, 8)}...</span>
+                              <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
+                                <span>Inspect Signals</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Real-Time Risk Gauge, Evidentiary Cards & Incident Feed */}
+                <div className="lg:col-span-8 space-y-6">
+                  {!selectedSessionForProctor ? (
+                    <div className="p-12 rounded-2xl border border-dashed border-slate-300 dark:border-gray-800 bg-white/50 dark:bg-gray-900/20 text-center text-xs text-slate-400 space-y-2">
+                      <ShieldAlert className="w-10 h-10 mx-auto text-slate-300 dark:text-gray-600" />
+                      <h4 className="font-bold text-sm text-slate-700 dark:text-gray-300">
+                        No Session Selected
+                      </h4>
+                      <p>Select a candidate session on the left to inspect passive integrity telemetry and proctor events.</p>
+                    </div>
+                  ) : isLoadingIntegrity ? (
+                    <div className="p-12 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] text-center text-xs text-slate-400 space-y-3">
+                      <RefreshCw className="w-8 h-8 mx-auto animate-spin text-indigo-600" />
+                      <p className="font-semibold text-slate-700 dark:text-gray-300">
+                        Computing real-time integrity risk report...
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Live Risk Score Hero Card */}
+                      <div className="p-6 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            {/* Score Dial */}
+                            <div
+                              className={`w-20 h-20 rounded-2xl flex flex-col items-center justify-center font-mono border-2 shadow-inner shrink-0 ${
+                                integrityReport?.riskLevel === "clean"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                                  : integrityReport?.riskLevel === "low"
+                                  ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
+                                  : integrityReport?.riskLevel === "medium"
+                                  ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                                  : "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+                              }`}
+                            >
+                              <span className="text-2xl font-black leading-none">
+                                {integrityReport?.integrityScore ?? 100}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5 opacity-80">
+                                / 100
+                              </span>
+                            </div>
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                                    integrityReport?.riskLevel === "clean"
+                                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
+                                      : integrityReport?.riskLevel === "low"
+                                      ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300"
+                                      : integrityReport?.riskLevel === "medium"
+                                      ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300"
+                                  }`}
+                                >
+                                  {integrityReport?.riskLevel} Risk
+                                </span>
+                                <span className="text-xs text-slate-400 font-mono">
+                                  Session: {selectedSessionForProctor.id.slice(0, 8)}...
+                                </span>
+                              </div>
+                              <h4 className="text-base font-extrabold text-slate-900 dark:text-white mt-1">
+                                {selectedSessionForProctor.candidateName}
+                              </h4>
+                              <p className="text-xs text-slate-500 dark:text-gray-400">
+                                {selectedSessionForProctor.candidateEmail} • Status:{" "}
+                                <span className="font-semibold text-slate-800 dark:text-gray-200 capitalize">
+                                  {selectedSessionForProctor.status.replace("_", " ")}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Quick Intervention Buttons */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {selectedSessionForProctor.status === "in_progress" ? (
+                              <button
+                                onClick={() => setSessionToPause(selectedSessionForProctor)}
+                                disabled={isProctorActionInProgress}
+                                className="px-3.5 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                              >
+                                <Pause className="w-3.5 h-3.5" />
+                                <span>Pause Session</span>
+                              </button>
+                            ) : selectedSessionForProctor.status === "paused" ? (
+                              <button
+                                onClick={async () => {
+                                  await handleResumeSession(selectedSessionForProctor.id);
+                                  await handleRefreshProctorData();
+                                }}
+                                disabled={isProctorActionInProgress}
+                                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                              >
+                                <Play className="w-3.5 h-3.5" />
+                                <span>Resume with Credit</span>
+                              </button>
+                            ) : null}
+
+                            <button
+                              onClick={() => setIsLogIncidentModalOpen(true)}
+                              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-rose-600/20 cursor-pointer"
+                            >
+                              <Flag className="w-3.5 h-3.5" />
+                              <span>Log Incident</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Four Key Metrics Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs pt-2 border-t border-slate-100 dark:border-gray-800">
+                          <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                              Window Focus Shifts
+                            </span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
+                                {integrityReport?.metrics.totalBlurCount ?? 0}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">blurs</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 mt-1 block font-mono">
+                              {integrityReport?.metrics.totalOffScreenDurationSeconds ?? 0}s off-screen
+                            </span>
+                          </div>
+
+                          <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                              External Paste Bursts
+                            </span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
+                                {integrityReport?.metrics.unattributedPasteCount ?? 0}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">&gt;50 chars</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 mt-1 block font-mono">
+                              {integrityReport?.metrics.unattributedPasteChars ?? 0} chars inserted
+                            </span>
+                          </div>
+
+                          <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                              Copilot AI Queries
+                            </span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                                {integrityReport?.metrics.aiQueriesCount ?? 0}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">queries</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 mt-1 block">
+                              {integrityReport?.metrics.patchesAcceptedCount ?? 0} patches reviewed
+                            </span>
+                          </div>
+
+                          <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/60 dark:bg-gray-900/40">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                              Active Proctor Flags
+                            </span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
+                                {proctorIncidents.filter((i) => !i.isResolved).length}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">unresolved</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 mt-1 block">
+                              {proctorIncidents.length} total logged
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Proctor Incident Log & Resolution Feed */}
+                      <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs overflow-hidden">
+                        <div className="p-4 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300 flex items-center gap-2">
+                              <Flag className="w-4 h-4 text-rose-500" />
+                              <span>Interviewer Incident Stream ({proctorIncidents.length})</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                              Official evidentiary audit log of manually flagged and automatically recorded security incidents
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setIsLogIncidentModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Incident</span>
+                          </button>
+                        </div>
+
+                        <div className="divide-y divide-slate-100 dark:divide-gray-800/60 max-h-[400px] overflow-y-auto">
+                          {proctorIncidents.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-400 space-y-1">
+                              <ShieldCheck className="w-8 h-8 mx-auto text-emerald-500" />
+                              <p className="font-semibold text-slate-700 dark:text-gray-300">Clean Incident Log</p>
+                              <p>No proctor incidents or security flags have been recorded for this session.</p>
+                            </div>
+                          ) : (
+                            proctorIncidents.map((inc) => (
+                              <div key={inc.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-slate-50/50 dark:hover:bg-gray-800/20 text-xs">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                        inc.severity === "critical"
+                                          ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                                          : inc.severity === "warning"
+                                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                          : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                      }`}
+                                    >
+                                      {inc.severity}
+                                    </span>
+                                    <span className="font-mono text-[11px] font-semibold text-slate-700 dark:text-gray-300 uppercase">
+                                      {inc.category.replace("_", " ")}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                      {new Date(inc.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                    </span>
+                                  </div>
+                                  <p className="text-slate-800 dark:text-slate-200 font-sans leading-relaxed">
+                                    {inc.description}
+                                  </p>
+                                  <span className="text-[10px] text-slate-400 font-mono block">
+                                    Flagged by: {inc.proctorName || "System / Proctor"}
+                                  </span>
+                                </div>
+
+                                <div className="shrink-0 flex items-center gap-2">
+                                  {inc.isResolved ? (
+                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1 font-mono">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Resolved
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleResolveIncident(inc.id)}
+                                      className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-gray-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-950/30 text-slate-700 dark:text-gray-300 font-semibold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                      title="Mark this incident as investigated and resolved"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Resolve</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
+
+      {/* Proctor Incident Logging Modal */}
+      {isLogIncidentModalOpen && selectedSessionForProctor && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#0d131f] border border-slate-200 dark:border-gray-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Flag className="w-4 h-4 text-rose-500" />
+                  <span>Log Proctor Incident</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400">
+                  Candidate: {selectedSessionForProctor.candidateName}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsLogIncidentModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleLogProctorIncident} className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Incident Category
+                </label>
+                <select
+                  value={incidentCategory}
+                  onChange={(e) => setIncidentCategory(e.target.value as IntegrityCategory)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white"
+                >
+                  <option value="manual_flag">Manual Interviewer Flag</option>
+                  <option value="window_blur">Excessive Window Blur / Tab Switching</option>
+                  <option value="unattributed_paste">Unattributed External Paste Burst</option>
+                  <option value="devtools_open">Browser DevTools Inspected</option>
+                  <option value="multiple_ips">Multiple Concurrently Active IP Addresses</option>
+                  <option value="rapid_keystrokes">Anomalous Macro / Keystroke Pattern</option>
+                  <option value="technical_issue">Technical / Hardware Incident</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Severity Level
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["info", "warning", "critical"] as const).map((sev) => (
+                    <button
+                      key={sev}
+                      type="button"
+                      onClick={() => setIncidentSeverity(sev)}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider border transition-all ${
+                        incidentSeverity === sev
+                          ? sev === "critical"
+                            ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+                            : sev === "warning"
+                            ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                            : "bg-blue-600 text-white border-blue-600 shadow-xs"
+                          : "bg-slate-50 dark:bg-gray-800 text-slate-700 dark:text-gray-300 border-slate-200 dark:border-gray-700"
+                      }`}
+                    >
+                      {sev}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-gray-300 block mb-1">
+                  Incident Description & Observations
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  placeholder="Describe observed candidate action, off-screen duration, or reason for manual flag..."
+                  value={incidentDescription}
+                  onChange={(e) => setIncidentDescription(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-200 dark:border-gray-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsLogIncidentModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 dark:border-gray-700 text-slate-700 dark:text-gray-300 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingIncident}
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  <span>{isSubmittingIncident ? "Logging..." : "Confirm & Log Incident"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Candidate Invitation Modal */}
       {isCandidateInviteModalOpen && (

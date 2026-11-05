@@ -154,3 +154,4 @@ export const proctorRoutes: FastifyPluginAsync<ProctorRoutesOptions> = async (
     }
   });
 };
+
