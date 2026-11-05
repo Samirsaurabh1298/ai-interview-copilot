@@ -41,7 +41,11 @@ coverage/
 *.tmp
 *.temp
 scratch/
-20261030/
+2026*/
+2027*/
+2028*/
+*PowerShell_transcript*
 PowerShell_transcript*
+*.transcript
 
 
