@@ -2,8 +2,11 @@ import fastify from "fastify";
 import cors from "@fastify/cors";
 import { CodeValidationRequestSchema } from "@ai-copilot/contracts";
 import { executeCodeInSandbox } from "./runner.js";
+import { OciGvisorExecutionProvider } from "./providers/oci-gvisor.js";
 
 export async function buildRunnerServer() {
+  const ociProvider = new OciGvisorExecutionProvider();
+
   const app = fastify({
     logger: {
       level: "info",
@@ -20,6 +23,10 @@ export async function buildRunnerServer() {
     service: "code-runner",
     timestamp: new Date().toISOString(),
   }));
+
+  app.get("/environment", async () => {
+    return ociProvider.getEnvironmentInfo();
+  });
 
   app.post("/validate", async (request, reply) => {
     const parseResult = CodeValidationRequestSchema.safeParse(request.body);

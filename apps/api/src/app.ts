@@ -15,6 +15,7 @@ import { assessmentRoutes } from "./routes/assessment.js";
 import { organizationsRoutes } from "./routes/organizations.js";
 import { authRoutes } from "./routes/auth.js";
 import { templatesRoutes } from "./routes/templates.js";
+import { repositoryImportRoutes } from "./routes/repository-import.js";
 import { versionsRoutes } from "./routes/versions.js";
 import { invitationsRoutes } from "./routes/invitations.js";
 import { sessionsRoutes } from "./routes/sessions.js";
@@ -219,6 +220,11 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await app.register(templatesRoutes, {
     prefix: "/api/v1/templates",
     templateService,
+    authService,
+  });
+
+  await app.register(repositoryImportRoutes, {
+    prefix: "/api/v1/templates",
     authService,
   });
 

@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 172 / 172 Automated Tests Passing across 30 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 184 / 184 Automated Tests Passing across 32 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -37,6 +37,7 @@
    - [4.18. Production-Grade Dual-Engine PostgreSQL Persistence & DDL Auto-Sync (LOOP 6.1)](#418-production-grade-dual-engine-postgresql-persistence--ddl-auto-sync-loop-61)
    - [4.19. Real-Time Proctoring, Passive Integrity & Anti-Cheat Evidence Pipeline (LOOP 7)](#419-real-time-proctoring-passive-integrity--anti-cheat-evidence-pipeline-loop-7)
    - [4.20. Enterprise Pilot Readiness, Scoring Fairness & Production Hardening (LOOP 8)](#420-enterprise-pilot-readiness-scoring-fairness--production-hardening-loop-8)
+   - [4.21. OCI / gVisor Runner Architecture, Language Policies & ZIP Codebase Ingestion (LOOP 9)](#421-oci--gvisor-runner-architecture-language-policies--zip-codebase-ingestion-loop-9)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -517,6 +518,40 @@ LOOP 8 addresses product integrity, removes algorithmic scoring contradictions, 
   - **Production Isolation Specification:** For general multi-tenant enterprise deployments executing arbitrary untrusted candidate code, containerized or microVM execution (e.g. gVisor `runsc` OCI runtime or Firecracker microVMs) with non-root identities, read-only root filesystems, memory/PID cgroups, and no host filesystem mounts is required.
   - **Polyglot Static Verification:** For compiled languages (Go, Java, C++, Rust), polyglot execution uses intelligent AST/syntax-tree static verification (`performPolyglotStaticVerification`), ensuring clean syntax validation and structural assertions without requiring heavy compilation toolchains on the host.
 
+### 4.21. OCI / gVisor Runner Architecture, Language Policies & ZIP Codebase Ingestion (LOOP 9)
+
+LOOP 9 delivers the decoupled execution boundary, explicit language runtime profiles, hardened ZIP repository archive ingestion, and polyglot compiler infrastructure:
+
+- **Pluggable Code Runner Architecture & Fastify Decoupling:**
+  - Fastify API backend (`apps/api`) decouples code validation via `CodeRunnerClient` (`services/code-runner/src/client.ts`), routing requests over HTTP RPC to a dedicated standalone microservice (`port 4100`).
+  - Standalone runner exposes `GET /health`, `GET /environment`, and `POST /validate`.
+  - Implements pluggable execution providers: `OciGvisorExecutionProvider` (production Linux rootless OCI container with gVisor `runsc`) and `IsolatedProcessExecutionProvider` (development/test hardened local subprocesses).
+  - Telemetry endpoint (`GET /environment`) dynamically returns host OS, Linux kernel release, container engine (Podman/Docker), gVisor availability, cgroups v2 status, network isolation enforcement, and pinned image digests.
+- **Language Runtime Profiles & Resource Envelopes:**
+  - Replaced generic sandbox parameters with explicit, per-language runtime profiles in `packages/contracts/src/runtime-policy.ts`:
+    - **TypeScript / JavaScript:** Node 22.13.0, 0.5 CPU, 128 MB RAM, 64 PIDs, 32 MB disk, 5s timeout, offline preinstalled dependencies.
+    - **Python:** CPython 3.12.7, 0.5 CPU, 128 MB RAM, 64 PIDs, 32 MB disk, 5s timeout, offline stdlib/pytest.
+    - **Go:** Go 1.23.2, 1.0 CPU, 256 MB RAM, 96 PIDs, 64 MB disk, 8s compilation, 5s execution, vendored dependencies only (`GOPROXY=off`).
+    - **Java:** OpenJDK 21.0.5 Temurin, 1.0 CPU, 512 MB RAM, 128 PIDs, 64 MB disk, 12s compilation, 6s execution, preinstalled JUnit 5 console.
+    - **C++:** GCC 13.2.0, 1.0 CPU, 256 MB RAM, 64 PIDs, 64 MB disk, 10s compilation, 5s execution, offline toolchain.
+    - **Rust:** Rust 1.84.0, 1.0 CPU, 512 MB RAM, 128 PIDs, 128 MB disk, 15s compilation, 5s execution, offline vendored cargo.
+  - Zero candidate-controlled internet dependency installation. Network is strictly dropped (`--network=none`).
+- **Hardened ZIP Archive Ingest Engine (`ZipIngestService`):**
+  - High-security streaming ZIP parser in `apps/api/src/services/zip-ingest.ts` parsing PKZip structures natively with `zlib.inflateRawSync` without vulnerable third-party unzipping libraries.
+  - Multi-tier adversarial defenses:
+    - **Zip Slip & Path Traversal Rejection:** Immediately rejects `../`, `..\`, and directory escape attempts (`ZIP_TRAVERSAL_ATTACK_REJECTED`).
+    - **Absolute Path & Windows Drive Rejection:** Rejects root `/` paths and `C:\...` drive letters (`ZIP_ABSOLUTE_PATH_REJECTED`, `ZIP_WINDOWS_DRIVE_REJECTED`).
+    - **Unix Symbolic Link Guard:** Inspects external file attributes (`0o120000`) and halts on symlinks (`ZIP_SECURITY_SYMLINK_REJECTED`).
+    - **Decompression Bomb Protection:** Enforces a maximum compression ratio of 50:1 and maximum decompressed size limits (1MB per file, 10MB total). Rejects ratio explosions (`ZIP_BOMB_DETECTED`).
+    - **Sensitive File Filtering:** Silently filters internal files (`.env`, `.git/*`, `node_modules/*`, `.DS_Store`) without rejecting legitimate codebases.
+    - **Read-Only Code Guarding:** Automatically tags test and configuration files (`*.test.ts`, `*.spec.ts`, `package.json`, `tsconfig.json`) as `isReadOnly: true`.
+- **Assessment Studio ZIP Repository Import:**
+  - Integrated `[Import from ZIP]` button directly into the Virtual File Tree toolbar of Repository Tasks in `CompanyAssessmentStudio.tsx`.
+  - Dispatches uploaded project archives to `POST /api/v1/templates/repository/upload-zip`, automatically extracting and populating multi-file projects with real-time feedback.
+- **Genuine Polyglot Compiler Scope (`compilers.ts`):**
+  - Drivers for `go test`, `javac`, `g++`, and `cargo test`.
+  - Rejects faked passes: when a compiler toolchain is absent in the host environment, returns structured failure with diagnostic error code `COMPILER_NOT_FOUND` rather than claiming execution.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -758,6 +793,7 @@ Fastify API server (`http://127.0.0.1:4000`):
 | `POST` | `/api/v1/sessions/:sessionId/incidents` | Bearer (`interviewer`, `admin`, `owner`) | Records proctor observation flag or technical incident annotation (LOOP 7). |
 | `GET` | `/api/v1/sessions/:sessionId/incidents` | Bearer JWT | Retrieves chronological list of proctor flags and integrity incidents (LOOP 7). |
 | `POST` | `/api/v1/sessions/:sessionId/incidents/:incidentId/resolve` | Bearer (`interviewer`, `admin`, `owner`) | Resolves or dismisses false-positive incident and recalculates integrity score (LOOP 7). |
+| `POST` | `/api/v1/templates/repository/upload-zip` | Bearer (`interviewer`, `admin`, `owner`) | Ingests ZIP repository archive, validates Zip Slip / bomb security, and returns virtual files (LOOP 9). |
 
 ---
 
@@ -783,18 +819,18 @@ All 13 packages maintain **100% passing test suites**:
 | Package / Module | Test Scope | Tests Passed | Status |
 | :--- | :--- | :---: | :---: |
 | `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 | **PASS** |
-| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages, integrity) | 4 / 4 | **PASS** |
+| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages, integrity, runtime policies, zip import) | 4 / 4 | **PASS** |
 | `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
 | `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
-| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, watchdog timeouts, secret scrubbing, socket traps | 11 / 11 | **PASS** |
+| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, OCI environment probe, polyglot compiler runners, watchdog timeouts, secret scrubbing, socket traps | 15 / 15 (2 Suites) | **PASS** |
 | `packages/ai-provider-groq` | Groq LPU adapter, JSON repair, fallback to GPT-OSS | 3 / 3 | **PASS** |
 | `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 | **PASS** |
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 128 / 128 (20 Suites) | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 136 / 136 (21 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **172 / 172** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **184 / 184** | **100% PASS** |
 
 ---
 
@@ -802,7 +838,9 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-8):** enterprise pilot hardening, scoring fairness, proctor redesign, and migration parity (`11e340e`)
+- `HEAD` — **feat(loop-9):** OCI runner architecture, separate language runtime policies, and ZIP repository archive ingestion
+- `4a8ba16` — **docs:** update PROJECT_OVERVIEW.md and README.md with LOOP 8 enterprise pilot readiness
+- `11e340e` — **feat(loop-8):** enterprise pilot hardening, scoring fairness, proctor redesign, and migration parity
 - `a4e4b14` — **chore:** ignore windows powershell host transcription logs
 - `16b69cc` — **docs:** update PROJECT_OVERVIEW.md and README.md with LOOP 6, 6.1, and 7 architectures
 - `c3fefba` — **feat(loop-7):** complete real-time proctoring and passive integrity control room in Company Dashboard

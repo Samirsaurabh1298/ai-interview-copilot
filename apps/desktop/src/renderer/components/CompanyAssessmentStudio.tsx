@@ -209,6 +209,76 @@ export const CompanyAssessmentStudio: React.FC<CompanyAssessmentStudioProps> = (
   const [isPublishing, setIsPublishing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // ZIP Repository Import State (LOOP 9)
+  const [isImportingZip, setIsImportingZip] = useState(false);
+  const [zipNotice, setZipNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingZip(true);
+    setZipNotice(null);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const rawBase64 = (reader.result as string).split(",")[1];
+          const token = localStorage.getItem("auth_token") || "";
+          const response = await fetch("http://127.0.0.1:4000/api/v1/templates/repository/upload-zip", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ zipBase64: rawBase64, filename: file.name }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            setZipNotice({
+              type: "error",
+              text: data.message || `Upload failed with status ${response.status}: ${data.error}`,
+            });
+            return;
+          }
+
+          if (selectedTask && selectedTask.type === "repository_task") {
+            const updatedFiles = data.files.map((f: any) => ({
+              path: f.path,
+              content: f.content,
+              isReadOnly: f.isReadOnly,
+            }));
+            handleUpdateTaskField("config", {
+              ...selectedTask.config,
+              fileTree: updatedFiles,
+            });
+            setZipNotice({
+              type: "success",
+              text: `Imported ${data.totalFiles} files from '${file.name}' (${(data.totalBytes / 1024).toFixed(1)} KB).` +
+                (data.skippedFiles && data.skippedFiles.length > 0 ? ` (${data.skippedFiles.length} internal files filtered).` : ""),
+            });
+          }
+        } catch (err) {
+          setZipNotice({
+            type: "error",
+            text: err instanceof Error ? err.message : "Failed to process zip archive",
+          });
+        } finally {
+          setIsImportingZip(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setZipNotice({
+        type: "error",
+        text: err instanceof Error ? err.message : "Failed to read zip file",
+      });
+      setIsImportingZip(false);
+    }
+  };
+
   // Publish Form State
   const [versionType, setVersionType] = useState<"major" | "minor" | "patch">("minor");
   const [changelogNotes, setChangelogNotes] = useState(
@@ -1411,21 +1481,60 @@ export const CompanyAssessmentStudio: React.FC<CompanyAssessmentStudioProps> = (
                             <label className="font-bold text-slate-700 dark:text-gray-300">
                               Virtual File Tree ({selectedTask.config.fileTree?.length || 0} Files)
                             </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newPath = `src/file_${Date.now().toString(36)}.ts`;
-                                const newFiles = [
-                                  ...(selectedTask.config.fileTree || []),
-                                  { path: newPath, content: "// New file content\n", isReadOnly: false },
-                                ];
-                                handleUpdateTaskField("config", { ...selectedTask.config, fileTree: newFiles });
-                              }}
-                              className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
-                            >
-                              + Add File to Tree
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <label className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 text-xs text-indigo-600 dark:text-indigo-400 font-bold cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors">
+                                <UploadCloud className="w-3.5 h-3.5" />
+                                <span>{isImportingZip ? "Importing ZIP..." : "Import from ZIP"}</span>
+                                <input
+                                  type="file"
+                                  accept=".zip"
+                                  disabled={isImportingZip}
+                                  onChange={handleZipUpload}
+                                  className="hidden"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newPath = `src/file_${Date.now().toString(36)}.ts`;
+                                  const newFiles = [
+                                    ...(selectedTask.config.fileTree || []),
+                                    { path: newPath, content: "// New file content\n", isReadOnly: false },
+                                  ];
+                                  handleUpdateTaskField("config", { ...selectedTask.config, fileTree: newFiles });
+                                }}
+                                className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                              >
+                                + Add File to Tree
+                              </button>
+                            </div>
                           </div>
+
+                          {zipNotice && (
+                            <div
+                              className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                                zipNotice.type === "success"
+                                  ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300"
+                                  : "border-rose-300 dark:border-rose-800 bg-rose-50/80 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {zipNotice.type === "success" ? (
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                ) : (
+                                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                                )}
+                                <span>{zipNotice.text}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setZipNotice(null)}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold ml-2"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
 
                           <div className="space-y-2">
                             {(selectedTask.config.fileTree || []).map((file: any, fIdx: number) => (

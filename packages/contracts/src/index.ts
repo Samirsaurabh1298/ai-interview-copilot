@@ -22,4 +22,6 @@ export * from "./analytics.js";
 export * from "./practice.js";
 export * from "./capture.js";
 export * from "./integrity.js";
+export * from "./runtime-policy.js";
+export * from "./zip-import.js";
 
