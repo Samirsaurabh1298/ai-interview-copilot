@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 168 / 168 Automated Tests Passing across 20 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 172 / 172 Automated Tests Passing across 30 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -36,6 +36,7 @@
    - [4.17. Company Assessment Studio & Extensible Multi-Task Authoring Engine (LOOP 6)](#417-company-assessment-studio--extensible-multi-task-authoring-engine-loop-6)
    - [4.18. Production-Grade Dual-Engine PostgreSQL Persistence & DDL Auto-Sync (LOOP 6.1)](#418-production-grade-dual-engine-postgresql-persistence--ddl-auto-sync-loop-61)
    - [4.19. Real-Time Proctoring, Passive Integrity & Anti-Cheat Evidence Pipeline (LOOP 7)](#419-real-time-proctoring-passive-integrity--anti-cheat-evidence-pipeline-loop-7)
+   - [4.20. Enterprise Pilot Readiness, Scoring Fairness & Production Hardening (LOOP 8)](#420-enterprise-pilot-readiness-scoring-fairness--production-hardening-loop-8)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -458,7 +459,7 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Passive Anti-Cheat Philosophy (Advisory vs. Algorithmic Disqualification):**
   - In strict compliance with **AD #10 (Human Reviewer Accountability)**, the platform rejects automated disqualification bots.
   - Behavioral anomalies (window blurs, external copy-pastes, offscreen dwell) are treated purely as **evidentiary signals** for human interviewer review. The candidate is never automatically kicked out or failed by an algorithm.
-- **Deterministic 0–100 Integrity Scoring Algorithm (`IntegrityService`):**
+- **Deterministic 0–100 Integrity Scoring Algorithm (`IntegrityService` Baseline):**
   - Real-time score calculated on a scale of 0 to 100 with deduction weights:
     - **Window Blurs & Off-Screen Dwell:** -2 points per blur event exceeding 10 seconds of off-screen duration.
     - **Unattributed Clipboard Paste Bursts:** -5 points for every external paste burst $>50$ characters not originating from an accepted AI Copilot diff patch (`isFromCopilotPatch: false`).
@@ -468,6 +469,7 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
     - `low` (Score 75–89): Occasional brief window switches (e.g. checking system notifications); small external code snippets.
     - `medium` (Score 50–74): Frequent window blurring; extended offscreen dwell time; multiple large unattributed paste bursts.
     - `high` (Score < 50): Persistent offscreen dwell; massive external paste injections without incremental typing; critical proctor flags.
+  - *(Note: In LOOP 8, this deduction mechanism was further refined into a non-punitive evidentiary audit model featuring `focusRatePercent` and contextual review status; see Section 4.20).*
 - **Client-Side Passive Telemetry Engine (`AssessmentWorkspace.tsx`):**
   - Passive event listeners track `window.addEventListener("blur")` and `window.addEventListener("focus")`, computing exact offscreen dwell milliseconds.
   - Clipboard `paste` event interception compares pasted text length against recent Copilot patches. If length exceeds 50 characters and does not match an accepted diff patch, an `unattributed_paste` telemetry event is queued.
@@ -483,6 +485,37 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
     $$\text{creditMs} = \text{resumedAt} - \text{pausedAt}$$
     $$\text{expiresAt}_{\text{new}} = \text{expiresAt}_{\text{old}} + \text{creditMs}$$
   - Guarantees fairness during technical incidents without granting untracked extra time.
+
+### 4.20. Enterprise Pilot Readiness, Scoring Fairness & Production Hardening (LOOP 8)
+
+LOOP 8 addresses product integrity, removes algorithmic scoring contradictions, establishes schema migration parity, eliminates production security leaks, and formally classifies code execution isolation boundaries for enterprise pilot deployments:
+
+- **Scoring Fairness & Autonomy Alignment (AD #4 & AD #10):**
+  - **Exemplary Rating for Full Engineering Autonomy:** Candidates who complete engineering challenges without issuing queries to the company-managed AI assistant are awarded **Rating 4 (Exemplary, 100% points)** for the *AI Collaboration* rubric dimension:
+    > *"Complete engineering autonomy: Candidate independently solved and verified the challenge without requiring AI intervention."*
+    Under prior iterations, candidates who avoided AI were mistakenly flagged with Developing (1/4) ratings. LOOP 8 establishes that self-sufficiency is rewarded rather than penalized.
+  - **Dynamic Rubric Weight Redistribution for Non-AI Tasks:** When an assessment task specifies an AI policy of `prohibited` (or restricted where AI queries are not permitted), the AI-dependent dimensions (*AI Collaboration* and *Critical Evaluation*) are marked with `isNotApplicable: true`. The scoring engine dynamically redistributes their allocated weights proportionally across the remaining 5 technical dimensions (Code Comprehension, Problem Framing, Debugging & Implementation, Testing Discipline, and Technical Explanation), guaranteeing that total task points always sum to 100 without distorting candidate evaluations.
+  - **Elimination of Arbitrary Prompt Penalties:** Deductions for prompt volumes $>8$ were removed. AI token usage is treated purely as operational financial telemetry, not as a negative competence signal.
+- **Proctoring Evidentiary Redesign (Advisory Evidence vs. Punitive Scoring):**
+  - **Elimination of Pseudo-Score Deductions:** Removed arbitrary mathematical score deductions (`-3` points per window blur, `-10` points per external paste). Window focus and paste counts are no longer converted into an artificial candidate score deduction or automatic disqualification.
+  - **Transparent Behavioral Telemetry:** Telemetry records explicit, transparent operational metrics:
+    - `focusRatePercent`: Calculated as $\frac{\text{focusTimeMs}}{\text{elapsedMs}} \times 100$, representing the candidate's active focus ratio.
+    - `totalOffscreenDwellMs`: Cumulative duration in milliseconds spent outside the workspace window.
+    - `externalPasteCount` & `externalPasteChars`: Exact count and character volume of clipboard pastes not originating from accepted diff patches.
+    - `proctorFlagsCount`: Number of manual proctor flags or technical annotations logged.
+  - **Calibrated Review Status Classification:** The integrity report computes a non-punitive `reviewStatus` (`verified`, `review_recommended`, or `unresolved_incident`) and an advisory risk index (0–100) strictly intended to guide human reviewers to specific timestamps in the event audit log.
+  - **Preservation of Audit History:** All historical incident and event records are preserved immutably. No audit logs are deleted.
+- **Database Migration Parity & Schema Hardening (LOOP 6.1 Parity):**
+  - Executed `drizzle-kit generate` to establish migration file `0001_careless_killraven.sql` and snapshot metadata.
+  - Fully brings dynamic template tasks (`tasks` JSON/array columns) and `proctor_incidents` tables under versioned migration control, ensuring zero drift between PostgreSQL and PGlite persistence engines across cold boots and container deployments.
+- **Production Authentication & Security Hardening:**
+  - **Environment Gating for Persona Token Generation:** In `apps/api/src/routes/auth.ts`, unauthenticated persona minting (`POST /api/v1/auth/persona-token`) is strictly disabled when `NODE_ENV === "production"`. Production environments require legitimate enterprise credentials.
+  - **URL Query Token Leakage Elimination:** In `apps/api/src/routes/reports.ts`, passing reusable bearer JWTs in URL query strings is blocked in production to prevent token exposure in browser history, proxy access logs, and HTTP referer headers.
+  - **Desktop UI Token Masking:** In `CompanyDashboard.tsx`, persona development controls are hidden in production mode, and JWT tokens are masked by default (`••••••••`) with an explicit show/hide toggle.
+- **Sandbox Security Threat Model & Containerized Isolation Architecture:**
+  - **Host Subprocess Threat Classification:** Formally classified bare-metal Node.js `--permission` and Python subprocess execution as **INSUFFICIENT for untrusted multi-tenant code execution** on shared host infrastructure. While effective for trusted development and controlled pilots, process-level boundaries and JS monkey-patching do not prevent low-level kernel attacks, side-channel leaks, or binary exploits.
+  - **Production Isolation Specification:** For general multi-tenant enterprise deployments executing arbitrary untrusted candidate code, containerized or microVM execution (e.g. gVisor `runsc` OCI runtime or Firecracker microVMs) with non-root identities, read-only root filesystems, memory/PID cgroups, and no host filesystem mounts is required.
+  - **Polyglot Static Verification:** For compiled languages (Go, Java, C++, Rust), polyglot execution uses intelligent AST/syntax-tree static verification (`performPolyglotStaticVerification`), ensuring clean syntax validation and structural assertions without requiring heavy compilation toolchains on the host.
 
 ---
 
@@ -627,7 +660,7 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
    ```bash
    pnpm --filter @ai-copilot/desktop start
    ```
-8. **Run Complete Automated Test Suite (168 Tests):**
+8. **Run Complete Automated Test Suite (172 Tests):**
    ```bash
    pnpm test
    ```
@@ -721,7 +754,7 @@ Fastify API server (`http://127.0.0.1:4000`):
 | `POST` | `/api/v1/code/validate` | Candidate / Bearer | Executes code inside Node 22 native isolated sandbox. |
 | `POST` | `/api/v1/answers/generate` | Candidate / Bearer | Generates AI assistant responses within budget cap. |
 | `POST` | `/api/v1/assessment/evaluate` | Reviewer / Interviewer / Admin | Evaluates submission and computes 7-dimension scorecard. |
-| `GET` | `/api/v1/sessions/:sessionId/integrity` | Bearer (`interviewer`, `admin`, `owner`) | Real-time candidate integrity score (0–100), risk band, and dwell/paste metrics (LOOP 7). |
+| `GET` | `/api/v1/sessions/:sessionId/integrity` | Bearer (`interviewer`, `admin`, `owner`) | Real-time candidate advisory integrity index (0–100), review status (`verified`, `review_recommended`, `unresolved_incident`), focus rate %, and dwell/paste evidentiary metrics (LOOP 7 / LOOP 8). |
 | `POST` | `/api/v1/sessions/:sessionId/incidents` | Bearer (`interviewer`, `admin`, `owner`) | Records proctor observation flag or technical incident annotation (LOOP 7). |
 | `GET` | `/api/v1/sessions/:sessionId/incidents` | Bearer JWT | Retrieves chronological list of proctor flags and integrity incidents (LOOP 7). |
 | `POST` | `/api/v1/sessions/:sessionId/incidents/:incidentId/resolve` | Bearer (`interviewer`, `admin`, `owner`) | Resolves or dismisses false-positive incident and recalculates integrity score (LOOP 7). |
@@ -758,10 +791,10 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 | **PASS** |
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
-| `packages/scoring-engine` | 7-dimension rubric evaluator, evidence citations, calibration consensus | 8 / 8 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 127 / 127 (20 Suites) | **PASS** |
+| `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 128 / 128 (20 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **168 / 168** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **172 / 172** | **100% PASS** |
 
 ---
 
@@ -769,7 +802,10 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-7):** complete real-time proctoring and passive integrity control room in Company Dashboard (`c3fefba`)
+- `HEAD` — **feat(loop-8):** enterprise pilot hardening, scoring fairness, proctor redesign, and migration parity (`11e340e`)
+- `a4e4b14` — **chore:** ignore windows powershell host transcription logs
+- `16b69cc` — **docs:** update PROJECT_OVERVIEW.md and README.md with LOOP 6, 6.1, and 7 architectures
+- `c3fefba` — **feat(loop-7):** complete real-time proctoring and passive integrity control room in Company Dashboard
 - `c1c4c7c` — **fix(practice):** resolve polyglot java verification, resilient AI connection fallback, and schema submission payload
 - `5d808ad` — **feat(loop-6):** implement company assessment studio and dynamic candidate task workspace
 - `e4a3df1` — **feat(loop-6.1):** add dual-engine PostgreSQL & PGlite persistence with DDL auto-sync
