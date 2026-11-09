@@ -347,3 +347,4 @@ function checkBinaryExists(binary: string): boolean {
     return false;
   }
 }
+
