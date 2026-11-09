@@ -14,6 +14,13 @@ const EnvSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   CODE_RUNNER_URL: z.string().url().default("http://localhost:4100"),
   CODE_RUNNER_SECRET: z.string().default("default-secure-code-runner-auth-token-32chars"),
+  RUNNER_EXECUTION_ENABLED: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val !== undefined) return val === "true" || val === "1";
+      return process.env.NODE_ENV === "test";
+    }),
   JWT_SECRET: z.string().default("default-secure-pilot-assessment-jwt-secret-key-32chars"),
   DATABASE_URL: z.string().optional(),
 });

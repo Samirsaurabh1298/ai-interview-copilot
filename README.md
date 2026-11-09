@@ -1,6 +1,6 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-193%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-200%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20Drizzle%20ORM-336791.svg)](https://orm.drizzle.team)
@@ -26,13 +26,14 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 5. **Decoupled OCI / gVisor Code Execution & Polyglot Compilers (LOOP 9):** Decoupled untrusted candidate code execution from Fastify into a dedicated runner architecture with explicit language runtime profiles (`imageDigest`, CPU quotas, memory limits 128MB–512MB, PID limits 64–128, scratch disk limits, compilation/execution timeouts, and `--network=none` offline policy). Genuine compilation and test execution pipelines for Go (`go test`), Java (`javac`), C++ (`g++`), and Rust (`cargo test`), surfacing actionable compilation diagnostics and compiler presence verification.
 6. **Hardened Streaming ZIP Repository Import (LOOP 9):** Native streaming PKZip parser supporting zip codebase imports in Assessment Studio with strict Zip Slip directory traversal rejection (`../`), absolute/Windows path rejection, symlink rejection (`0o120000`), compression ratio bomb defense (>50:1 ratio, 1MB file limit, 10MB total extraction cap), and automated `.env` / `.git` / `node_modules` filtering.
 7. **Dedicated Linux gVisor Runner & Mutual Token Authentication (LOOP 9.1):** Production-grade Ubuntu 24.04 LTS deployment bundle with rootless Podman/Docker, gVisor (`runsc 20240909.0`), and cgroups v2 resource ceilings. Internal runner daemon endpoints (`/validate`, `/environment`) are protected via mutual token authentication (`CODE_RUNNER_SECRET`), completely isolating Fastify API execution dispatches and ensuring the execution worker has zero access to PostgreSQL database credentials or AI provider API keys.
-8. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
-9. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-10. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
-11. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
-12. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-13. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-14. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
+8. **Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10):** Production single-use Magic Link authentication with SHA-256 token hashing, 15-minute TTL, anti-enumeration, and rate-limiting (5 requests / 15 min). Authoritative `RUNNER_EXECUTION_ENABLED` security gate preventing bare-metal host execution of untrusted code when container sandboxes are unavailable (returning HTTP 403 `RUNNER_EXECUTION_DISABLED`). Decoupled invitation availability windows (e.g. 48h) from active attempt durations (e.g. 90m), candidate patch review requirement, multi-evaluator blind review with automated variance flags (>15%), and human-in-the-loop hiring decision capture.
+9. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
+10. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
+11. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
+12. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
+13. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
+14. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
+15. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
 
 ---
 

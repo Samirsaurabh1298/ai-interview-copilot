@@ -46,3 +46,23 @@ export const AuthTokenResponseSchema = z.object({
 });
 export type AuthTokenResponse = z.infer<typeof AuthTokenResponseSchema>;
 
+export const RequestMagicLinkRequestSchema = z.object({
+  email: z.string().email(),
+  organizationId: z.string().optional(),
+});
+export type RequestMagicLinkRequest = z.infer<typeof RequestMagicLinkRequestSchema>;
+
+export const VerifyMagicLinkRequestSchema = z.object({
+  token: z.string().min(16),
+});
+export type VerifyMagicLinkRequest = z.infer<typeof VerifyMagicLinkRequestSchema>;
+
+export const MagicLinkResponseSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  debugToken: z.string().optional(),
+  expiresInSeconds: z.number().optional(),
+});
+export type MagicLinkResponse = z.infer<typeof MagicLinkResponseSchema>;
+
+

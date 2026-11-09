@@ -52,3 +52,4 @@ SyslogIdentifier=code-runner
 
 [Install]
 WantedBy=multi-user.target
+

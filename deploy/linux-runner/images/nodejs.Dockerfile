@@ -22,3 +22,4 @@ ENV CI=true
 
 # Entrypoint expects ephemeral mounted volume /workspace
 CMD ["node", "--version"]
+

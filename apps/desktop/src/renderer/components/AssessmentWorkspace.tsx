@@ -684,12 +684,23 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         true
       );
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const isExecutionDisabled =
+        msg.includes("RUNNER_EXECUTION_DISABLED") ||
+        msg.includes("Untrusted candidate code execution is disabled");
+
       setTestResult({
         success: false,
         passed: false,
         exitCode: 1,
-        stdout: "",
-        stderr: err instanceof Error ? err.message : "Validation failure",
+        stdout: isExecutionDisabled
+          ? "[SECURITY NOTICE] Untrusted candidate code execution is disabled pending verified Linux gVisor sandbox worker deployment."
+          : "",
+        stderr: isExecutionDisabled
+          ? "Code execution is disabled by policy for this pilot session. Your code changes, virtual repository edits, and written explanations are safely saved for human reviewer evaluation."
+          : err instanceof Error
+            ? err.message
+            : "Validation failure",
         durationMs: 0,
         tests: [],
         sandboxed: true,
@@ -886,17 +897,22 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
     setIsSubmitting(true);
     try {
-      // First ensure test results exist
+      // First ensure test results exist (or proceed safely if execution is disabled)
       let tests = testResult?.tests ?? [];
       if (!testResult) {
-        const val = await ApiClient.validateCode({
-          language: "typescript",
-          code,
-          testCode: verificationTestCode,
-          timeoutMs: 4000,
-          memoryLimitMb: 128,
-        });
-        tests = val.tests;
+        try {
+          const val = await ApiClient.validateCode({
+            language: "typescript",
+            code,
+            testCode: verificationTestCode,
+            timeoutMs: 4000,
+            memoryLimitMb: 128,
+          });
+          tests = val.tests;
+        } catch {
+          // If execution is disabled or runner unreachable, proceed with empty test results for human review
+          tests = [];
+        }
       }
 
       // Assemble structured multi-task submissions (LOOP 6)

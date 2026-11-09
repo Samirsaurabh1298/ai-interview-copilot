@@ -23,3 +23,4 @@ RUN mkdir -p /tmp/go /tmp/go-cache /workspace && \
 USER 1000:1000
 
 CMD ["go", "version"]
+

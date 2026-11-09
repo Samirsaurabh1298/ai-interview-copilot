@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 193 / 193 Automated Tests Passing across 33 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 200 / 200 Automated Tests Passing across 34 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -39,6 +39,7 @@
    - [4.20. Enterprise Pilot Readiness, Scoring Fairness & Production Hardening (LOOP 8)](#420-enterprise-pilot-readiness-scoring-fairness--production-hardening-loop-8)
    - [4.21. OCI / gVisor Runner Architecture, Language Policies & ZIP Codebase Ingestion (LOOP 9)](#421-oci--gvisor-runner-architecture-language-policies--zip-codebase-ingestion-loop-9)
    - [4.22. Linux gVisor Deployment, Service Security & Adversarial Verification (LOOP 9.1)](#422-linux-gvisor-deployment-service-security--adversarial-verification-loop-91)
+   - [4.23. Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10)](#423-private-company-pilot-readiness-security-gate--magic-link-authentication-loop-10)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -590,6 +591,35 @@ LOOP 9.1 completes the enterprise deployment readiness gate for isolated code ex
     11. Linux Capability Drop: Critical capabilities (`CAP_SYS_ADMIN`) are dropped.
     12. Ephemeral Teardown: Verifies zero leftover containers or orphaned processes after execution.
 
+### 4.23. Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10)
+
+LOOP 10 establishes the operational and security infrastructure to advance the platform from an engineering prototype to a controlled B2B design-partner pilot:
+
+- **Critical Security Gate (`RUNNER_EXECUTION_ENABLED`):**
+  - **Fail-Closed Execution Policy:** The Windows development host lacks verified Linux gVisor virtualization (HCS error 0x80070569). Bare-metal Node.js `--permission` and Python subprocess execution must **never** execute untrusted third-party candidate code.
+  - **Authoritative Configuration:** `RUNNER_EXECUTION_ENABLED` in `apps/api/src/config.ts` defaults to `false` in production and development environments.
+  - **API Defense (`POST /api/v1/code/validate`):** When the gate is closed, the API rejects execution attempts with HTTP 403 `RUNNER_EXECUTION_DISABLED` and an informative payload stating that arbitrary code execution is paused pending verified container sandbox deployment.
+  - **Sandbox Status Probe (`GET /api/v1/code/validate/status`):** Exposes sandbox status and runtime information for frontend components.
+  - **Graceful Workspace Degradation:** `AssessmentWorkspace.tsx` intercepts HTTP 403 `RUNNER_EXECUTION_DISABLED`, displays a non-blocking informational banner to the candidate, and preserves submission flows so candidates can still submit code for human evaluation.
+- **Production Company Authentication via Single-Use Magic Links (`MagicLinkService`):**
+  - **Elimination of Mocked Personas in Production:** Replaces insecure role switcher headers with production-grade passwordless email authentication (`POST /api/v1/auth/magic-link/request` and `POST /api/v1/auth/magic-link/verify`).
+  - **Cryptographic Token Hashing:** Tokens are generated as 32-byte high-entropy buffers (`crypto.randomBytes(32)`). Only the SHA-256 hash is persisted in storage (`tokensByHash`).
+  - **Single-Use Burn & 15-Minute Expiry:** Tokens expire after 15 minutes and are atomically marked used on verification, preventing replay attacks.
+  - **Anti-Enumeration Safeguards:** Request endpoint always returns HTTP 200 with an identical generic message regardless of whether the email address exists in the tenant directory.
+  - **Brute-Force Rate Limiting:** Enforces a maximum of 5 magic link requests per 15-minute window per email, returning HTTP 429 `RATE_LIMIT_EXCEEDED` if exceeded.
+  - **Session Logout:** `POST /api/v1/auth/logout` revokes active tokens for the member.
+- **Pilot Stage Model & Phased Deployment:**
+  - **Stage A (Design-Partner Workflow Validation):** Recruiter onboarding, role configuration, Assessment Studio multi-task authoring (MCQs, short text, coding, and ZIP repository ingestion), immutable SHA-256 version publishing, candidate invitation flow with separated 48h deadline vs 90m attempt timer, candidate workspace navigation, and reviewer blind scoring with variance detection. Classified as **VERIFIED & OPERATIONAL**.
+  - **Stage B (Untrusted Code Execution):** Conditioned on the independent Ubuntu 24.04 Linux gVisor runner deployment. Blocked on Windows hosts by `RUNNER_EXECUTION_ENABLED: false`.
+- **Candidate Journey & Separation of Deadlines vs. Attempt Timers:**
+  - Clearly decouples the invitation availability window (e.g. 48 hours to begin) from the active attempt duration (e.g. 90 minutes).
+  - Explicit AI policy disclosure (`prohibited`, `restricted`, `enabled`) and mandatory patch review before applying proposed code diffs.
+- **Reviewer Calibration & Evaluation Safeguards:**
+  - Independent scoring across multiple evaluators.
+  - Blind candidate review with PII masking to prevent cognitive and demographic bias.
+  - Automated variance detection triggering calibration alerts when score spread exceeds 15%.
+  - AI scorecards remain advisory; final hiring decisions belong exclusively to human reviewers.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -866,9 +896,9 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 136 / 136 (21 Suites) | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 143 / 143 (22 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **193 / 193** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **200 / 200** | **100% PASS** |
 
 ---
 
@@ -876,7 +906,8 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-9.1):** Linux gVisor deployment architecture, mutual runner authentication, and adversarial security suite
+- `HEAD` — **feat(loop-10):** private company pilot readiness, runner execution gate, and magic link authentication
+- `19ef2a0` — **feat(loop-9.1):** Linux gVisor deployment architecture, mutual runner authentication, and adversarial security suite
 - `d64d71a` — **style:** normalize trailing newlines across runner, API routes, and contracts
 - `d32cd3a` — **feat(loop-9):** OCI runner architecture, separate language runtime policies, and ZIP repository archive ingestion
 - `4a8ba16` — **docs:** update PROJECT_OVERVIEW.md and README.md with LOOP 8 enterprise pilot readiness

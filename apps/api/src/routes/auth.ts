@@ -2,17 +2,88 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   MemberLoginRequestSchema,
   CandidateTokenRequestSchema,
+  RequestMagicLinkRequestSchema,
+  VerifyMagicLinkRequestSchema,
 } from "@ai-copilot/contracts";
 import type { AuthService } from "../services/auth.js";
 import type { OrganizationService } from "../services/organization.js";
+import { MagicLinkService, MagicLinkError } from "../services/magic-link.js";
 
 export const authRoutes: FastifyPluginAsync<{
   authService: AuthService;
   orgService: OrganizationService;
+  magicLinkService?: MagicLinkService;
 }> = async (fastify, opts) => {
   const { authService, orgService } = opts;
+  const magicLinkService =
+    opts.magicLinkService || new MagicLinkService(orgService);
 
-  // 1. Member Login / Token Exchange
+  // 1. Single-Use Magic Login Link Request (Company Admin / Member Production Auth)
+  fastify.post("/magic-link/request", async (request, reply) => {
+    const parse = RequestMagicLinkRequestSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        error: "VALIDATION_FAILED",
+        issues: parse.error.issues,
+      });
+    }
+
+    try {
+      const result = await magicLinkService.requestMagicLink(
+        parse.data.email,
+        parse.data.organizationId
+      );
+      return reply.status(200).send(result);
+    } catch (err: unknown) {
+      if (err instanceof MagicLinkError) {
+        return reply.status(err.statusCode).send({
+          error: err.code,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  });
+
+  // 2. Single-Use Magic Login Link Verification (Burns token on use)
+  fastify.post("/magic-link/verify", async (request, reply) => {
+    const parse = VerifyMagicLinkRequestSchema.safeParse(request.body);
+    if (!parse.success) {
+      return reply.status(400).send({
+        error: "VALIDATION_FAILED",
+        issues: parse.error.issues,
+      });
+    }
+
+    try {
+      const record = await magicLinkService.verifyAndConsumeToken(
+        parse.data.token
+      );
+      const members = orgService.listMembers(record.organizationId);
+      const member = members.find((m) => m.id === record.memberId);
+
+      if (!member || member.status !== "active") {
+        return reply.status(401).send({
+          error: "MEMBER_INACTIVE_OR_REMOVED",
+          message:
+            "The account associated with this login link is no longer active.",
+        });
+      }
+
+      const tokenResponse = authService.createMemberToken(member);
+      return reply.status(200).send(tokenResponse);
+    } catch (err: unknown) {
+      if (err instanceof MagicLinkError) {
+        return reply.status(err.statusCode).send({
+          error: err.code,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  });
+
+  // 3. Member Login / Token Exchange
   fastify.post("/token", async (request, reply) => {
     const parse = MemberLoginRequestSchema.safeParse(request.body);
     if (!parse.success) {
@@ -56,7 +127,7 @@ export const authRoutes: FastifyPluginAsync<{
     return reply.status(200).send(tokenResponse);
   });
 
-  // 2. Candidate Ephemeral Token Issuance (Admin/Interviewer permission required)
+  // 4. Candidate Ephemeral Token Issuance (Admin/Interviewer permission required)
   fastify.post(
     "/candidate-token",
     { preHandler: [authService.requireRole(["owner", "admin", "interviewer"])] },
@@ -78,13 +149,28 @@ export const authRoutes: FastifyPluginAsync<{
     }
   );
 
-  // 3. Current Authenticated Identity Profile
+  // 5. Current Authenticated Identity Profile
   fastify.get(
     "/me",
     { preHandler: [authService.requireAuth()] },
     async (request, reply) => {
       const auth = (request as any).auth;
       return reply.status(200).send({ user: auth });
+    }
+  );
+
+  // 6. Member Logout & Token Invalidation
+  fastify.post(
+    "/logout",
+    { preHandler: [authService.requireAuth()] },
+    async (request, reply) => {
+      const auth = (request as any).auth;
+      if (auth.memberId) {
+        magicLinkService.revokeAllMemberTokens(auth.memberId);
+      }
+      return reply
+        .status(200)
+        .send({ success: true, message: "Logged out successfully." });
     }
   );
 };

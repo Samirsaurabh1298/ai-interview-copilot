@@ -17,3 +17,4 @@ RUN chown -R 1000:1000 /workspace && chmod 0700 /workspace
 USER 1000:1000
 
 CMD ["g++", "--version"]
+

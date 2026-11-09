@@ -44,6 +44,7 @@ import { AICostAnalyticsService } from "./services/analytics.js";
 import { PracticeStudioService } from "./services/practice.js";
 import { ScreenCaptureIngestService } from "./services/capture.js";
 import { IntegrityService } from "./services/integrity.js";
+import { MagicLinkService } from "./services/magic-link.js";
 import type { AppConfig } from "./config.js";
 import { initDatabase, checkDatabaseHealth } from "./db/connection.js";
 
@@ -203,12 +204,14 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     sessionService
   );
   const integrityService = new IntegrityService(eventsService, sessionService);
+  const magicLinkService = new MagicLinkService(orgService);
 
   // Route registration
   await app.register(authRoutes, {
     prefix: "/api/v1/auth",
     authService,
     orgService,
+    magicLinkService,
   });
 
   await app.register(organizationsRoutes, {
@@ -326,6 +329,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
 
   await app.register(validationRoutes, {
     prefix: "/api/v1/code",
+    config,
   });
 
   await app.register(contextRoutes, {

@@ -23,3 +23,4 @@ RUN mkdir -p /tmp/cargo /tmp/rustup /workspace && \
 USER 1000:1000
 
 CMD ["cargo", "--version"]
+
