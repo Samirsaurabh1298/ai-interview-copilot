@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 184 / 184 Automated Tests Passing across 32 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 193 / 193 Automated Tests Passing across 33 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -38,6 +38,7 @@
    - [4.19. Real-Time Proctoring, Passive Integrity & Anti-Cheat Evidence Pipeline (LOOP 7)](#419-real-time-proctoring-passive-integrity--anti-cheat-evidence-pipeline-loop-7)
    - [4.20. Enterprise Pilot Readiness, Scoring Fairness & Production Hardening (LOOP 8)](#420-enterprise-pilot-readiness-scoring-fairness--production-hardening-loop-8)
    - [4.21. OCI / gVisor Runner Architecture, Language Policies & ZIP Codebase Ingestion (LOOP 9)](#421-oci--gvisor-runner-architecture-language-policies--zip-codebase-ingestion-loop-9)
+   - [4.22. Linux gVisor Deployment, Service Security & Adversarial Verification (LOOP 9.1)](#422-linux-gvisor-deployment-service-security--adversarial-verification-loop-91)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -552,6 +553,43 @@ LOOP 9 delivers the decoupled execution boundary, explicit language runtime prof
   - Drivers for `go test`, `javac`, `g++`, and `cargo test`.
   - Rejects faked passes: when a compiler toolchain is absent in the host environment, returns structured failure with diagnostic error code `COMPILER_NOT_FOUND` rather than claiming execution.
 
+### 4.22. Linux gVisor Deployment, Service Security & Adversarial Verification (LOOP 9.1)
+
+LOOP 9.1 completes the enterprise deployment readiness gate for isolated code execution:
+
+- **Dedicated Linux Runner Deployment Package (`deploy/linux-runner`):**
+  - Production host setup script (`setup-host.sh`) targeting **Ubuntu 24.04 LTS (Noble Numbat)** with Linux Kernel 6.8+ and cgroups v2.
+  - Provisions an unprivileged dedicated service account (`coderunner:coderunner`, UID 1001) with subuid/subgid allocations (`100000:65536`) and `loginctl enable-linger`.
+  - Downloads and verifies official gVisor `runsc 20240909.0` with SHA-512 cryptographic checksum validation.
+  - Configures rootless Podman OCI engine (`/etc/containers/containers.conf`) to register `runsc` as the default runtime.
+  - Establishes a zero-egress offline container network (`isolated-sandbox`).
+- **Hardened Systemd Service (`code-runner.service`):**
+  - Runs the standalone code-runner daemon under `coderunner` with comprehensive systemd security sandboxing: `ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp=true`, `PrivateDevices=true`, `NoNewPrivileges=true`, `ProtectKernelTunables=true`, `ProtectKernelModules=true`, `ProtectControlGroups=true`, `RestrictRealtime=true`, and `RestrictSUIDSGID=true`.
+  - Service-level cgroups v2 ceilings: `MemoryMax=4G`, `CPUQuota=400%`, `TasksMax=512`, and watchdog auto-restart (`Restart=always`, `RestartSec=5s`).
+- **Mutual Runner Service Authentication (`CODE_RUNNER_SECRET`):**
+  - Internal runner daemon endpoints (`/validate`, `GET /environment`) require mutual token authentication via `Authorization: Bearer <secret>` or `x-runner-token: <secret>`.
+  - Unauthorized requests are rejected with HTTP 401 Unauthorized (`RUNNER_UNAUTHORIZED`).
+  - Public `/health` probe remains unauthenticated for external load balancers and orchestrator health checks while shielding sensitive host kernel and cgroup telemetry on `/environment`.
+  - Code execution requests from Fastify (`apps/api`) use `CodeRunnerClient` with `CODE_RUNNER_SECRET`, ensuring unprivileged candidates cannot call the execution daemon directly or inspect concurrent jobs.
+  - Worker daemon operates with **zero database credentials** and **zero AI provider API keys**, eliminating lateral movement risk.
+- **Reproducible Runtime Containerfiles & Manifest (`images/`):**
+  - Complete, un-truncated image digests for all 7 supported languages (Node 22 LTS, Python 3.12, Go 1.23, Java 21, GCC 14, Rust 1.81).
+  - Machine-readable specification `runtime-manifest.json` documenting digests, runtime/compiler versions, non-root users (`1000:1000`), offline flags, and per-language CPU/memory/PID quotas.
+- **Automated 12-Gate Adversarial Security Suite (`verify-security.sh`):**
+  - Standalone bash test harness executing 12 harmless adversarial payloads against the Linux gVisor runtime:
+    1. Environment Secret Isolation: Container cannot read host secrets or canary environment variables.
+    2. Read-Only Root Filesystem: Writing to `/etc/` or `/` is strictly denied.
+    3. Cross-Execution Isolation: Ephemeral tmpfs mounts guarantee workspace A data is invisible to workspace B.
+    4. Network Egress Denial: Raw TCP connections to external IPs are blocked immediately.
+    5. DNS Denial: Outbound DNS queries are rejected.
+    6. PID Ceilings: Fork bombs are throttled and killed at the PID limit.
+    7. Memory Quota Ceilings: OOM allocations trigger clean process containment without crashing the host.
+    8. CPU Throttling: Infinite loops are throttled to configured CPU shares.
+    9. Watchdog Timeout: Processes exceeding time limits are terminated via SIGKILL.
+    10. Non-Root Candidate UID: Execution runs strictly under unprivileged UID `1000:1000`.
+    11. Linux Capability Drop: Critical capabilities (`CAP_SYS_ADMIN`) are dropped.
+    12. Ephemeral Teardown: Verifies zero leftover containers or orphaned processes after execution.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -822,7 +860,7 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages, integrity, runtime policies, zip import) | 4 / 4 | **PASS** |
 | `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
 | `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
-| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, OCI environment probe, polyglot compiler runners, watchdog timeouts, secret scrubbing, socket traps | 15 / 15 (2 Suites) | **PASS** |
+| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, OCI environment probe, polyglot compiler runners, watchdog timeouts, secret scrubbing, socket traps, and mutual token authentication (`/health`, `/environment`, `/validate`) | 24 / 24 (3 Suites) | **PASS** |
 | `packages/ai-provider-groq` | Groq LPU adapter, JSON repair, fallback to GPT-OSS | 3 / 3 | **PASS** |
 | `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 | **PASS** |
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
@@ -830,7 +868,7 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
 | `apps/api` | Fastify server, auth & RBAC, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, and multimodal screen capture question ingestion | 136 / 136 (21 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **184 / 184** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **193 / 193** | **100% PASS** |
 
 ---
 
@@ -838,7 +876,9 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-9):** OCI runner architecture, separate language runtime policies, and ZIP repository archive ingestion
+- `HEAD` — **feat(loop-9.1):** Linux gVisor deployment architecture, mutual runner authentication, and adversarial security suite
+- `d64d71a` — **style:** normalize trailing newlines across runner, API routes, and contracts
+- `d32cd3a` — **feat(loop-9):** OCI runner architecture, separate language runtime policies, and ZIP repository archive ingestion
 - `4a8ba16` — **docs:** update PROJECT_OVERVIEW.md and README.md with LOOP 8 enterprise pilot readiness
 - `11e340e` — **feat(loop-8):** enterprise pilot hardening, scoring fairness, proctor redesign, and migration parity
 - `a4e4b14` — **chore:** ignore windows powershell host transcription logs

@@ -3,9 +3,11 @@ import {
   CodeValidationRequestSchema,
   type CodeValidationResponse,
 } from "@ai-copilot/contracts";
-import { executeCodeInSandbox } from "@ai-copilot/code-runner";
+import { CodeRunnerClient } from "@ai-copilot/code-runner";
 
 export const validationRoutes: FastifyPluginAsync = async (fastify) => {
+  const runnerClient = new CodeRunnerClient();
+
   fastify.post("/validate", async (request, reply) => {
     const parseResult = CodeValidationRequestSchema.safeParse(request.body);
     if (!parseResult.success) {
@@ -16,7 +18,7 @@ export const validationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const response: CodeValidationResponse = await executeCodeInSandbox(parseResult.data);
+      const response: CodeValidationResponse = await runnerClient.execute(parseResult.data);
       return reply.status(200).send(response);
     } catch (err: unknown) {
       request.log.error({ err }, "Sandbox execution error");

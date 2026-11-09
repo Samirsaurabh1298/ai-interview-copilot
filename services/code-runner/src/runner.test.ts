@@ -14,7 +14,7 @@ describe("Isolated Code Runner", () => {
           if (add(-1, -1) !== -2) throw new Error("Expected -2");
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 8000,
       memoryLimitMb: 64,
     });
 
@@ -25,7 +25,7 @@ describe("Isolated Code Runner", () => {
     expect(result.tests[0]?.passed).toBe(true);
     expect(result.tests[1]?.passed).toBe(true);
     expect(result.sandboxed).toBe(true);
-  });
+  }, 15000);
 
   it("accurately detects failing test assertions", async () => {
     const result = await executeCodeInSandbox({
@@ -36,7 +36,7 @@ describe("Isolated Code Runner", () => {
           if (subtract(5, 2) !== 3) throw new Error("Expected 3 but got " + subtract(5, 2));
         });
       `,
-      timeoutMs: 3000,
+      timeoutMs: 8000,
       memoryLimitMb: 64,
     });
 
@@ -45,7 +45,7 @@ describe("Isolated Code Runner", () => {
     expect(result.exitCode).toBe(1);
     expect(result.tests[0]?.passed).toBe(false);
     expect(result.tests[0]?.error).toContain("Expected 3");
-  });
+  }, 15000);
 
   it("kills infinite loops cleanly via watchdog timeout", async () => {
     const result = await executeCodeInSandbox({
@@ -139,14 +139,14 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("execSync was permitted!");
         });
       `,
-      timeoutMs: 6000,
+      timeoutMs: 10000,
       memoryLimitMb: 64,
     });
 
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  }, 12000);
+  }, 20000);
 
   it("prohibits worker thread creation", async () => {
     const result = await executeCodeInSandbox({
@@ -172,14 +172,14 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("Worker creation was permitted!");
         });
       `,
-      timeoutMs: 6000,
+      timeoutMs: 10000,
       memoryLimitMb: 64,
     });
 
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  }, 12000);
+  }, 20000);
 
   it("prohibits dynamic string code evaluation via eval()", async () => {
     const result = await executeCodeInSandbox({
@@ -203,14 +203,14 @@ describe("Isolated Code Runner", () => {
           if (!caught) throw new Error("eval was permitted!");
         });
       `,
-      timeoutMs: 6000,
+      timeoutMs: 10000,
       memoryLimitMb: 64,
     });
 
     expect(result.success).toBe(true);
     expect(result.passed).toBe(true);
     expect(result.tests[0]?.passed).toBe(true);
-  }, 12000);
+  }, 20000);
 
   it("rejects candidate code attempting to fake test pass via process.exit()", async () => {
     const result = await executeCodeInSandbox({

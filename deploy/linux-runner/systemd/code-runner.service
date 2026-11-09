@@ -1,0 +1,54 @@
+[Unit]
+Description=AI Coding Assessment Platform: Dedicated Isolated Code Runner Service (gVisor)
+Documentation=https://github.com/Samirsaurabh1298/ai-interview-copilot
+After=network.target local-fs.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=coderunner
+Group=coderunner
+WorkingDirectory=/opt/code-runner
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5s
+
+# Process & Daemon Environment
+Environment=NODE_ENV=production
+Environment=PORT=4100
+Environment=HOST=127.0.0.1
+Environment=RUNNER_STANDALONE=true
+# The shared HMAC authentication token required between Fastify API and the Runner
+EnvironmentFile=-/etc/default/code-runner
+
+# Security Hardening & Isolation
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/code-runner/tmp
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+# Systemd cgroups v2 Ceilings for Runner Service
+MemoryMax=4G
+MemoryHigh=3.5G
+CPUQuota=400%
+TasksMax=512
+TimeoutStopSec=15
+
+# Standard Output / Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=code-runner
+
+[Install]
+WantedBy=multi-user.target

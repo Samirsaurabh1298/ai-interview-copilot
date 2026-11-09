@@ -5,8 +5,10 @@ import type {
   CodeDiffSummary,
   TaskSubmissionResult,
 } from "@ai-copilot/contracts";
-import { executeCodeInSandbox } from "@ai-copilot/code-runner";
+import { CodeRunnerClient } from "@ai-copilot/code-runner";
 import type { AssessmentSessionService } from "./session.js";
+
+const codeRunnerClient = new CodeRunnerClient();
 import type { AssessmentTemplateService } from "./template.js";
 import type { SessionEventsService } from "./session-events.js";
 import {
@@ -200,7 +202,7 @@ export class SubmissionService {
           const codeToValidate = rawTaskSub.codeSubmission.code;
           const fullTestCode = (taskDef.config.verificationTestCode || "") + (taskDef.config.hiddenTestCode ? "\n" + taskDef.config.hiddenTestCode : "");
           try {
-            const taskSandbox = await executeCodeInSandbox({
+            const taskSandbox = await codeRunnerClient.execute({
               code: codeToValidate,
               testCode: fullTestCode || template.verificationTestCode,
               language: taskDef.config.language || template.language || "typescript",
@@ -243,7 +245,7 @@ export class SubmissionService {
     const effectiveCode = req.finalCode || Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code || template.starterCode;
 
     // 2. Execute final code inside the isolated Node 22 sandbox to get authoritative test results
-    const sandboxResult = await executeCodeInSandbox({
+    const sandboxResult = await codeRunnerClient.execute({
       code: effectiveCode,
       testCode: template.verificationTestCode,
       language: "typescript",

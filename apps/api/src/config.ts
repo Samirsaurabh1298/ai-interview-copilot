@@ -13,6 +13,7 @@ const EnvSchema = z.object({
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   CODE_RUNNER_URL: z.string().url().default("http://localhost:4100"),
+  CODE_RUNNER_SECRET: z.string().default("default-secure-code-runner-auth-token-32chars"),
   JWT_SECRET: z.string().default("default-secure-pilot-assessment-jwt-secret-key-32chars"),
   DATABASE_URL: z.string().optional(),
 });
