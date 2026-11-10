@@ -1175,19 +1175,21 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Verification runner button */}
-          <button
-            onClick={() => handleRunVerification()}
-            disabled={isRunningTests || isPaused}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors shadow-xs disabled:opacity-50"
-          >
-            {isRunningTests ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Play className="w-3.5 h-3.5 fill-white" />
-            )}
-            <span>Run Tests</span>
-          </button>
+          {/* Verification runner button (active only for coding and repository tasks) */}
+          {activeTask.type !== "question_set" && (
+            <button
+              onClick={() => handleRunVerification()}
+              disabled={isRunningTests || isPaused}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+            >
+              {isRunningTests ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-white" />
+              )}
+              <span>Run Tests</span>
+            </button>
+          )}
 
           {/* Final Submit Assessment button */}
           {sessionStatus === "submitted" ? (
