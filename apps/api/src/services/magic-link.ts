@@ -211,3 +211,4 @@ export class MagicLinkService {
     entry.count += 1;
   }
 }
+
