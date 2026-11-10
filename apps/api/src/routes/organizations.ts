@@ -126,6 +126,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, orgId);
+        authService.assertCompanyMember(auth);
       }
 
       const members = orgService.listMembers(orgId);

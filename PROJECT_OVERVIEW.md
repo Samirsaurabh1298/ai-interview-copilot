@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 204 / 204 Automated Tests Passing across 34 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 219 / 219 Automated Tests Passing across 37 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -41,6 +41,7 @@
    - [4.22. Linux gVisor Deployment, Service Security & Adversarial Verification (LOOP 9.1)](#422-linux-gvisor-deployment-service-security--adversarial-verification-loop-91)
    - [4.23. Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10)](#423-private-company-pilot-readiness-security-gate--magic-link-authentication-loop-10)
    - [4.24. Pilot Hardening & Policy Consistency (LOOP 10.0.1)](#424-pilot-hardening--policy-consistency-loop-1001)
+   - [4.25. External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2)](#425-external-pilot-launch-gate--delivery-architecture-loop-1002)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -645,6 +646,31 @@ LOOP 10.0.1 resolves all policy and telemetry contradictions across the platform
 - **Candidate Workspace View Isolation:**
   - When an active candidate session is initialized via an invitation token, the top navigation switcher (`Practice Copilot`, `Company Admin & Templates`) is hidden, locking the candidate into their assessment workspace and preventing unauthorized admin inspection during timed exams.
 
+### 4.25. External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2)
+
+LOOP 10.0.2 completes the final security and operational milestones required for onboarding an external design partner:
+
+- **Multi-Provider Transactional Email Delivery Service (`apps/api/src/services/email.ts`):**
+  - Integrated `EmailDeliveryService` supporting four pluggable provider implementations:
+    - `SmtpEmailProvider`: Zero-dependency native Node socket SMTP transport with RFC 3207 STARTTLS and TLS support.
+    - `ResendEmailProvider`: Cloud transactional delivery via the Resend REST API over HTTPS.
+    - `ConsoleEmailProvider`: Formatted local development logger with automated PII masking (`d*veloper@domain.test`).
+    - `TestEmailProvider`: Deterministic in-memory delivery tracker for integration test assertions.
+  - Generates accessible, responsive HTML and plain-text emails for recruiter magic-link authentication and personalized candidate assessment invitations.
+- **Strict Candidate-to-Company Authorization Boundary Guard:**
+  - Enforced `assertCompanyMember` across all administrative API routes: templates (`GET/POST /templates`), invitations (`GET/POST /invitations`), member rosters (`GET /organizations/:id/members`), session listings (`GET/POST /sessions`), proctor audit logs (`GET /sessions/:id/events`), reviewer evaluations (`GET /sessions/:id/evaluations`), and ATS webhooks (`GET/POST /webhooks/subscriptions`, `GET /webhooks/logs`).
+  - Candidate tokens attempting to inspect or mutate any company-level resource receive HTTP 403 `FORBIDDEN`.
+- **Server-Authoritative Pause/Resume with Monotonic Audit Stream:**
+  - Session pause requests require authenticated company members (`owner`, `admin`, `interviewer`). Candidates cannot pause or extend their sessions.
+  - Server-authoritative time recalculation: `newExpiresAt = expiresAt + (now - pausedAt)`.
+  - Emits sequential `session_paused` and `session_resumed` events into `session_events` with initiating user ID, exact pause duration in milliseconds, and proctor justification.
+- **Candidate Data Erasure & Cache Eviction:**
+  - Hard-deletion cascade across database entities on `DELETE /api/v1/sessions/:id/data`, coupled with in-memory buffer clearing via `eventsService.clearSession(sessionId)` and AI context reset.
+- **Candidate Workspace Single-Header UI Optimization:**
+  - Full viewport candidate layout suppressing the application navbar when an active candidate session is loaded.
+  - Contextual `[Run Tests]` button displayed only for coding and repository challenges (suppressed on Question Set tasks).
+  - Multi-select radio/checkbox bubbling resolved to eliminate double-dispatch toggle issues.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -921,9 +947,9 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, data deletion endpoint, invitations, telemetry events, submission bundling, proctor controls & factual integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 147 / 147 (22 Suites) | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, transactional email delivery (SMTP/Resend/Console/Test), candidate-to-company boundary enforcement, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions & pause-resume audit trail, data deletion endpoint, invitations, telemetry events, submission bundling, proctor controls & factual integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 173 / 173 (25 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **204 / 204** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **219 / 219** | **100% PASS** |
 
 ---
 
@@ -931,7 +957,9 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-10.0.1):** pilot hardening, proctor score removal, pause authorization, and data deletion mapping
+- `HEAD` — **feat(loop-10.0.2):** transactional email delivery, candidate authorization boundaries, pause audit, and tenant isolation
+- `1f1210c` — **fix(desktop):** show Run Tests button only during coding tasks
+- `e9f2913` — **feat(loop-10.0.1):** pilot hardening, proctor score removal, pause authorization, and data deletion mapping
 - `ea88409` — **style(auth):** normalize trailing newlines in magic link service and test suite
 - `9d72b0a` — **feat(loop-10):** private company pilot readiness, runner execution gate, and magic link authentication
 - `19ef2a0` — **feat(loop-9.1):** Linux gVisor deployment architecture, mutual runner authentication, and adversarial security suite

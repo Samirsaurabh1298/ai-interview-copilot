@@ -23,6 +23,18 @@ const EnvSchema = z.object({
     }),
   JWT_SECRET: z.string().default("default-secure-pilot-assessment-jwt-secret-key-32chars"),
   DATABASE_URL: z.string().optional(),
+  APP_BASE_URL: z.string().default("http://localhost:5173"),
+  EMAIL_PROVIDER: z.enum(["smtp", "resend", "console", "test"]).optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z
+    .string()
+    .optional()
+    .transform((val) => val === "true" || val === "1"),
+  EMAIL_FROM: z.string().default("AI Interview Copilot <noreply@ai-copilot.local>"),
+  RESEND_API_KEY: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

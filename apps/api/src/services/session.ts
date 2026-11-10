@@ -9,6 +9,7 @@ import type {
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AIUsageGatewayService } from "./gateway.js";
+import type { SessionEventsService } from "./session-events.js";
 import { SessionRepository } from "../repositories/session.repo.js";
 
 export class SessionNotFoundError extends Error {
@@ -38,14 +39,21 @@ export class AssessmentSessionService {
   // Key: orgId -> Set<sessionId>
   private sessionsByOrg = new Map<string, Set<string>>();
   private repo: SessionRepository;
+  private eventsService?: SessionEventsService;
 
   constructor(
     private templateService: AssessmentTemplateService,
     private orgService: OrganizationService,
     private gateway: AIUsageGatewayService,
+    eventsService?: SessionEventsService,
     repo?: SessionRepository
   ) {
+    this.eventsService = eventsService;
     this.repo = repo ?? new SessionRepository();
+  }
+
+  public setEventsService(eventsService: SessionEventsService): void {
+    this.eventsService = eventsService;
   }
 
   public async loadFromDatabase(orgId?: string): Promise<void> {
@@ -303,7 +311,7 @@ export class AssessmentSessionService {
     return session;
   }
 
-  public pauseSession(sessionId: string, reason?: string): AssessmentSession {
+  public pauseSession(sessionId: string, reason?: string, initiatedBy?: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
     if (session.status === "paused") {
@@ -329,10 +337,17 @@ export class AssessmentSessionService {
       console.error("[AssessmentSessionService] DB pause update error:", err);
     });
 
+    // Record server-authoritative audit trail event
+    this.eventsService?.recordEventDirect(sessionId, "session_paused", {
+      reason: session.pauseReason,
+      pausedAt: now.toISOString(),
+      initiatedBy: initiatedBy || "proctor",
+    });
+
     return session;
   }
 
-  public resumeSession(sessionId: string): AssessmentSession {
+  public resumeSession(sessionId: string, initiatedBy?: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
     if (session.status !== "paused") {
@@ -357,6 +372,15 @@ export class AssessmentSessionService {
       expiresAt: session.expiresAt,
     }).catch((err) => {
       console.error("[AssessmentSessionService] DB resume update error:", err);
+    });
+
+    // Record server-authoritative audit trail event
+    this.eventsService?.recordEventDirect(sessionId, "session_resumed", {
+      resumedAt: new Date(now).toISOString(),
+      pauseDurationMs,
+      totalPausedMs: session.totalPausedMs,
+      newExpiresAt: session.expiresAt.toISOString(),
+      initiatedBy: initiatedBy || "proctor",
     });
 
     return session;
@@ -403,6 +427,7 @@ export class AssessmentSessionService {
     if (orgSet) {
       orgSet.delete(sessionId);
     }
+    this.eventsService?.clearSession(sessionId);
 
     // Hard-delete in database (cascades to session_events, submission_artifacts, proctor_incidents)
     await this.repo.delete(sessionId);

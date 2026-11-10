@@ -11,6 +11,7 @@ import type { OrganizationService } from "./organization.js";
 import type { AuthService } from "./auth.js";
 import type { AssessmentSessionService } from "./session.js";
 import { InvitationRepository } from "../repositories/invitation.repo.js";
+import type { EmailDeliveryService } from "./email.js";
 
 export class InvitationNotFoundError extends Error {
   constructor(message = "Candidate invitation not found") {
@@ -47,6 +48,8 @@ export class CandidateInvitationService {
     private orgService: OrganizationService,
     private authService: AuthService,
     private sessionService?: AssessmentSessionService,
+    private emailService?: EmailDeliveryService,
+    private baseUrl?: string,
     repo?: InvitationRepository
   ) {
     this.repo = repo ?? new InvitationRepository();
@@ -121,6 +124,27 @@ export class CandidateInvitationService {
     this.repo.create(invitation).catch((err) => {
       console.error("[CandidateInvitationService] DB invitation create error:", err);
     });
+
+    // Transactional candidate invitation email dispatch
+    const baseUrl = this.baseUrl || process.env.APP_BASE_URL || "http://localhost:5173";
+    const assessmentUrl = `${baseUrl}/?invite=${invitationToken}`;
+
+    if (this.emailService) {
+      this.emailService
+        .sendCandidateInvitation({
+          to: invitation.candidateEmail,
+          candidateName: invitation.candidateName,
+          organizationName: org.name,
+          roleTitle: template.targetRole || "Software Engineer",
+          challengeTitle: template.title,
+          assessmentUrl,
+          durationMinutes: template.attemptDurationMinutes ?? template.durationMinutes ?? 90,
+          deadlineDays: expiresInDays,
+        })
+        .catch((err) => {
+          console.error("[CandidateInvitationService] Invitation email dispatch error:", err);
+        });
+    }
 
     return invitation;
   }

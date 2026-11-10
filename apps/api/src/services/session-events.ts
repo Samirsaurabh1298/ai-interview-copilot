@@ -142,5 +142,9 @@ export class SessionEventsService {
 
     return event;
   }
+
+  public clearSession(sessionId: string): void {
+    this.eventsBySession.delete(sessionId);
+  }
 }
 

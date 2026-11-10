@@ -75,6 +75,7 @@ export const calibrationRoutes: FastifyPluginAsync<{
       let requestingUser = undefined;
       if (authService && request.headers.authorization) {
         requestingUser = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertCompanyMember(requestingUser);
         if (sessionService) {
           const session = sessionService.getSession(sessionId);
           authService.assertTenantAccess(requestingUser, session.organizationId);
@@ -103,6 +104,7 @@ export const calibrationRoutes: FastifyPluginAsync<{
       let requestingUser = undefined;
       if (authService && request.headers.authorization) {
         requestingUser = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertCompanyMember(requestingUser);
         if (sessionService) {
           const session = sessionService.getSession(sessionId);
           authService.assertTenantAccess(requestingUser, session.organizationId);

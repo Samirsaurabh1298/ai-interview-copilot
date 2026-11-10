@@ -105,6 +105,7 @@ export const invitationsRoutes: FastifyPluginAsync<{
     if (authService && request.headers.authorization) {
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertCompanyMember(auth);
         if (orgId) {
           authService.assertTenantAccess(auth, orgId);
         } else {

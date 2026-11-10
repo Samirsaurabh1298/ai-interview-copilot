@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { OrganizationService } from "./organization.js";
 import type { OrganizationMember } from "@ai-copilot/contracts";
+import type { EmailDeliveryService } from "./email.js";
 
 export class MagicLinkError extends Error {
   constructor(
@@ -40,7 +41,11 @@ export class MagicLinkService {
   private readonly maxRequestsPerWindow: number = 5;
   private readonly windowMs: number = 15 * 60 * 1000;
 
-  constructor(private readonly orgService: OrganizationService) {}
+  constructor(
+    private readonly orgService: OrganizationService,
+    private readonly emailService?: EmailDeliveryService,
+    private readonly baseUrl?: string
+  ) {}
 
   /**
    * Request a single-use magic login link.
@@ -112,6 +117,23 @@ export class MagicLinkService {
     };
 
     this.tokensByHash.set(tokenHash, record);
+
+    // Dispatch transactional magic link email
+    const baseUrl = this.baseUrl || process.env.APP_BASE_URL || "http://localhost:5173";
+    const magicLinkUrl = `${baseUrl}/login?token=${token}`;
+    const org = this.orgService.getOrganizationById(targetOrgId);
+
+    if (this.emailService) {
+      await this.emailService.sendMagicLink({
+        to: normalizedEmail,
+        recipientName: targetMember.name || normalizedEmail,
+        magicLinkUrl,
+        organizationName: org?.name,
+        expiresInMinutes: Math.floor(this.ttlMs / 60000),
+      }).catch((err) => {
+        console.error("[MagicLinkService] Transactional email dispatch error:", err);
+      });
+    }
 
     // 4. Secure Magic-Link Debugging (LOOP 10.0.1 Invariant 3)
     // Debug tokens are strictly restricted to explicitly enabled test environments or local debug mode.

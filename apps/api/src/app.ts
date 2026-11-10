@@ -45,6 +45,7 @@ import { PracticeStudioService } from "./services/practice.js";
 import { ScreenCaptureIngestService } from "./services/capture.js";
 import { IntegrityService } from "./services/integrity.js";
 import { MagicLinkService } from "./services/magic-link.js";
+import { EmailDeliveryService } from "./services/email.js";
 import type { AppConfig } from "./config.js";
 import { initDatabase, checkDatabaseHealth } from "./db/connection.js";
 
@@ -163,6 +164,24 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   await sessionService.loadFromDatabase();
 
   const eventsService = new SessionEventsService(sessionService);
+  sessionService.setEventsService(eventsService);
+
+  // Initialize Transactional Email Delivery Service (LOOP 10.0.2)
+  const emailService = new EmailDeliveryService({
+    defaultFrom: config.EMAIL_FROM,
+    resendApiKey: config.RESEND_API_KEY,
+    smtpConfig: config.SMTP_HOST
+      ? {
+          host: config.SMTP_HOST,
+          port: config.SMTP_PORT,
+          user: config.SMTP_USER,
+          pass: config.SMTP_PASS,
+          secure: config.SMTP_SECURE,
+          from: config.EMAIL_FROM,
+        }
+      : undefined,
+  });
+
   const submissionService = new SubmissionService(
     sessionService,
     templateService,
@@ -201,10 +220,12 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     templateService,
     orgService,
     authService,
-    sessionService
+    sessionService,
+    emailService,
+    config.APP_BASE_URL
   );
   const integrityService = new IntegrityService(eventsService, sessionService);
-  const magicLinkService = new MagicLinkService(orgService);
+  const magicLinkService = new MagicLinkService(orgService, emailService, config.APP_BASE_URL);
 
   // Route registration
   await app.register(authRoutes, {

@@ -29,10 +29,11 @@ export const templatesRoutes: FastifyPluginAsync<{
     }
 
     try {
-      // Optional RBAC check if auth header is provided
+      // RBAC check if auth header is provided
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, parse.data.organizationId);
+        authService.assertCompanyMember(auth);
         if (!["owner", "admin"].includes(auth.role)) {
           return reply.status(403).send({
             error: "FORBIDDEN",
@@ -62,6 +63,7 @@ export const templatesRoutes: FastifyPluginAsync<{
     if (authService && request.headers.authorization) {
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertCompanyMember(auth);
         if (orgId) {
           authService.assertTenantAccess(auth, orgId);
         } else {
@@ -103,6 +105,7 @@ export const templatesRoutes: FastifyPluginAsync<{
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, orgId);
+        authService.assertCompanyMember(auth);
       } catch (err) {
         if (isTenantOrAuthForbiddenError(err)) {
           return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });

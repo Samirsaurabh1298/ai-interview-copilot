@@ -40,11 +40,15 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (authService && request.headers.authorization) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, parse.data.organizationId);
+        authService.assertCompanyMember(auth);
       }
 
       const session = sessionService.createSession(parse.data);
       return reply.status(201).send(session);
     } catch (err: unknown) {
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
+      }
       const message = err instanceof Error ? err.message : "Failed to create assessment session";
       return reply.status(400).send({ error: "SESSION_CREATION_FAILED", message });
     }
@@ -252,6 +256,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
         });
       }
 
+      let initiatedBy = "proctor";
       if (authService) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, session.organizationId);
@@ -261,9 +266,10 @@ export const sessionsRoutes: FastifyPluginAsync<{
             message: `Role '${auth.role}' is not authorized to pause candidate sessions`,
           });
         }
+        initiatedBy = auth.memberId || auth.userId || auth.email || "proctor";
       }
 
-      const paused = sessionService.pauseSession(sessionId, body.reason);
+      const paused = sessionService.pauseSession(sessionId, body.reason, initiatedBy);
       return reply.status(200).send(paused);
     } catch (err: unknown) {
       if (err instanceof SessionNotFoundError) {
@@ -293,6 +299,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
         });
       }
 
+      let initiatedBy = "proctor";
       if (authService) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, session.organizationId);
@@ -302,9 +309,10 @@ export const sessionsRoutes: FastifyPluginAsync<{
             message: `Role '${auth.role}' is not authorized to resume candidate sessions`,
           });
         }
+        initiatedBy = auth.memberId || auth.userId || auth.email || "proctor";
       }
 
-      const resumed = sessionService.resumeSession(sessionId);
+      const resumed = sessionService.resumeSession(sessionId, initiatedBy);
       return reply.status(200).send(resumed);
     } catch (err: unknown) {
       if (err instanceof SessionNotFoundError) {
@@ -404,6 +412,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
     if (authService && request.headers.authorization) {
       try {
         const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertCompanyMember(auth);
         if (orgId) {
           authService.assertTenantAccess(auth, orgId);
         } else {

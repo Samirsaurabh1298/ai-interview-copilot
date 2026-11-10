@@ -74,10 +74,10 @@ export const sessionEventsRoutes: FastifyPluginAsync<{
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, session.organizationId);
 
-        if (auth.role === "candidate" && auth.sessionId !== sessionId) {
+        if (auth.role === "candidate") {
           return reply.status(403).send({
             error: "FORBIDDEN",
-            message: "Candidate token not authorized to inspect this session's events",
+            message: "Candidates are not authorized to inspect proctor telemetry audit logs",
           });
         }
       }

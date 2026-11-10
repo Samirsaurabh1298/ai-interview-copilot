@@ -219,6 +219,14 @@ export class AuthService {
     }
   }
 
+  public assertCompanyMember(context: AuthUserContext): void {
+    if (context.role === "candidate") {
+      throw new AuthorizationError(
+        "Forbidden: Candidate tokens cannot access company administrative resources"
+      );
+    }
+  }
+
   public assertSessionAccess(context: AuthUserContext, targetSessionId: string): void {
     // If the caller is a candidate, they can ONLY access their explicitly assigned session
     if (context.role === "candidate" && context.sessionId !== targetSessionId) {
