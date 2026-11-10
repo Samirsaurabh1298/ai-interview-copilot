@@ -2,7 +2,7 @@
 
 > **System Status:** Production Monorepo  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 200 / 200 Automated Tests Passing across 34 Test Suites (100% Pass Rate)  
+> **Automated Test Suite:** 204 / 204 Automated Tests Passing across 34 Test Suites (100% Pass Rate)  
 > **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
 > **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
@@ -40,6 +40,7 @@
    - [4.21. OCI / gVisor Runner Architecture, Language Policies & ZIP Codebase Ingestion (LOOP 9)](#421-oci--gvisor-runner-architecture-language-policies--zip-codebase-ingestion-loop-9)
    - [4.22. Linux gVisor Deployment, Service Security & Adversarial Verification (LOOP 9.1)](#422-linux-gvisor-deployment-service-security--adversarial-verification-loop-91)
    - [4.23. Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10)](#423-private-company-pilot-readiness-security-gate--magic-link-authentication-loop-10)
+   - [4.24. Pilot Hardening & Policy Consistency (LOOP 10.0.1)](#424-pilot-hardening--policy-consistency-loop-1001)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -462,22 +463,19 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 - **Passive Anti-Cheat Philosophy (Advisory vs. Algorithmic Disqualification):**
   - In strict compliance with **AD #10 (Human Reviewer Accountability)**, the platform rejects automated disqualification bots.
   - Behavioral anomalies (window blurs, external copy-pastes, offscreen dwell) are treated purely as **evidentiary signals** for human interviewer review. The candidate is never automatically kicked out or failed by an algorithm.
-- **Deterministic 0–100 Integrity Scoring Algorithm (`IntegrityService` Baseline):**
-  - Real-time score calculated on a scale of 0 to 100 with deduction weights:
-    - **Window Blurs & Off-Screen Dwell:** -2 points per blur event exceeding 10 seconds of off-screen duration.
-    - **Unattributed Clipboard Paste Bursts:** -5 points for every external paste burst $>50$ characters not originating from an accepted AI Copilot diff patch (`isFromCopilotPatch: false`).
-    - **Proctor Manual Incident Deductions:** Critical incident (-25 points), Warning incident (-10 points), Info incident (-2 points). Resolved incidents have their deduction penalties dynamically restored.
-  - **4 Calibrated Risk Classification Bands:**
-    - `clean` (Score 90–100): Minimal to no off-screen activity; disciplined typing cadence; all pastes attributed to approved AI diffs.
-    - `low` (Score 75–89): Occasional brief window switches (e.g. checking system notifications); small external code snippets.
-    - `medium` (Score 50–74): Frequent window blurring; extended offscreen dwell time; multiple large unattributed paste bursts.
-    - `high` (Score < 50): Persistent offscreen dwell; massive external paste injections without incremental typing; critical proctor flags.
-  - *(Note: In LOOP 8, this deduction mechanism was further refined into a non-punitive evidentiary audit model featuring `focusRatePercent` and contextual review status; see Section 4.20).*
+- **Factual Proctoring Observation Architecture (`IntegrityService`):**
+  - In strict compliance with **AD #10 (Human Reviewer Accountability)** and **LOOP 10.0.1 Invariants**, the platform rejects all algorithmic candidate scoring, 0–100 risk gauges, and candidate risk rankings.
+  - Telemetry records strictly factual, transparent technical events:
+    - **Focus Rate Percent:** Calculated as $\frac{\text{focusTimeMs}}{\text{elapsedMs}} \times 100$, tracking candidate window presence.
+    - **Total Off-Screen Dwell:** Cumulative seconds spent outside the assessment workspace.
+    - **Unattributed Clipboard Pastes:** Count and character volume of external code pastes not originating from accepted AI diffs.
+    - **Proctor Incident Log:** Human interviewer annotations and technical hardware disconnections.
+  - **No Keystroke Cadence Monitoring:** Keystroke dynamics, typing cadence, and typing speed are neither measured nor stored.
 - **Client-Side Passive Telemetry Engine (`AssessmentWorkspace.tsx`):**
   - Passive event listeners track `window.addEventListener("blur")` and `window.addEventListener("focus")`, computing exact offscreen dwell milliseconds.
   - Clipboard `paste` event interception compares pasted text length against recent Copilot patches. If length exceeds 50 characters and does not match an accepted diff patch, an `unattributed_paste` telemetry event is queued.
 - **Company Dashboard Live Proctor Control Room (`CompanyDashboard.tsx`):**
-  - **Dynamic 0–100 SVG Risk Dial:** Color-coded circular gauge visualizing candidate integrity score with dynamic green/yellow/orange/red status badges.
+  - **Focus Metric Indicator:** Visualizes candidate focus percentage with factual review status badges (`Standard Activity`, `Review Recommended`, `Incident Flagged`).
   - **4 Live Metric Cards:** Focus Rate %, External Paste count, Total Off-Screen Dwell duration, and Flagged Incident count.
   - **Chronological Incident Feed:** Real-time log of security events with timestamp, category, severity badge (`info`, `warning`, `critical`), and resolution status.
   - **Interviewer Incident Logging Modal:** Allows interviewers to record manual observations (e.g. *"Candidate looking off-camera continuously"*, *"Technical Wi-Fi issue reported"*).
@@ -494,9 +492,7 @@ Evaluates candidate submissions across 7 balanced engineering dimensions:
 LOOP 8 addresses product integrity, removes algorithmic scoring contradictions, establishes schema migration parity, eliminates production security leaks, and formally classifies code execution isolation boundaries for enterprise pilot deployments:
 
 - **Scoring Fairness & Autonomy Alignment (AD #4 & AD #10):**
-  - **Exemplary Rating for Full Engineering Autonomy:** Candidates who complete engineering challenges without issuing queries to the company-managed AI assistant are awarded **Rating 4 (Exemplary, 100% points)** for the *AI Collaboration* rubric dimension:
-    > *"Complete engineering autonomy: Candidate independently solved and verified the challenge without requiring AI intervention."*
-    Under prior iterations, candidates who avoided AI were mistakenly flagged with Developing (1/4) ratings. LOOP 8 establishes that self-sufficiency is rewarded rather than penalized.
+  - **Fair N/A Dynamic Redistribution for Non-AI Candidates:** Candidates who solve challenges autonomously without issuing queries to the company-managed AI assistant have the *AI Collaboration* and *Critical Evaluation* rubric dimensions marked with `isNotApplicable: true` with 0 weight, cleanly redistributing weight across core technical dimensions. Candidates are neither penalized nor artificially awarded bonus ratings.
   - **Dynamic Rubric Weight Redistribution for Non-AI Tasks:** When an assessment task specifies an AI policy of `prohibited` (or restricted where AI queries are not permitted), the AI-dependent dimensions (*AI Collaboration* and *Critical Evaluation*) are marked with `isNotApplicable: true`. The scoring engine dynamically redistributes their allocated weights proportionally across the remaining 5 technical dimensions (Code Comprehension, Problem Framing, Debugging & Implementation, Testing Discipline, and Technical Explanation), guaranteeing that total task points always sum to 100 without distorting candidate evaluations.
   - **Elimination of Arbitrary Prompt Penalties:** Deductions for prompt volumes $>8$ were removed. AI token usage is treated purely as operational financial telemetry, not as a negative competence signal.
 - **Proctoring Evidentiary Redesign (Advisory Evidence vs. Punitive Scoring):**
@@ -506,7 +502,7 @@ LOOP 8 addresses product integrity, removes algorithmic scoring contradictions, 
     - `totalOffscreenDwellMs`: Cumulative duration in milliseconds spent outside the workspace window.
     - `externalPasteCount` & `externalPasteChars`: Exact count and character volume of clipboard pastes not originating from accepted diff patches.
     - `proctorFlagsCount`: Number of manual proctor flags or technical annotations logged.
-  - **Calibrated Review Status Classification:** The integrity report computes a non-punitive `reviewStatus` (`verified`, `review_recommended`, or `unresolved_incident`) and an advisory risk index (0–100) strictly intended to guide human reviewers to specific timestamps in the event audit log.
+  - **Calibrated Review Status Classification:** The integrity report computes a non-punitive `reviewStatus` (`verified`, `review_recommended`, or `unresolved_incident`) strictly intended to guide human reviewers to specific timestamps in the event audit log. All 0–100 scores and risk bands are eliminated.
   - **Preservation of Audit History:** All historical incident and event records are preserved immutably. No audit logs are deleted.
 - **Database Migration Parity & Schema Hardening (LOOP 6.1 Parity):**
   - Executed `drizzle-kit generate` to establish migration file `0001_careless_killraven.sql` and snapshot metadata.
@@ -619,6 +615,35 @@ LOOP 10 establishes the operational and security infrastructure to advance the p
   - Blind candidate review with PII masking to prevent cognitive and demographic bias.
   - Automated variance detection triggering calibration alerts when score spread exceeds 15%.
   - AI scorecards remain advisory; final hiring decisions belong exclusively to human reviewers.
+
+### 4.24. Pilot Hardening & Policy Consistency (LOOP 10.0.1)
+
+LOOP 10.0.1 resolves all policy and telemetry contradictions across the platform prior to external design partner onboarding:
+
+- **Elimination of Candidate Integrity & Proctor Scores:**
+  - Removed all 0–100 composite integrity scores, risk bands (`clean`, `low`, `medium`, `high`), and candidate risk rankings from services, contracts, and frontend views.
+  - The telemetry pipeline (`IntegrityService`) reports strictly factual observations: active focus percentage, cumulative off-screen dwell time, unattributed clipboard paste events, and human proctor incident annotations.
+  - No algorithmic candidate disqualification or composite score deduction is computed.
+- **Elimination of Keystroke Cadence Telemetry:**
+  - Removed all schemas and UI options for keystroke timing, cadence, and typing-speed analysis (`rapid_keystrokes`).
+  - Typing behavior is neither monitored, recorded, nor used to derive performance or integrity signals.
+- **Secure Magic-Link Debugging & Anti-Leakage:**
+  - `debugToken` is strictly gated to test or explicitly enabled local development environments.
+  - In production and external pilot configurations (`process.env.APP_ENV === "pilot"`), `debugToken` is strictly `undefined` and omitted from all HTTP responses.
+  - Plaintext tokens are never stored in memory or written to audit logs; only one-way SHA-256 hashes are persisted. Tenant administrators have zero endpoints to inspect or retrieve login tokens.
+- **Strict Server-Authoritative Attempt Pause Authorization:**
+  - Enforced mandatory authorization on `POST /:sessionId/pause` and `POST /:sessionId/resume`. Unauthenticated requests fail with HTTP 401 `UNAUTHORIZED`.
+  - Candidate tokens attempting to pause or resume fail with HTTP 403 `FORBIDDEN`. Only authenticated `owner`, `admin`, or `interviewer` roles can initiate pause controls during verified technical incidents.
+  - Resumed sessions extend deadlines by the exact millisecond duration of the pause without granting unmonitored extra time.
+- **AI Scoring Fairness & Fair N/A Redistribution:**
+  - Candidates who solve challenges autonomously without querying the AI assistant have the *AI Collaboration* and *Critical Evaluation* rubric dimensions marked with `isNotApplicable: true` with 0 weight.
+  - The 30% weight is cleanly redistributed across the remaining 5 core technical dimensions (30/10/30/25/5), ensuring a 100-point total without fabricating artificial bonus points (Rating 4) or penalizing independent engineering.
+  - AI token consumption is treated strictly as financial infrastructure telemetry.
+- **Verified Candidate Data Erasure (`DELETE /api/v1/sessions/:sessionId/data`):**
+  - Implemented an authorized data erasure endpoint that performs immediate cascade hard-deletion across `assessment_sessions`, `session_events`, `submission_artifacts`, and `proctor_incidents`.
+  - Returns a transparent erasure receipt documenting that primary database records are purged immediately, while encrypted disaster recovery backups and external AI provider inference logs follow their respective 30-day automated rotation windows.
+- **Candidate Workspace View Isolation:**
+  - When an active candidate session is initialized via an invitation token, the top navigation switcher (`Practice Copilot`, `Company Admin & Templates`) is hidden, locking the candidate into their assessment workspace and preventing unauthorized admin inspection during timed exams.
 
 ---
 
@@ -896,9 +921,9 @@ All 13 packages maintain **100% passing test suites**:
 | `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
 | `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
 | `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, invitations, telemetry events, submission bundling, proctor controls & integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 143 / 143 (22 Suites) | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions, data deletion endpoint, invitations, telemetry events, submission bundling, proctor controls & factual integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 147 / 147 (22 Suites) | **PASS** |
 | `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **200 / 200** | **100% PASS** |
+| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **204 / 204** | **100% PASS** |
 
 ---
 
@@ -906,7 +931,9 @@ All 13 packages maintain **100% passing test suites**:
 
 Every capability has been developed and committed with conventional commit standards on the `main` branch:
 
-- `HEAD` — **feat(loop-10):** private company pilot readiness, runner execution gate, and magic link authentication
+- `HEAD` — **feat(loop-10.0.1):** pilot hardening, proctor score removal, pause authorization, and data deletion mapping
+- `ea88409` — **style(auth):** normalize trailing newlines in magic link service and test suite
+- `9d72b0a` — **feat(loop-10):** private company pilot readiness, runner execution gate, and magic link authentication
 - `19ef2a0` — **feat(loop-9.1):** Linux gVisor deployment architecture, mutual runner authentication, and adversarial security suite
 - `d64d71a` — **style:** normalize trailing newlines across runner, API routes, and contracts
 - `d32cd3a` — **feat(loop-9):** OCI runner architecture, separate language runtime policies, and ZIP repository archive ingestion

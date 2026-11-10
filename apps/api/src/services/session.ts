@@ -379,6 +379,54 @@ export class AssessmentSessionService {
     return session;
   }
 
+  public async deleteSessionData(sessionId: string): Promise<{
+    success: boolean;
+    sessionId: string;
+    deletedAt: string;
+    recordsDeleted: {
+      session: boolean;
+      submissionArtifacts: boolean;
+      sessionEvents: boolean;
+      proctorIncidents: boolean;
+    };
+    retentionDisclaimer: {
+      activeDatabase: string;
+      disasterRecoveryBackups: string;
+      externalAiProviders: string;
+    };
+  }> {
+    const session = this.getSession(sessionId);
+
+    // Remove from in-memory index
+    this.sessions.delete(sessionId);
+    const orgSet = this.sessionsByOrg.get(session.organizationId);
+    if (orgSet) {
+      orgSet.delete(sessionId);
+    }
+
+    // Hard-delete in database (cascades to session_events, submission_artifacts, proctor_incidents)
+    await this.repo.delete(sessionId);
+
+    return {
+      success: true,
+      sessionId,
+      deletedAt: new Date().toISOString(),
+      recordsDeleted: {
+        session: true,
+        submissionArtifacts: true,
+        sessionEvents: true,
+        proctorIncidents: true,
+      },
+      retentionDisclaimer: {
+        activeDatabase: "Hard-deleted immediately from primary persistence engine",
+        disasterRecoveryBackups:
+          "Historical database snapshots retained in encrypted backup vault until automated 30-day rotation purge",
+        externalAiProviders:
+          "Prompts processed by external LLM inference providers (Groq, OpenAI, Anthropic, Google) are subject to third-party enterprise zero-data-retention or 30-day safety retention policies and cannot be purged on-demand via local API",
+      },
+    };
+  }
+
   public listSessionsForOrg(organizationId: string): AssessmentSession[] {
     const orgSet = this.sessionsByOrg.get(organizationId);
     if (!orgSet) return [];

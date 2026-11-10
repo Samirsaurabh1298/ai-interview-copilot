@@ -90,7 +90,6 @@ import type {
   IntegrityCategory,
   IntegritySeverity,
   CreateProctorIncidentRequest,
-  IntegrityRiskLevel,
 } from "@ai-copilot/contracts";
 
 const RUBRIC_DIMENSIONS: {
@@ -2958,27 +2957,17 @@ describe("useDebouncedFetch verification suite", () => {
                     </div>
                   ) : (
                     <>
-                      {/* Live Risk Score Hero Card */}
+                      {/* Factual Telemetry Observation Card (LOOP 10.0.1 Invariant 1) */}
                       <div className="p-6 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-xs space-y-5">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                           <div className="flex items-center gap-4">
-                            {/* Score Dial */}
-                            <div
-                              className={`w-20 h-20 rounded-2xl flex flex-col items-center justify-center font-mono border-2 shadow-inner shrink-0 ${
-                                integrityReport?.riskLevel === "clean"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
-                                  : integrityReport?.riskLevel === "low"
-                                  ? "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
-                                  : integrityReport?.riskLevel === "medium"
-                                  ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-                                  : "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
-                              }`}
-                            >
+                            {/* Focus Rate Metric Dial */}
+                            <div className="w-20 h-20 rounded-2xl flex flex-col items-center justify-center font-mono border-2 shadow-inner shrink-0 bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
                               <span className="text-2xl font-black leading-none">
-                                {integrityReport?.integrityScore ?? 100}
+                                {integrityReport?.metrics.focusRatePercent ?? 100}%
                               </span>
                               <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5 opacity-80">
-                                / 100
+                                Focus
                               </span>
                             </div>
 
@@ -2986,16 +2975,18 @@ describe("useDebouncedFetch verification suite", () => {
                               <div className="flex items-center gap-2">
                                 <span
                                   className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                                    integrityReport?.riskLevel === "clean"
-                                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
-                                      : integrityReport?.riskLevel === "low"
-                                      ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300"
-                                      : integrityReport?.riskLevel === "medium"
+                                    integrityReport?.reviewStatus === "unresolved_incident"
+                                      ? "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300"
+                                      : integrityReport?.reviewStatus === "review_recommended"
                                       ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300"
-                                      : "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950 dark:text-rose-300"
+                                      : "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300"
                                   }`}
                                 >
-                                  {integrityReport?.riskLevel} Risk
+                                  {integrityReport?.reviewStatus === "unresolved_incident"
+                                    ? "Incident Flagged"
+                                    : integrityReport?.reviewStatus === "review_recommended"
+                                    ? "Review Recommended"
+                                    : "Standard Activity"}
                                 </span>
                                 <span className="text-xs text-slate-400 font-mono">
                                   Session: {selectedSessionForProctor.id.slice(0, 8)}...
@@ -3239,7 +3230,6 @@ describe("useDebouncedFetch verification suite", () => {
                   <option value="unattributed_paste">Unattributed External Paste Burst</option>
                   <option value="devtools_open">Browser DevTools Inspected</option>
                   <option value="multiple_ips">Multiple Concurrently Active IP Addresses</option>
-                  <option value="rapid_keystrokes">Anomalous Macro / Keystroke Pattern</option>
                   <option value="technical_issue">Technical / Hardware Incident</option>
                 </select>
               </div>

@@ -55,7 +55,7 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
     return { orgId, session, interviewerToken };
   }
 
-  it("calculates clean integrity score (100) for pristine session", async () => {
+  it("returns factual telemetry report with NO candidate integrity scores or risk bands (LOOP 10.0.1)", async () => {
     const { session, interviewerToken } = await createSessionFixture();
 
     const res = await app.inject({
@@ -66,16 +66,20 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
 
     expect(res.statusCode).toBe(200);
     const report = JSON.parse(res.body);
-    expect(report.integrityScore).toBe(100);
-    expect(report.riskLevel).toBe("clean");
+
+    // Invariant 1: No composite 0-100 score, no risk level bands
+    expect(report.integrityScore).toBeUndefined();
+    expect(report.riskLevel).toBeUndefined();
+    expect(report.reviewStatus).toBe("verified");
     expect(report.metrics.totalBlurCount).toBe(0);
     expect(report.metrics.unattributedPasteCount).toBe(0);
+    expect(report.metrics.focusRatePercent).toBe(100);
   });
 
-  it("penalizes score and elevates risk when telemetry records blur and paste bursts", async () => {
+  it("records factual blurs, dwell time, and paste counts without assigning composite risk scores (LOOP 10.0.1)", async () => {
     const { session, interviewerToken } = await createSessionFixture();
 
-    // Ingest telemetry events: 3 blurs with 30s dwell time, and 1 massive paste (250 chars)
+    // Ingest telemetry events: 2 blurs with 30s dwell time, and 1 paste (250 chars)
     await app.inject({
       method: "POST",
       url: `/api/v1/sessions/${session.id}/events`,
@@ -111,14 +115,20 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
 
     expect(res.statusCode).toBe(200);
     const report = JSON.parse(res.body);
-    // Base 100 - (3 blurs * 3 = 9) - (30s / 15 = 2) - (1 paste = 10) = ~79
-    expect(report.integrityScore).toBeLessThan(85);
+
+    // Invariant 1: No score calculation or risk bands
+    expect(report.integrityScore).toBeUndefined();
+    expect(report.riskLevel).toBeUndefined();
+
+    // Factual telemetry counts are preserved
     expect(report.metrics.totalBlurCount).toBe(2);
     expect(report.metrics.unattributedPasteCount).toBe(1);
-    expect(["low", "medium"]).toContain(report.riskLevel);
+    expect(report.metrics.unattributedPasteChars).toBe(250);
+    expect(report.metrics.focusRatePercent).toBeLessThanOrEqual(100);
+    expect(report.reviewStatus).toBe("verified");
   });
 
-  it("allows interviewer to log and resolve a proctor incident", async () => {
+  it("allows interviewer to log and resolve a proctor incident without deriving risk score", async () => {
     const { session, interviewerToken } = await createSessionFixture();
 
     // 1. Log incident
@@ -139,14 +149,16 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
     expect(incident.severity).toBe("critical");
     expect(incident.isResolved).toBe(false);
 
-    // 2. Integrity score drops to high risk
+    // 2. Incident flags count updates and reviewStatus reflects unresolved incident, but NO risk score is computed
     const repRes = await app.inject({
       method: "GET",
       url: `/api/v1/sessions/${session.id}/integrity`,
       headers: { Authorization: `Bearer ${interviewerToken}` },
     });
     const report = JSON.parse(repRes.body);
-    expect(report.riskLevel).toBe("high");
+    expect(report.integrityScore).toBeUndefined();
+    expect(report.riskLevel).toBeUndefined();
+    expect(report.reviewStatus).toBe("unresolved_incident");
     expect(report.metrics.incidentFlagsCount).toBe(1);
 
     // 3. Resolve incident
@@ -159,6 +171,26 @@ describe("LOOP 7 — Proctoring & Anti-Cheat Evidence Pipeline Tests", () => {
     expect(resolveRes.statusCode).toBe(200);
     const resolved = JSON.parse(resolveRes.body);
     expect(resolved.isResolved).toBe(true);
+  });
+
+  it("rejects keystroke cadence or rapid_keystrokes category in proctoring schemas (LOOP 10.0.1)", async () => {
+    const { session, interviewerToken } = await createSessionFixture();
+
+    // Invariant 2: rapid_keystrokes category removed from allowed schema
+    const invalidRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/sessions/${session.id}/incidents`,
+      headers: { Authorization: `Bearer ${interviewerToken}` },
+      payload: {
+        severity: "warning",
+        category: "rapid_keystrokes", // no longer a valid category
+        description: "Attempting to track typing speed or keystroke cadence",
+      },
+    });
+
+    expect(invalidRes.statusCode).toBe(400);
+    const err = JSON.parse(invalidRes.body);
+    expect(err.error).toBe("INVALID_PROCTOR_INCIDENT");
   });
 
   it("provides evidentiary observation report without algorithmic candidate disqualification", async () => {

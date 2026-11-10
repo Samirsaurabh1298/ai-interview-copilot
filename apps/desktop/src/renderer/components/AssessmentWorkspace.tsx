@@ -31,6 +31,8 @@ import {
   ArrowRight,
   FolderTree,
   BookOpen,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
@@ -256,10 +258,28 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   };
   const [questionAnswers, setQuestionAnswers] = useState<
     Record<string, { selectedOptionIds?: string[]; textResponse?: string; selectedOptionIndexes?: number[] }>
-  >({});
+  >(() => {
+    try {
+      if (sessionId) {
+        const saved = localStorage.getItem(`ai_assessment_answers_${sessionId}`);
+        if (saved) return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return {};
+  });
 
   // Multi-task Code Buffers
   const [taskCodes, setTaskCodes] = useState<Record<string, string>>(() => {
+    try {
+      if (sessionId) {
+        const saved = localStorage.getItem(`ai_assessment_codes_${sessionId}`);
+        if (saved) return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
     const map: Record<string, string> = {};
     for (const t of tasks) {
       if (t.type === "coding_challenge") {
@@ -268,6 +288,48 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     }
     return map;
   });
+
+  // Theme state for candidate workspace
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    return (localStorage.getItem("ai_copilot_theme") as "light" | "dark") || "light";
+  });
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    const root = document.documentElement;
+    if (next === "dark") {
+      root.classList.add("dark");
+      root.classList.remove("light");
+    } else {
+      root.classList.add("light");
+      root.classList.remove("dark");
+    }
+    localStorage.setItem("ai_copilot_theme", next);
+  };
+
+  const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+
+  // Sync answers & code to localStorage on modification for refresh safety
+  useEffect(() => {
+    if (sessionId) {
+      try {
+        localStorage.setItem(`ai_assessment_answers_${sessionId}`, JSON.stringify(questionAnswers));
+      } catch {
+        // ignore
+      }
+    }
+  }, [questionAnswers, sessionId]);
+
+  useEffect(() => {
+    if (sessionId) {
+      try {
+        localStorage.setItem(`ai_assessment_codes_${sessionId}`, JSON.stringify(taskCodes));
+      } catch {
+        // ignore
+      }
+    }
+  }, [taskCodes, sessionId]);
 
   // Virtual Files for Multi-File Repository Tasks
   const [repoFiles, setRepoFiles] = useState<Record<string, { content: string; isReadOnly?: boolean }>>(() => {
@@ -1012,7 +1074,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] w-screen bg-slate-100 overflow-hidden font-sans text-slate-800 dark:bg-[#090d16] dark:text-gray-100">
+    <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden font-sans text-slate-800 dark:bg-[#090d16] dark:text-gray-100">
       {/* Top Assessment Control Header */}
       <div className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between shadow-xs transition-colors dark:border-gray-800 dark:bg-[#0d131f]">
         <div className="flex items-center gap-4">
@@ -1150,14 +1212,29 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           {/* Optional Exit Button */}
           {onExitSession && (
             <button
-              onClick={onExitSession}
+              onClick={() => {
+                if (sessionStatus === "submitted") {
+                  onExitSession();
+                } else {
+                  setIsExitModalOpen(true);
+                }
+              }}
               title="Exit Assessment Workspace"
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-xs transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-xs transition-colors cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Exit</span>
             </button>
           )}
+
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            className="flex items-center justify-center p-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-xs transition-colors cursor-pointer"
+          >
+            {theme === "dark" ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-600" />}
+          </button>
         </div>
       </div>
 
@@ -1461,7 +1538,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                                   return (
                                     <label
                                       key={optIdx}
-                                      onClick={() => handleSelectOption(q.id, optId, false)}
                                       className={`flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                                         isSelected
                                           ? "bg-indigo-50 border-indigo-400 text-indigo-950 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-200 font-medium shadow-xs"
@@ -1472,10 +1548,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                                         type="radio"
                                         name={`q_${q.id}`}
                                         checked={isSelected}
-                                        onChange={() => {}}
-                                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                                        onChange={() => handleSelectOption(q.id, optId, false)}
+                                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                       />
-                                      <span className="flex-1 leading-normal">{optText}</span>
+                                      <span className="flex-1 leading-normal select-none">{optText}</span>
                                     </label>
                                   );
                                 })}
@@ -1493,7 +1569,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                                   return (
                                     <label
                                       key={optIdx}
-                                      onClick={() => handleSelectOption(q.id, optId, true)}
                                       className={`flex items-start gap-3 p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                                         isSelected
                                           ? "bg-indigo-50 border-indigo-400 text-indigo-950 dark:bg-indigo-950/40 dark:border-indigo-600 dark:text-indigo-200 font-medium shadow-xs"
@@ -1503,10 +1578,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                                       <input
                                         type="checkbox"
                                         checked={isSelected}
-                                        onChange={() => {}}
-                                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                                        onChange={() => handleSelectOption(q.id, optId, true)}
+                                        className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                       />
-                                      <span className="flex-1 leading-normal">{optText}</span>
+                                      <span className="flex-1 leading-normal select-none">{optText}</span>
                                     </label>
                                   );
                                 })}
@@ -2551,6 +2626,51 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         isOpen={isScorecardOpen}
         onClose={() => setIsScorecardOpen(false)}
       />
+
+      {/* Exit Confirmation Modal */}
+      {isExitModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 dark:border-gray-800 dark:bg-[#0d131f]">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Pause & Exit Assessment?</h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400">All progress is automatically saved to the server.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-gray-300 leading-relaxed">
+              Your written code, test runs, and question responses have been autosaved. You can reopen your assessment invitation link at any time before the test window expires to resume your work.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setIsExitModalOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                Continue Assessment
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsExitModalOpen(false);
+                  onExitSession?.();
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors shadow-xs cursor-pointer"
+              >
+                Confirm & Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

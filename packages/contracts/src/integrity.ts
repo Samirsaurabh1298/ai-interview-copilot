@@ -12,7 +12,6 @@ export const IntegrityCategorySchema = z.enum([
   "unattributed_paste",
   "devtools_open",
   "multiple_ips",
-  "rapid_keystrokes",
   "manual_flag",
   "technical_issue",
 ]);
@@ -41,11 +40,9 @@ export const CreateProctorIncidentRequestSchema = z.object({
 export type CreateProctorIncidentRequest = z.infer<typeof CreateProctorIncidentRequestSchema>;
 
 // ==============================================================================
-// 2. Real-Time Integrity Score & Metrics Report
+// 2. Real-Time Telemetry & Factual Evidence Report (LOOP 10.0.1 Hardening)
+// No candidate risk scores, risk levels, or typing cadence derivations.
 // ==============================================================================
-
-export const IntegrityRiskLevelSchema = z.enum(["clean", "low", "medium", "high"]);
-export type IntegrityRiskLevel = z.infer<typeof IntegrityRiskLevelSchema>;
 
 export const IntegrityReviewStatusSchema = z.enum(["verified", "review_recommended", "unresolved_incident"]);
 export type IntegrityReviewStatus = z.infer<typeof IntegrityReviewStatusSchema>;
@@ -55,10 +52,6 @@ export const IntegrityScoreReportSchema = z.object({
   candidateName: z.string(),
   candidateEmail: z.string(),
   status: z.string(),
-  // Maintained as an advisory evidence-confidence index for backward compatibility;
-  // NOT a candidate performance grade, rank, or automated disqualification factor.
-  integrityScore: z.number().int().min(0).max(100),
-  riskLevel: IntegrityRiskLevelSchema,
   reviewStatus: IntegrityReviewStatusSchema.default("verified"),
   metrics: z.object({
     totalBlurCount: z.number().int().default(0),
@@ -74,4 +67,7 @@ export const IntegrityScoreReportSchema = z.object({
   evaluatedAt: z.coerce.date().default(() => new Date()),
 });
 export type IntegrityScoreReport = z.infer<typeof IntegrityScoreReportSchema>;
+
+export const SessionTelemetryReportSchema = IntegrityScoreReportSchema;
+export type SessionTelemetryReport = IntegrityScoreReport;
 

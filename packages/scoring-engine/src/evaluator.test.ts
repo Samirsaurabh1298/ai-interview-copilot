@@ -73,7 +73,7 @@ describe("AssessmentEvaluator", () => {
     expect(compDim?.rating).toBe(1);
   });
 
-  it("fairly rewards candidates who solve problems autonomously without AI (0 prompts)", () => {
+  it("produces N/A without artificial positive or negative ratings when candidate solves challenge without AI (LOOP 10.0.1)", () => {
     const autonomousSubmission: CandidateSubmission = {
       sessionId: "sess_autonomous_1",
       candidateId: "cand_senior_autonomous",
@@ -94,10 +94,25 @@ describe("AssessmentEvaluator", () => {
       aiPolicyMode: "enabled",
     });
 
+    // 1. AI collaboration must produce N/A, not an arbitrary rating of 4 or penalty
     const aiCollabDim = scorecard.dimensions.find((d) => d.dimensionId === "ai-collaboration");
-    expect(aiCollabDim?.rating).toBe(4);
-    expect(aiCollabDim?.evidenceCitations[0]).toContain("Complete engineering autonomy");
-    expect(scorecard.weightedTotalScore).toBeGreaterThanOrEqual(85);
+    expect(aiCollabDim?.isNotApplicable).toBe(true);
+    expect(aiCollabDim?.weight).toBe(0);
+    expect(aiCollabDim?.points).toBe(0);
+    expect(aiCollabDim?.evidenceCitations[0]).toContain("[N/A]");
+
+    // 2. Critical evaluation of AI patches must also produce N/A
+    const critDim = scorecard.dimensions.find((d) => d.dimensionId === "critical-evaluation");
+    expect(critDim?.isNotApplicable).toBe(true);
+    expect(critDim?.weight).toBe(0);
+    expect(critDim?.points).toBe(0);
+
+    // 3. Total weight across all dimensions must equal exactly 100
+    const totalWeight = scorecard.dimensions.reduce((acc, d) => acc + d.weight, 0);
+    expect(totalWeight).toBe(100);
+
+    // 4. Score is evaluated directly from technical competency without artificial bonus
+    expect(scorecard.weightedTotalScore).toBeGreaterThanOrEqual(80);
   });
 
   it("dynamically redistributes weights when AI is prohibited without distorting 100-point total", () => {

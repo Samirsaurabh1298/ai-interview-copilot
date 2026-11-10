@@ -7,6 +7,7 @@ interface HeaderProps {
   isGenerating: boolean;
   activeView: "copilot" | "assessment" | "company";
   onSelectView: (view: "copilot" | "assessment" | "company") => void;
+  isCandidateSession?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +16,7 @@ export const Header: React.FC<HeaderProps> = ({
   isGenerating,
   activeView,
   onSelectView,
+  isCandidateSession = false,
 }) => {
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     return (localStorage.getItem("ai_copilot_theme") as "light" | "dark") || "light";
@@ -56,44 +58,51 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Mode Switcher Segmented Control */}
-        <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold dark:bg-gray-800/80 dark:border-gray-700">
-          <button
-            onClick={() => onSelectView("copilot")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              activeView === "copilot"
-                ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Practice Copilot</span>
-          </button>
+        {isCandidateSession ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Candidate Assessment Session Active</span>
+          </div>
+        ) : (
+          /* Mode Switcher Segmented Control */
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold dark:bg-gray-800/80 dark:border-gray-700">
+            <button
+              onClick={() => onSelectView("copilot")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeView === "copilot"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Practice Copilot</span>
+            </button>
 
-          <button
-            onClick={() => onSelectView("assessment")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              activeView === "assessment"
-                ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
-            <span>60-Min Assessment Task</span>
-          </button>
+            <button
+              onClick={() => onSelectView("assessment")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeView === "assessment"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+              <span>60-Min Assessment Task</span>
+            </button>
 
-          <button
-            onClick={() => onSelectView("company")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-              activeView === "company"
-                ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
-                : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Company Admin & Templates</span>
-          </button>
-        </div>
+            <button
+              onClick={() => onSelectView("company")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeView === "company"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Company Admin & Templates</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

@@ -3,7 +3,6 @@ import type {
   IntegrityScoreReport,
   IntegrityIncident,
   CreateProctorIncidentRequest,
-  IntegrityRiskLevel,
 } from "@ai-copilot/contracts";
 import type { SessionEventsService } from "./session-events.js";
 import type { AssessmentSessionService } from "./session.js";
@@ -76,29 +75,13 @@ export class IntegrityService {
       reviewStatus = "review_recommended";
     }
 
-    let riskLevel: IntegrityRiskLevel = "clean";
-    if (hasUnresolvedCritical || (unattributedPasteCount >= 3 && focusRatePercent < 60)) {
-      riskLevel = "high";
-    } else if (hasUnresolvedWarning || unattributedPasteCount >= 2 || focusRatePercent < 80) {
-      riskLevel = "medium";
-    } else if (totalBlurCount > 3 || unattributedPasteCount >= 1 || hasUnresolvedTechnical) {
-      riskLevel = "low";
-    }
-
-    // Deprecated advisory index maintained for contract backwards-compatibility:
-    // Reflects observation clarity, NOT candidate capability or guilt.
-    let advisoryIndex = 100;
-    if (riskLevel === "high") advisoryIndex = 45;
-    else if (riskLevel === "medium") advisoryIndex = 70;
-    else if (riskLevel === "low") advisoryIndex = 80;
-
+    // Invariant 1 (LOOP 10.0.1): No 0-100 composite integrity scores, risk bands, or candidate rankings.
+    // Telemetry exposes strictly factual technical events for human reviewer evaluation.
     return {
       sessionId: session.id,
       candidateName: session.candidateName,
       candidateEmail: session.candidateEmail,
       status: session.status,
-      integrityScore: advisoryIndex,
-      riskLevel,
       reviewStatus,
       metrics: {
         totalBlurCount,

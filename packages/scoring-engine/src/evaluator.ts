@@ -29,16 +29,24 @@ export class AssessmentEvaluator {
     const wordCount = submission.explanation.trim().split(/\s+/).filter(Boolean).length;
 
     const promptCount = options.aiPromptCount ?? 0;
+    const prompts = options.prompts ?? [];
+    const hasAiUsage = promptCount > 0 || prompts.length > 0;
     const totalCost = options.totalCostUsd ?? 0;
     const policyMode = options.aiPolicyMode ?? "enabled";
 
     const isAiProhibited = policyMode === "prohibited";
     const isAiRestricted = policyMode === "restricted";
+    const isAutonomousWithoutAi = !isAiProhibited && !isAiRestricted && !hasAiUsage;
 
-    // Dynamic Rubric Weighting Policy (Phase 2 / Fairness & Scoring Integrity)
-    // When AI is prohibited, AI Collaboration (15) and Critical Evaluation (15) are N/A.
-    // Weights are cleanly redistributed to technical engineering dimensions so total remains 100.
-    const weights = isAiProhibited
+    // Dynamic Rubric Weighting Policy (LOOP 10.0.1 Fairness & Scoring Integrity)
+    // 1. When AI is prohibited, AI Collaboration (0) and Critical Evaluation (0) are N/A.
+    // 2. When AI is enabled but candidate used zero AI queries, lack of AI evidence produces N/A
+    //    rather than an artificial positive (Rating 4) or negative rating.
+    // In both cases, weights are cleanly redistributed to technical engineering dimensions so total remains 100.
+    const isAiCollaborationNA = isAiProhibited || isAutonomousWithoutAi;
+    const isCriticalEvaluationNA = isAiProhibited || isAiRestricted || isAutonomousWithoutAi;
+
+    const weights = (isAiProhibited || isAutonomousWithoutAi)
       ? {
           codeComprehension: 30,
           problemFraming: 10,
@@ -101,18 +109,22 @@ export class AssessmentEvaluator {
     }
 
     // 3. AI Collaboration & Inquiry Strategy
-    // Architectural Invariant AD #4 & LOOP 8 Scoring Integrity:
+    // Architectural Invariant AD #4 & LOOP 10.0.1 Scoring Fairness:
     // 1. Token use is ONLY operational cost telemetry. Candidates are NEVER rewarded or penalized for token volume.
-    // 2. Candidates who solve problems autonomously without AI must NEVER be penalized.
+    // 2. Lack of AI-collaboration evidence produces N/A with weight redistributed to technical competencies,
+    //    NEVER an artificial positive (Rating 4) or negative rating.
     // 3. High prompt count must not be arbitrarily penalized if inquiries are targeted and disciplined.
-    let aiCollabRating: RubricRatingAnchor = 4;
+    let aiCollabRating: RubricRatingAnchor = 1;
     const aiCollabCitations: string[] = [];
 
-    if (isAiProhibited) {
-      aiCollabRating = 4; // Non-punitive baseline for N/A dimension
-      aiCollabCitations.push("[N/A] AI Assistant was prohibited for this task by company policy.");
+    if (isAiCollaborationNA) {
+      aiCollabRating = 1; // Zero weight assigned; non-scoring N/A dimension
+      aiCollabCitations.push(
+        isAiProhibited
+          ? "[N/A] AI Assistant was prohibited for this task by company policy."
+          : "[N/A] No AI queries were submitted by the candidate during this session. Candidate resolved the challenge autonomously. Dimension marked N/A; weight redistributed to technical engineering competencies."
+      );
     } else {
-      const prompts = options.prompts ?? [];
       const targetedKeywords = ["root cause", "edge case", "type", "sort", "comparator", "tags", "mutation", "why", "explain", "complexity", "interface", "null", "undefined"];
 
       if (prompts.length > 0) {
@@ -136,12 +148,6 @@ export class AssessmentEvaluator {
         aiCollabCitations.push(
           `Effective inquiry cadence: Candidate used ${promptCount} targeted inquiry iteration(s).`
         );
-      } else {
-        // Autonomy fairness rule: Never penalize a candidate for solving problems independently
-        aiCollabRating = 4;
-        aiCollabCitations.push(
-          "Complete engineering autonomy: Candidate resolved the challenge independently without requiring AI assistant queries."
-        );
       }
 
       // Append company budget audit telemetry strictly as non-scoring metadata
@@ -151,15 +157,18 @@ export class AssessmentEvaluator {
     }
 
     // 4. Critical Evaluation of AI Output
-    let critRating: RubricRatingAnchor = 3;
+    let critRating: RubricRatingAnchor = 1;
     const critCitations: string[] = [];
 
-    if (isAiProhibited) {
-      critRating = 4;
-      critCitations.push("[N/A] AI patch generation was prohibited for this task by company policy.");
-    } else if (isAiRestricted) {
-      critRating = 4;
-      critCitations.push("[N/A] AI code patch generation was restricted for this task.");
+    if (isCriticalEvaluationNA) {
+      critRating = 1; // Zero weight assigned; non-scoring N/A dimension
+      critCitations.push(
+        isAiProhibited
+          ? "[N/A] AI patch generation was prohibited for this task by company policy."
+          : isAiRestricted
+          ? "[N/A] AI code patch generation was restricted for this task."
+          : "[N/A] No AI code suggestions were generated or reviewed. Dimension marked N/A; weight redistributed to technical engineering competencies."
+      );
     } else {
       if (passRatio === 1 && wordCount >= 30) {
         critRating = 4;
@@ -248,7 +257,7 @@ export class AssessmentEvaluator {
         rating: aiCollabRating,
         points: calculatePoints(weights.aiCollaboration, aiCollabRating),
         evidenceCitations: aiCollabCitations,
-        isNotApplicable: isAiProhibited,
+        isNotApplicable: isAiCollaborationNA,
       },
       {
         dimensionId: "critical-evaluation",
@@ -257,7 +266,7 @@ export class AssessmentEvaluator {
         rating: critRating,
         points: calculatePoints(weights.criticalEvaluation, critRating),
         evidenceCitations: critCitations,
-        isNotApplicable: isAiProhibited || isAiRestricted,
+        isNotApplicable: isCriticalEvaluationNA,
       },
       {
         dimensionId: "debugging-implementation",

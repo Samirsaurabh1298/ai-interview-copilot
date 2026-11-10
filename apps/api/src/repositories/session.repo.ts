@@ -152,6 +152,15 @@ export class SessionRepository {
     };
   }
 
+  public async delete(id: string): Promise<boolean> {
+    const db = await this.dbProvider();
+    const rows = await db
+      .delete(assessmentSessions)
+      .where(eq(assessmentSessions.id, id))
+      .returning({ id: assessmentSessions.id });
+    return rows.length > 0;
+  }
+
   private mapSession(row: typeof assessmentSessions.$inferSelect): AssessmentSession {
     return {
       id: row.id,

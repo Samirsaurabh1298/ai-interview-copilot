@@ -237,7 +237,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 6. Proctor Controls: Pause Session (Task 15)
+  // 6. Proctor Controls: Pause Session (Task 15 & LOOP 10.0.1 Invariant 4)
   fastify.post("/:sessionId/pause", async (request, reply) => {
     const { sessionId } = request.params as { sessionId: string };
     const body = (request.body as { reason?: string }) || {};
@@ -245,7 +245,14 @@ export const sessionsRoutes: FastifyPluginAsync<{
     try {
       const session = sessionService.getSession(sessionId);
 
-      if (authService && request.headers.authorization) {
+      if (!request.headers.authorization) {
+        return reply.status(401).send({
+          error: "UNAUTHORIZED",
+          message: "Authorization token required to pause candidate sessions",
+        });
+      }
+
+      if (authService) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, session.organizationId);
         if (!["owner", "admin", "interviewer"].includes(auth.role)) {
@@ -272,14 +279,21 @@ export const sessionsRoutes: FastifyPluginAsync<{
     }
   });
 
-  // 6b. Proctor Controls: Resume Session & Extend Deadline (Task 15)
+  // 6b. Proctor Controls: Resume Session & Extend Deadline (Task 15 & LOOP 10.0.1 Invariant 4)
   fastify.post("/:sessionId/resume", async (request, reply) => {
     const { sessionId } = request.params as { sessionId: string };
 
     try {
       const session = sessionService.getSession(sessionId);
 
-      if (authService && request.headers.authorization) {
+      if (!request.headers.authorization) {
+        return reply.status(401).send({
+          error: "UNAUTHORIZED",
+          message: "Authorization token required to resume candidate sessions",
+        });
+      }
+
+      if (authService) {
         const auth = authService.parseAuthHeader(request.headers.authorization);
         authService.assertTenantAccess(auth, session.organizationId);
         if (!["owner", "admin", "interviewer"].includes(auth.role)) {
@@ -301,6 +315,49 @@ export const sessionsRoutes: FastifyPluginAsync<{
       }
       if (err instanceof SessionInvalidStateError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // 6c. Candidate Data Erasure & Privacy Compliance (LOOP 10.0.1 Invariant 6)
+  fastify.delete("/:sessionId/data", async (request, reply) => {
+    const { sessionId } = request.params as { sessionId: string };
+
+    try {
+      const session = sessionService.getSession(sessionId);
+
+      if (!request.headers.authorization) {
+        return reply.status(401).send({
+          error: "UNAUTHORIZED",
+          message: "Authorization token required to request candidate data erasure",
+        });
+      }
+
+      if (authService) {
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        authService.assertTenantAccess(auth, session.organizationId);
+        // Only organization owner/admin or the candidate themselves can request data erasure
+        if (
+          auth.role !== "owner" &&
+          auth.role !== "admin" &&
+          (auth.role !== "candidate" || auth.sessionId !== sessionId)
+        ) {
+          return reply.status(403).send({
+            error: "FORBIDDEN",
+            message: `Role '${auth.role}' is not authorized to delete candidate data for this session`,
+          });
+        }
+      }
+
+      const erasureResult = await sessionService.deleteSessionData(sessionId);
+      return reply.status(200).send(erasureResult);
+    } catch (err: unknown) {
+      if (err instanceof SessionNotFoundError) {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      }
+      if (isTenantOrAuthForbiddenError(err)) {
+        return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
       throw err;
     }

@@ -113,15 +113,22 @@ export class MagicLinkService {
 
     this.tokensByHash.set(tokenHash, record);
 
-    // 4. In development or test environments, expose debugToken for automated test & local UI validation.
-    // In production, token is ONLY sent via private enterprise delivery channel (never leaked in HTTP response).
-    const isDevOrTest =
-      process.env.NODE_ENV !== "production" || process.env.ALLOW_DEMO_LOGIN === "true";
+    // 4. Secure Magic-Link Debugging (LOOP 10.0.1 Invariant 3)
+    // Debug tokens are strictly restricted to explicitly enabled test environments or local debug mode.
+    // In production or external pilot configurations, debugToken is strictly undefined and NEVER returned.
+    const isProductionOrPilot =
+      process.env.NODE_ENV === "production" ||
+      process.env.APP_ENV === "pilot" ||
+      process.env.APP_ENV === "production";
+
+    const allowDebugToken =
+      !isProductionOrPilot &&
+      (process.env.NODE_ENV === "test" || process.env.ALLOW_LOCAL_DEBUG_MAGIC_LINK === "true");
 
     return {
       success: true,
       message: standardMessage,
-      debugToken: isDevOrTest ? token : undefined,
+      debugToken: allowDebugToken ? token : undefined,
       expiresInSeconds,
     };
   }

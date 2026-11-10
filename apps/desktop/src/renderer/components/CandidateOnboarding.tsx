@@ -18,12 +18,14 @@ interface CandidateOnboardingProps {
   invitationToken: string;
   onAssessmentStarted: (sessionData: AcceptInvitationResponse) => void;
   onCancel: () => void;
+  isInternalPreview?: boolean;
 }
 
 export const CandidateOnboarding: React.FC<CandidateOnboardingProps> = ({
   invitationToken,
   onAssessmentStarted,
   onCancel,
+  isInternalPreview = false,
 }) => {
   const [details, setDetails] = useState<VerifyInvitationResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,12 +90,18 @@ export const CandidateOnboarding: React.FC<CandidateOnboardingProps> = ({
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Invitation Unavailable</h3>
             <p className="text-xs text-slate-600 dark:text-gray-400 mt-1.5 leading-relaxed">{error}</p>
           </div>
-          <button
-            onClick={onCancel}
-            className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-all"
-          >
-            Return to Dashboard
-          </button>
+          {isInternalPreview ? (
+            <button
+              onClick={onCancel}
+              className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-800 dark:text-gray-200 font-semibold text-xs transition-all"
+            >
+              Return to Dashboard
+            </button>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-gray-400 pt-2 border-t border-slate-100 dark:border-gray-800">
+              Please contact your recruiting coordinator or hiring organization to request a valid assessment link.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -229,16 +237,20 @@ export const CandidateOnboarding: React.FC<CandidateOnboardingProps> = ({
           )}
 
           <div className="flex items-center justify-between pt-2">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white"
-            >
-              Cancel
-            </button>
+            {isInternalPreview ? (
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white"
+              >
+                Cancel
+              </button>
+            ) : null}
             <button
               onClick={handleStartAssessment}
               disabled={!agreed || isStarting}
               className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-xs text-white shadow-lg transition-all ${
+                !isInternalPreview ? "w-full justify-center" : ""
+              } ${
                 agreed && !isStarting
                   ? "bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20"
                   : "bg-slate-300 dark:bg-gray-800 text-slate-500 cursor-not-allowed"

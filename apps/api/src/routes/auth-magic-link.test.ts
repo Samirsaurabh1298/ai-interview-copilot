@@ -161,6 +161,33 @@ describe("LOOP 10: Production Magic Link Authentication & Runner Security Gate",
       expect(blockedRes.statusCode).toBe(429);
       expect(blockedRes.json().error).toBe("RATE_LIMIT_EXCEEDED");
     });
+
+    it("strictly omits debugToken in production and external pilot configurations (LOOP 10.0.1 Invariant 3)", async () => {
+      const origNodeEnv = process.env.NODE_ENV;
+      const origAppEnv = process.env.APP_ENV;
+
+      try {
+        process.env.NODE_ENV = "production";
+        process.env.APP_ENV = "pilot";
+
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/auth/magic-link/request",
+          payload: {
+            email: "pilot-admin@acmepilot.com",
+            organizationId: testOrgId,
+          },
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json();
+        expect(body.success).toBe(true);
+        expect(body.debugToken).toBeUndefined(); // Zero token leakage in pilot/production
+      } finally {
+        process.env.NODE_ENV = origNodeEnv;
+        process.env.APP_ENV = origAppEnv;
+      }
+    });
   });
 
   describe("Critical Security Gate: RUNNER_EXECUTION_ENABLED (Phase 0 & 3)", () => {

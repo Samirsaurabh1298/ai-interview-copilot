@@ -166,5 +166,53 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
     const err = JSON.parse(pauseRes.body);
     expect(err.error).toBe("FORBIDDEN");
   });
+
+  it("rejects unauthenticated pause and resume requests with 401 UNAUTHORIZED (LOOP 10.0.1 Invariant 4)", async () => {
+    const { session } = await createTestSession();
+
+    // 1. Unauthenticated pause
+    const pauseRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/sessions/${session.id}/pause`,
+      payload: { reason: "Anonymous pause attempt" },
+    });
+    expect(pauseRes.statusCode).toBe(401);
+    expect(JSON.parse(pauseRes.body).error).toBe("UNAUTHORIZED");
+
+    // 2. Unauthenticated resume
+    const resumeRes = await app.inject({
+      method: "POST",
+      url: `/api/v1/sessions/${session.id}/resume`,
+    });
+    expect(resumeRes.statusCode).toBe(401);
+    expect(JSON.parse(resumeRes.body).error).toBe("UNAUTHORIZED");
+  });
+
+  it("erases candidate data upon authorized request and returns honest retention disclaimer (LOOP 10.0.1 Invariant 6)", async () => {
+    const { session, interviewerToken, candidateToken } = await createTestSession();
+
+    // 1. Candidate requests their own data erasure
+    const eraseRes = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/sessions/${session.id}/data`,
+      headers: { Authorization: `Bearer ${candidateToken}` },
+    });
+
+    expect(eraseRes.statusCode).toBe(200);
+    const body = JSON.parse(eraseRes.body);
+    expect(body.success).toBe(true);
+    expect(body.sessionId).toBe(session.id);
+    expect(body.recordsDeleted.session).toBe(true);
+    expect(body.retentionDisclaimer.activeDatabase).toContain("Hard-deleted immediately");
+    expect(body.retentionDisclaimer.externalAiProviders).toContain("external LLM inference providers");
+
+    // 2. Subsequent retrieval of deleted session returns 404
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/api/v1/sessions/${session.id}`,
+      headers: { Authorization: `Bearer ${interviewerToken}` },
+    });
+    expect(getRes.statusCode).toBe(404);
+  });
 });
 
