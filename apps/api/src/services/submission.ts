@@ -148,10 +148,7 @@ export class SubmissionService {
     const now = Date.now();
     const hardDeadlineMs =
       new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
-
-    if (now > hardDeadlineMs && session.status === "expired") {
-      throw new SessionExpiredError("Submission grace period has expired. Solution cannot be submitted.");
-    }
+    const isSubmittedAtExpiry = now > hardDeadlineMs || session.status === "expired";
 
     // 1. Fetch template for starterCode and verificationTestCode
     const template = this.templateService.getTemplateById(session.organizationId, session.templateId);

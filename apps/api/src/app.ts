@@ -227,6 +227,10 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const integrityService = new IntegrityService(eventsService, sessionService);
   const magicLinkService = new MagicLinkService(orgService, emailService, config.APP_BASE_URL);
 
+  app.decorate("sessionService", sessionService);
+  app.decorate("invitationService", invitationService);
+  app.decorate("submissionService", submissionService);
+
   // Route registration
   await app.register(authRoutes, {
     prefix: "/api/v1/auth",

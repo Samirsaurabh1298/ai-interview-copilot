@@ -158,9 +158,12 @@ export class AssessmentSessionService {
     const session = this.getSession(sessionId);
     const now = Date.now();
     const isPaused = session.status === "paused";
+    const isSubmitted = session.status === "submitted";
 
     let remainingSeconds = 0;
-    if (isPaused && session.pausedAt) {
+    if (isSubmitted) {
+      remainingSeconds = 0;
+    } else if (isPaused && session.pausedAt) {
       // When paused, remainingSeconds is frozen at the exact moment of pause
       const pauseAtMs = new Date(session.pausedAt).getTime();
       const expiresAtMs = new Date(session.expiresAt).getTime();
@@ -172,8 +175,8 @@ export class AssessmentSessionService {
 
     const expiresAtMs = new Date(session.expiresAt).getTime();
     const gracePeriodMs = session.gracePeriodSeconds * 1000;
-    const isExpired = !isPaused && remainingSeconds <= 0;
-    const inGracePeriod = !isPaused && isExpired && now <= expiresAtMs + gracePeriodMs;
+    const isExpired = !isPaused && !isSubmitted && remainingSeconds <= 0;
+    const inGracePeriod = !isPaused && !isSubmitted && isExpired && now <= expiresAtMs + gracePeriodMs;
 
     const budgetStatus = this.gateway.getBudgetStatus(sessionId);
     session.consumedAiBudgetUsd = budgetStatus.consumedBudgetUsd;
@@ -280,10 +283,7 @@ export class AssessmentSessionService {
     const now = Date.now();
     const hardDeadlineMs =
       new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
-
-    if (now > hardDeadlineMs && session.status === "expired") {
-      throw new SessionExpiredError("Submission deadline past grace period. Contact your interviewer for assistance.");
-    }
+    const isPastDeadline = now > hardDeadlineMs || session.status === "expired";
 
     const submitDate = new Date();
     session.status = "submitted";

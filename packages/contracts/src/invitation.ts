@@ -71,6 +71,13 @@ export const AcceptInvitationResponseSchema = z.object({
   tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema,
   durationMinutes: z.number(),
+  attemptDurationMinutes: z.number().optional(),
+  submissionDeadlineDays: z.number().optional(),
+  expiresAt: z.string().optional(),
+  startedAt: z.string().optional(),
+  remainingSeconds: z.number().optional(),
+  status: z.string().optional(),
+  isSubmitted: z.boolean().optional(),
 });
 export type AcceptInvitationResponse = z.infer<typeof AcceptInvitationResponseSchema>;
 

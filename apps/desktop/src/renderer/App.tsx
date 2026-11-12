@@ -151,7 +151,7 @@ export const App: React.FC = () => {
 
   // Pure isolated candidate view with no host admin tabs
   if (activeSessionData) {
-    if (isCandidateExited) {
+    if (isCandidateExited && !activeSessionData.isSubmitted) {
       return (
         <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden font-sans items-center justify-center p-6">
           <div className="max-w-md w-full p-8 rounded-2xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] text-center space-y-5 shadow-2xl">
@@ -181,7 +181,21 @@ export const App: React.FC = () => {
       <div className="flex flex-col h-screen w-screen bg-slate-50 text-slate-900 transition-colors dark:bg-[#090d16] dark:text-gray-100 overflow-hidden select-none font-sans">
         <AssessmentWorkspace
           sessionData={activeSessionData}
-          onExitSession={() => setIsCandidateExited(true)}
+          onExitSession={() => {
+            try {
+              const raw = sessionStorage.getItem(CANDIDATE_SESSION_STORAGE_KEY);
+              const parsed = raw ? JSON.parse(raw) : null;
+              if (parsed?.isSubmitted || activeSessionData.isSubmitted) {
+                sessionStorage.removeItem(CANDIDATE_SESSION_STORAGE_KEY);
+                setActiveSessionData(null);
+                setIsCandidateExited(false);
+                return;
+              }
+            } catch {
+              // ignore
+            }
+            setIsCandidateExited(true);
+          }}
         />
       </div>
     );

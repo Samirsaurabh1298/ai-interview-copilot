@@ -174,6 +174,19 @@ export class CandidateInvitationService {
 
   public verifyInvitation(token: string): VerifyInvitationResponse {
     const invitation = this.getInvitationByToken(token);
+
+    if (invitation.sessionId && this.sessionService && invitation.status !== "completed") {
+      try {
+        const session = this.sessionService.getSession(invitation.sessionId);
+        if (session.status === "submitted") {
+          invitation.status = "completed";
+          this.repo.update(invitation.id, { status: "completed" }).catch(() => {});
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const org = this.orgService.getOrganizationById(invitation.organizationId);
     const template = this.templateService.getTemplateById(
       invitation.organizationId,
@@ -206,6 +219,19 @@ export class CandidateInvitationService {
 
     if (invitation.status === "completed") {
       throw new InvitationInvalidStateError("This assessment session has already been completed and submitted");
+    }
+
+    if (invitation.sessionId && this.sessionService) {
+      try {
+        const session = this.sessionService.getSession(invitation.sessionId);
+        if (session.status === "submitted") {
+          invitation.status = "completed";
+          this.repo.update(invitation.id, { status: "completed" }).catch(() => {});
+          throw new InvitationInvalidStateError("This assessment session has already been completed and submitted");
+        }
+      } catch (err) {
+        if (err instanceof InvitationInvalidStateError) throw err;
+      }
     }
 
     const template = this.templateService.getTemplateById(
@@ -253,6 +279,22 @@ export class CandidateInvitationService {
     invitation.acceptedAt = invitation.acceptedAt ?? now;
     invitation.startedAt = invitation.startedAt ?? now;
 
+    let session: any = null;
+    if (sessionId && this.sessionService) {
+      try {
+        session = this.sessionService.getSession(sessionId);
+      } catch {
+        // session not indexed in memory
+      }
+    }
+
+    const sessionStartedAt = session?.startedAt ? new Date(session.startedAt) : (invitation.startedAt ?? now);
+    const sessionExpiresAt = session?.expiresAt ? new Date(session.expiresAt) : new Date(sessionStartedAt.getTime() + durationMinutes * 60 * 1000);
+    const isSubmitted = session?.status === "submitted" || invitation.status === "completed";
+    const remainingSeconds = isSubmitted
+      ? 0
+      : Math.max(0, Math.ceil((sessionExpiresAt.getTime() - Date.now()) / 1000));
+
     // Durable write-through to PostgreSQL
     this.repo
       .update(invitation.id, {
@@ -277,6 +319,11 @@ export class CandidateInvitationService {
       attemptDurationMinutes: durationMinutes,
       submissionDeadlineDays: template.submissionDeadlineDays ?? 7,
       tasks,
+      expiresAt: sessionExpiresAt.toISOString(),
+      startedAt: sessionStartedAt.toISOString(),
+      remainingSeconds,
+      status: session?.status || invitation.status,
+      isSubmitted,
     };
   }
 

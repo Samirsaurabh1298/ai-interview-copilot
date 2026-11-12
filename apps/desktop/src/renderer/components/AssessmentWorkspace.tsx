@@ -197,9 +197,19 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [candidateId] = useState(
     () => sessionData?.invitation.candidateName || "cand_frontend_pilot_1"
   );
-  const [timeLeftSeconds, setTimeLeftSeconds] = useState(
-    () => (sessionData?.durationMinutes ?? 60) * 60
-  );
+  const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(() => {
+    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") {
+      return 0;
+    }
+    if (sessionData?.remainingSeconds !== undefined) {
+      return Math.max(0, sessionData.remainingSeconds);
+    }
+    if (sessionData?.expiresAt) {
+      const diff = Math.ceil((new Date(sessionData.expiresAt).getTime() - Date.now()) / 1000);
+      return Math.max(0, diff);
+    }
+    return (sessionData?.durationMinutes ?? 60) * 60;
+  });
   const [code, setCode] = useState(() => sessionData?.starterCode || STARTER_CODE);
   const verificationTestCode = sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE;
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
@@ -431,9 +441,19 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   };
 
   // Server-Authoritative Session Lifecycle State
-  const [sessionStatus, setSessionStatus] = useState<AssessmentSessionStatus>("in_progress");
+  const [sessionStatus, setSessionStatus] = useState<AssessmentSessionStatus>(() => {
+    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") return "submitted";
+    return (sessionData?.status as AssessmentSessionStatus) || "in_progress";
+  });
   const [inGracePeriod, setInGracePeriod] = useState(false);
-  const [isExpired, setIsExpired] = useState(false);
+  const [isExpired, setIsExpired] = useState<boolean>(() => {
+    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") return false;
+    if (sessionData?.remainingSeconds === 0) return true;
+    if (sessionData?.expiresAt) {
+      return new Date(sessionData.expiresAt).getTime() <= Date.now();
+    }
+    return false;
+  });
 
   // Autosave State
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -604,13 +624,25 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     };
   }, [sessionId, sessionData?.candidateToken]);
 
-  // Smooth local countdown timer (frozen when paused by proctor)
+  // Smooth local countdown timer (frozen when paused by proctor or submitted)
   useEffect(() => {
+    if (sessionStatus === "submitted") {
+      setTimeLeftSeconds(0);
+      return;
+    }
+
     const timer = setInterval(() => {
-      setTimeLeftSeconds((prev) => (!isPaused && prev > 0 ? prev - 1 : prev));
+      setTimeLeftSeconds((prev) => {
+        if (isPaused) return prev;
+        if (prev <= 1) {
+          setIsExpired(true);
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isPaused]);
+  }, [isPaused, sessionStatus]);
 
   // Task 15: Automatic Crash Recovery from last autosaved snapshot on reload/reconnect
   useEffect(() => {
@@ -638,6 +670,8 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
   // Server-authoritative heartbeat every 5 seconds
   useEffect(() => {
+    if (sessionStatus === "submitted") return;
+
     let isMounted = true;
 
     const pollHeartbeat = async () => {
@@ -645,12 +679,21 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         const hb = await ApiClient.getSessionHeartbeat(sessionId);
         if (!isMounted) return;
 
+        if (hb.status === "submitted") {
+          setSessionStatus("submitted");
+          setTimeLeftSeconds(0);
+          setIsExpired(false);
+          return;
+        }
+
         setTimeLeftSeconds(hb.remainingSeconds);
         setIsExpired(hb.isExpired);
         setInGracePeriod(hb.inGracePeriod);
         setIsPaused(Boolean(hb.isPaused || hb.status === "paused"));
         setPauseReason(hb.pauseReason || null);
-        setSessionStatus(hb.status);
+        if (hb.status) {
+          setSessionStatus(hb.status);
+        }
 
         setBudgetStatus((prev) => ({
           ...prev,
@@ -671,7 +714,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [sessionId]);
+  }, [sessionId, sessionStatus]);
 
   // Autosave workspace code to backend
   const performAutosave = async (
@@ -950,9 +993,20 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     }
   };
 
-  // Submit Final Assessment
-  const handleSubmitAssessment = async () => {
-    if (!explanation.trim()) {
+  const hasAutoSubmittedRef = useRef(false);
+
+  // Submit Final Assessment (Unified handler for Candidate submit and System Auto-Submit on Expiration)
+  const executeSubmission = async (isAutoSubmit = false, customExplanation?: string) => {
+    if (sessionStatus === "submitted" || isSubmitting) return;
+
+    const finalExplanation =
+      customExplanation ||
+      explanation.trim() ||
+      (isAutoSubmit
+        ? "Assessment time limit elapsed. System automatically submitted candidate's in-flight solution and question responses."
+        : "Candidate submitted assessment solution.");
+
+    if (!isAutoSubmit && !finalExplanation.trim()) {
       alert("Please provide a brief technical explanation before final submission.");
       return;
     }
@@ -1019,18 +1073,21 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       }
 
       // Submit to server-authoritative session record with immutable artifact bundling (Task 14)
+      let receipt: any = null;
       try {
-        const receipt = await ApiClient.submitAssessment(
+        receipt = await ApiClient.submitAssessment(
           sessionId,
           {
             finalCode: code,
-            technicalExplanation: explanation.trim(),
+            technicalExplanation: finalExplanation,
             taskSubmissions,
           },
           sessionData?.candidateToken
         );
         setSubmissionReceipt(receipt);
-        setIsReceiptModalOpen(true);
+        if (!isAutoSubmit) {
+          setIsReceiptModalOpen(true);
+        }
       } catch (err) {
         console.warn("Server session submit warning:", err);
       }
@@ -1039,9 +1096,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         "session_submitted",
         {
           finalCodeLength: code.length,
-          explanationLength: explanation.length,
+          explanationLength: finalExplanation.length,
           testsPassed: tests.filter((t) => t.passed).length,
           totalTests: tests.length,
+          isAutoSubmitted: isAutoSubmit,
         },
         true
       );
@@ -1055,7 +1113,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           candidateId,
           finalCode: code,
           diff,
-          explanation: explanation.trim(),
+          explanation: finalExplanation,
           testResults: tests,
           submittedAt: new Date(),
         });
@@ -1064,14 +1122,137 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         console.warn("Scorecard evaluation notice:", cardErr);
       }
 
+      // Persist submitted status into sessionStorage so reloads do not restart the session
+      try {
+        const raw = sessionStorage.getItem("ai_copilot_candidate_session");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          sessionStorage.setItem(
+            "ai_copilot_candidate_session",
+            JSON.stringify({
+              ...parsed,
+              isSubmitted: true,
+              status: "submitted",
+              submittedAt: new Date().toISOString(),
+              submissionReceipt: receipt,
+            })
+          );
+        }
+      } catch {
+        // ignore
+      }
+
       setSessionStatus("submitted");
+      setTimeLeftSeconds(0);
+      setIsExpired(true);
       setIsSubmitModalOpen(false);
     } catch (err: unknown) {
-      alert(`Submission evaluation failed: ${err instanceof Error ? err.message : "Error"}`);
+      if (!isAutoSubmit) {
+        alert(`Submission evaluation failed: ${err instanceof Error ? err.message : "Error"}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmitAssessment = () => executeSubmission(false);
+
+  // Auto-close / auto-submit watchdog: fires when time limit hard expires
+  useEffect(() => {
+    if (sessionStatus === "submitted" || isSubmitting) return;
+
+    if ((isExpired && !inGracePeriod) || (timeLeftSeconds <= 0 && !inGracePeriod)) {
+      if (!hasAutoSubmittedRef.current) {
+        hasAutoSubmittedRef.current = true;
+        setIsExpired(true);
+        executeSubmission(true);
+      }
+    }
+  }, [isExpired, inGracePeriod, timeLeftSeconds, sessionStatus, isSubmitting]);
+
+  // Dedicated Auto-Closed Assessment View when Submitted
+  if (sessionStatus === "submitted") {
+    return (
+      <div className="flex flex-col h-full w-full bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-gray-100 items-center justify-center p-6 overflow-y-auto">
+        <div className="max-w-xl w-full p-8 rounded-3xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-2xl space-y-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/10">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 uppercase tracking-wider">
+              Assessment Completed & Submitted
+            </span>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mt-3">
+              Assessment Window Closed
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-gray-400 mt-2 leading-relaxed">
+              Your solution code and multi-task responses have been sealed and safely submitted to the hiring team. The candidate workspace is now closed to preserve evaluation integrity.
+            </p>
+          </div>
+
+          {/* Submission Details Card */}
+          <div className="p-4 rounded-2xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 text-left space-y-3 font-mono text-xs">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-gray-800">
+              <span className="text-slate-500 dark:text-gray-400 font-sans">Candidate:</span>
+              <span className="font-bold text-slate-800 dark:text-gray-200 font-sans">
+                {sessionData?.invitation?.candidateName || candidateId}
+              </span>
+            </div>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-gray-800">
+              <span className="text-slate-500 dark:text-gray-400 font-sans">Status:</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold font-sans">SUBMITTED (LOCKED)</span>
+            </div>
+            {submissionReceipt && (
+              <>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-gray-800">
+                  <span className="text-slate-500 dark:text-gray-400 font-sans">Submission ID:</span>
+                  <span className="truncate max-w-[240px] text-slate-700 dark:text-gray-300">
+                    {submissionReceipt.submissionId}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1 pb-1">
+                  <span className="text-slate-500 dark:text-gray-400 font-sans">Verification Fingerprint (SHA-256):</span>
+                  <span className="break-all text-[11px] bg-slate-200 dark:bg-gray-800 p-2 rounded-lg text-indigo-700 dark:text-indigo-400 select-all font-mono">
+                    {submissionReceipt.submissionFingerprint}
+                  </span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-slate-500 dark:text-gray-400 font-sans">Submitted At:</span>
+              <span className="text-slate-700 dark:text-gray-300">
+                {submissionReceipt?.submittedAt
+                  ? new Date(submissionReceipt.submittedAt).toLocaleTimeString()
+                  : new Date().toLocaleTimeString()}
+              </span>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 text-[11px] text-indigo-800 dark:text-indigo-300 text-left flex items-start gap-2.5">
+            <Lock className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+            <span>
+              All submission artifacts are cryptographically signed. The reviewing committee will evaluate your submission against calibrated rubrics.
+            </span>
+          </div>
+
+          <div className="pt-2 flex flex-col gap-2">
+            {onExitSession && (
+              <button
+                onClick={onExitSession}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-semibold text-xs shadow-md transition-all cursor-pointer"
+              >
+                Exit Assessment Window
+              </button>
+            )}
+            <p className="text-[11px] text-slate-400 dark:text-gray-500">
+              You may now safely close your browser tab.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full w-full bg-slate-100 overflow-hidden font-sans text-slate-800 dark:bg-[#090d16] dark:text-gray-100">
