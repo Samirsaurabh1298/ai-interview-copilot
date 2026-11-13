@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Camera, ShieldCheck, Terminal, Sun, Moon, Briefcase, Sparkles, Building2 } from "lucide-react";
+import { Camera, ShieldCheck, Terminal, Sun, Moon, Briefcase, Sparkles, Building2, Layers } from "lucide-react";
 
 interface HeaderProps {
   apiConnected: boolean;
   onOpenCapture: () => void;
   isGenerating: boolean;
-  activeView: "copilot" | "assessment" | "company";
-  onSelectView: (view: "copilot" | "assessment" | "company") => void;
+  activeView: "copilot" | "assessment" | "company" | "showcase";
+  onSelectView: (view: "copilot" | "assessment" | "company" | "showcase") => void;
   isCandidateSession?: boolean;
 }
 
@@ -100,6 +100,18 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Building2 className="w-3.5 h-3.5 text-indigo-500" />
               <span>Company Admin & Templates</span>
+            </button>
+
+            <button
+              onClick={() => onSelectView("showcase")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                activeView === "showcase"
+                  ? "bg-white text-indigo-600 shadow-xs dark:bg-gray-900 dark:text-indigo-400"
+                  : "text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Pilot Showcase</span>
             </button>
           </div>
         )}

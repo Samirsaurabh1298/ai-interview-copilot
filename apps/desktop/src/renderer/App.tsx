@@ -7,6 +7,7 @@ import { AssessmentWorkspace } from "./components/AssessmentWorkspace.js";
 import { CompanyDashboard } from "./components/CompanyDashboard.js";
 import { CandidateOnboarding } from "./components/CandidateOnboarding.js";
 import { PracticeStudio } from "./components/PracticeStudio.js";
+import { ProductBentoShowcase } from "./components/showcase/ProductBentoShowcase.js";
 import { ApiClient } from "./services/apiClient.js";
 import type { AIRequest, AIResponse, AcceptInvitationResponse } from "@ai-copilot/contracts";
 import { Camera, Terminal, ShieldAlert, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -38,7 +39,15 @@ export const App: React.FC = () => {
   });
 
   const [isCandidateExited, setIsCandidateExited] = useState(false);
-  const [activeView, setActiveView] = useState<"copilot" | "assessment" | "company">("company");
+  const [activeView, setActiveView] = useState<"copilot" | "assessment" | "company" | "showcase">(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("view") === "showcase") return "showcase";
+    } catch {
+      // ignore
+    }
+    return "company";
+  });
   const [apiConnected, setApiConnected] = useState(false);
   const [triggerPracticeCapture, setTriggerPracticeCapture] = useState(false);
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
@@ -213,7 +222,12 @@ export const App: React.FC = () => {
         isCandidateSession={false}
       />
 
-      {activeView === "company" ? (
+      {activeView === "showcase" ? (
+        <ProductBentoShowcase
+          onExit={() => setActiveView("company")}
+          onLaunchAssessment={() => setActiveView("assessment")}
+        />
+      ) : activeView === "company" ? (
         <CompanyDashboard
           onLaunchCandidateView={() => setActiveView("assessment")}
           onOpenInvitation={(token) => setActiveInviteToken(token)}
