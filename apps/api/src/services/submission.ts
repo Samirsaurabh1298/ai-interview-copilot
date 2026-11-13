@@ -7,6 +7,7 @@ import type {
 } from "@ai-copilot/contracts";
 import { CodeRunnerClient } from "@ai-copilot/code-runner";
 import type { AssessmentSessionService } from "./session.js";
+import type { CandidateInvitationService } from "./invitation.js";
 
 const codeRunnerClient = new CodeRunnerClient();
 import type { AssessmentTemplateService } from "./template.js";
@@ -99,15 +100,23 @@ export function canonicalizeJson(value: unknown): string {
 
 export class SubmissionService {
   private submissionsBySession = new Map<string, SubmissionArtifact>();
+  private inFlightSubmissions = new Map<string, Promise<SubmissionArtifact>>();
   private repo: SubmissionRepository;
+  private invitationService?: CandidateInvitationService;
 
   constructor(
     private sessionService: AssessmentSessionService,
     private templateService: AssessmentTemplateService,
     private eventsService: SessionEventsService,
-    repo?: SubmissionRepository
+    repo?: SubmissionRepository,
+    invitationService?: CandidateInvitationService
   ) {
     this.repo = repo ?? new SubmissionRepository();
+    this.invitationService = invitationService;
+  }
+
+  public setInvitationService(invitationService: CandidateInvitationService): void {
+    this.invitationService = invitationService;
   }
 
   public async loadFromDatabase(sessionId?: string): Promise<void> {
@@ -128,6 +137,29 @@ export class SubmissionService {
     }
   }
 
+  public async autoFinalizeSession(
+    sessionId: string,
+    reason?: string
+  ): Promise<SubmissionArtifact> {
+    const session = this.sessionService.getSession(sessionId);
+
+    // If already submitted, return existing
+    const existing = this.submissionsBySession.get(sessionId);
+    if (existing && session.status === "submitted") {
+      return existing;
+    }
+
+    const snapshotCode = session.workspaceSnapshot?.currentCode || "";
+    const explanation =
+      reason ||
+      "Auto-finalized by server upon assessment window expiration. Work captured from last autosaved workspace snapshot.";
+
+    return this.submitAssessment(sessionId, {
+      finalCode: snapshotCode,
+      technicalExplanation: explanation,
+    });
+  }
+
   public async submitAssessment(
     sessionId: string,
     req: SubmitAssessmentRequest
@@ -143,6 +175,28 @@ export class SubmissionService {
     if (session.status === "terminated") {
       throw new SessionInvalidStateError("Cannot submit a terminated session");
     }
+
+    // Atomic deduplication: if submission is already in flight for this session, reuse the existing promise
+    const inFlight = this.inFlightSubmissions.get(sessionId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const executionPromise = this.executeSubmissionInternal(session, req);
+    this.inFlightSubmissions.set(sessionId, executionPromise);
+
+    try {
+      return await executionPromise;
+    } finally {
+      this.inFlightSubmissions.delete(sessionId);
+    }
+  }
+
+  private async executeSubmissionInternal(
+    session: ReturnType<AssessmentSessionService["getSession"]>,
+    req: SubmitAssessmentRequest
+  ): Promise<SubmissionArtifact> {
+    const sessionId = session.id;
 
     // Check expiration deadline against server authoritative clock
     const now = Date.now();
@@ -355,6 +409,11 @@ export class SubmissionService {
     });
     session.workspaceSnapshot.lastTestPassedCount = passedCount;
     session.workspaceSnapshot.lastTestTotalCount = totalCount;
+
+    // 9b. Synchronize associated invitation to completed
+    if (session.invitationId && this.invitationService) {
+      this.invitationService.markInvitationCompleted(session.invitationId);
+    }
 
     // 10. Record submission event into telemetry audit stream
     this.eventsService.recordEventDirect(sessionId, "session_submitted", {

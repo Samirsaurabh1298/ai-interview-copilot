@@ -192,6 +192,7 @@ export class AssessmentSessionService {
       consumedBudgetUsd: budgetStatus.consumedBudgetUsd,
       remainingBudgetUsd: budgetStatus.remainingBudgetUsd,
       budgetWarning: budgetStatus.isWarningTriggered,
+      serverTimestamp: new Date(now).toISOString(),
     };
   }
 
@@ -211,12 +212,11 @@ export class AssessmentSessionService {
     }
 
     const now = Date.now();
-    const hardDeadlineMs =
-      new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
+    const expiresAtMs = new Date(session.expiresAt).getTime();
 
-    if (now > hardDeadlineMs) {
+    if (now > expiresAtMs) {
       session.status = "expired";
-      throw new SessionExpiredError("Assessment time limit has expired. Workspace modifications are locked.");
+      throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
     }
 
     return session;
@@ -450,6 +450,16 @@ export class AssessmentSessionService {
           "Prompts processed by external LLM inference providers (Groq, OpenAI, Anthropic, Google) are subject to third-party enterprise zero-data-retention or 30-day safety retention policies and cannot be purged on-demand via local API",
       },
     };
+  }
+
+  public listAllActiveSessions(): AssessmentSession[] {
+    const list: AssessmentSession[] = [];
+    for (const session of this.sessions.values()) {
+      if (session.status === "in_progress" || session.status === "created" || session.status === "paused") {
+        list.push(session);
+      }
+    }
+    return list;
   }
 
   public listSessionsForOrg(organizationId: string): AssessmentSession[] {

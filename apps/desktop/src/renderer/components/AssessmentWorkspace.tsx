@@ -460,6 +460,13 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [isAutosaving, setIsAutosaving] = useState(false);
   const lastSavedCodeRef = useRef<string>(sessionData?.starterCode || STARTER_CODE);
 
+  // Server-authoritative target deadline reference for drift-free timer reconciliation (Criterion 5)
+  const targetExpiryTimeRef = useRef<number | null>(
+    sessionData?.remainingSeconds !== undefined
+      ? Date.now() + sessionData.remainingSeconds * 1000
+      : (sessionData?.expiresAt ? new Date(sessionData.expiresAt).getTime() : null)
+  );
+
   // Proposed Patch Review Modal State (Architectural Decision #7)
   const [reviewingPatch, setReviewingPatch] = useState<{
     code: string;
@@ -624,7 +631,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     };
   }, [sessionId, sessionData?.candidateToken]);
 
-  // Smooth local countdown timer (frozen when paused by proctor or submitted)
+  // Smooth local countdown timer calibrated against server-authoritative deadline (Criterion 5)
   useEffect(() => {
     if (sessionStatus === "submitted") {
       setTimeLeftSeconds(0);
@@ -632,14 +639,23 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     }
 
     const timer = setInterval(() => {
-      setTimeLeftSeconds((prev) => {
-        if (isPaused) return prev;
-        if (prev <= 1) {
+      if (isPaused) return;
+
+      if (targetExpiryTimeRef.current !== null) {
+        const remaining = Math.max(0, Math.ceil((targetExpiryTimeRef.current - Date.now()) / 1000));
+        setTimeLeftSeconds(remaining);
+        if (remaining <= 0) {
           setIsExpired(true);
-          return 0;
         }
-        return prev - 1;
-      });
+      } else {
+        setTimeLeftSeconds((prev) => {
+          if (prev <= 1) {
+            setIsExpired(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
     }, 1000);
     return () => clearInterval(timer);
   }, [isPaused, sessionStatus]);
@@ -668,7 +684,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     };
   }, [sessionId, sessionData?.candidateToken]);
 
-  // Server-authoritative heartbeat every 5 seconds
+  // Server-authoritative heartbeat every 5 seconds (Reconciliation & Sync)
   useEffect(() => {
     if (sessionStatus === "submitted") return;
 
@@ -683,10 +699,16 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           setSessionStatus("submitted");
           setTimeLeftSeconds(0);
           setIsExpired(false);
+          targetExpiryTimeRef.current = null;
           return;
         }
 
-        setTimeLeftSeconds(hb.remainingSeconds);
+        // Reconcile client countdown against authoritative server remaining seconds
+        if (hb.remainingSeconds !== undefined) {
+          setTimeLeftSeconds(hb.remainingSeconds);
+          targetExpiryTimeRef.current = Date.now() + hb.remainingSeconds * 1000;
+        }
+
         setIsExpired(hb.isExpired);
         setInGracePeriod(hb.inGracePeriod);
         setIsPaused(Boolean(hb.isPaused || hb.status === "paused"));

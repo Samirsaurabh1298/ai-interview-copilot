@@ -356,5 +356,21 @@ export class CandidateInvitationService {
     invitation.status = "revoked";
     return invitation;
   }
+
+  public markInvitationCompleted(invitationId: string): void {
+    const invitation = this.invitationsById.get(invitationId);
+    if (!invitation) return;
+    invitation.status = "completed";
+    this.repo.update(invitationId, { status: "completed" }).catch((err) => {
+      console.error("[CandidateInvitationService] DB update error on completion:", err);
+    });
+  }
+
+  public getInvitationBySessionId(sessionId: string): CandidateInvitation | undefined {
+    for (const inv of this.invitationsById.values()) {
+      if (inv.sessionId === sessionId) return inv;
+    }
+    return undefined;
+  }
 }
 

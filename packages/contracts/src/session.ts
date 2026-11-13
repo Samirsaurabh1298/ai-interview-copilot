@@ -70,6 +70,7 @@ export const SessionHeartbeatResponseSchema = z.object({
   consumedBudgetUsd: z.number(),
   remainingBudgetUsd: z.number(),
   budgetWarning: z.boolean(),
+  serverTimestamp: z.string().optional(),
 });
 export type SessionHeartbeatResponse = z.infer<typeof SessionHeartbeatResponseSchema>;
 

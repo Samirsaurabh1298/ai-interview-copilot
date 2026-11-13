@@ -46,6 +46,7 @@ import { ScreenCaptureIngestService } from "./services/capture.js";
 import { IntegrityService } from "./services/integrity.js";
 import { MagicLinkService } from "./services/magic-link.js";
 import { EmailDeliveryService } from "./services/email.js";
+import { SessionExpiryProcessor } from "./services/session-expiry-processor.js";
 import type { AppConfig } from "./config.js";
 import { initDatabase, checkDatabaseHealth } from "./db/connection.js";
 
@@ -227,9 +228,36 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const integrityService = new IntegrityService(eventsService, sessionService);
   const magicLinkService = new MagicLinkService(orgService, emailService, config.APP_BASE_URL);
 
+  submissionService.setInvitationService(invitationService);
+
+  // Server-Authoritative Session Expiry Processor (LOOP 10.0.3)
+  const expiryProcessor = new SessionExpiryProcessor(
+    sessionService,
+    submissionService,
+    invitationService,
+    eventsService,
+    {
+      sweepIntervalMs: config.EXPIRY_SWEEP_INTERVAL_MS,
+      enabled: true,
+    }
+  );
+
+  // Startup Recovery: Immediately sweep to finalize any sessions that expired during server downtime
+  await expiryProcessor.sweep();
+
+  // Start background periodic sweep
+  if (config.NODE_ENV !== "test") {
+    expiryProcessor.start();
+  }
+
+  app.addHook("onClose", async () => {
+    expiryProcessor.stop();
+  });
+
   app.decorate("sessionService", sessionService);
   app.decorate("invitationService", invitationService);
   app.decorate("submissionService", submissionService);
+  app.decorate("expiryProcessor", expiryProcessor);
 
   // Route registration
   await app.register(authRoutes, {

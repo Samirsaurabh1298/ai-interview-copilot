@@ -35,6 +35,7 @@ const EnvSchema = z.object({
     .transform((val) => val === "true" || val === "1"),
   EMAIL_FROM: z.string().default("AI Interview Copilot <noreply@ai-copilot.local>"),
   RESEND_API_KEY: z.string().optional(),
+  EXPIRY_SWEEP_INTERVAL_MS: z.coerce.number().default(5000),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;
