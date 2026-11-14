@@ -382,3 +382,4 @@ export const ProductBentoShowcase: React.FC<ProductBentoShowcaseProps> = ({
     </div>
   );
 };
+
