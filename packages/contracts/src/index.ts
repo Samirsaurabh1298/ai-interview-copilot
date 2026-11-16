@@ -12,6 +12,7 @@ export * from "./auth.js";
 export * from "./template.js";
 export * from "./version.js";
 export * from "./invitation.js";
+export * from "./session-fsm.js";
 export * from "./session.js";
 export * from "./events.js";
 export * from "./submission.js";

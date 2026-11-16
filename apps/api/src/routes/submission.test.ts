@@ -207,7 +207,7 @@ export function filterAndSortTickets(
       headers: { Authorization: `Bearer ${candidateToken}` },
     });
     const updatedSess = JSON.parse(sessCheck.body);
-    expect(updatedSess.status).toBe("submitted");
+    expect(["SUBMITTED", "submitted"]).toContain(updatedSess.status);
   });
 
   it("allows reviewer to fetch immutable submission artifact via GET", async () => {

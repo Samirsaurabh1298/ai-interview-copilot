@@ -8,25 +8,37 @@ export class SubmissionRepository {
 
   public async create(artifact: SubmissionArtifact): Promise<SubmissionArtifact> {
     const db = await this.dbProvider();
-    await db.insert(submissionArtifacts).values({
-      id: artifact.id,
-      sessionId: artifact.sessionId,
-      organizationId: artifact.organizationId,
-      templateId: artifact.templateId,
-      candidateName: artifact.candidateName,
-      candidateEmail: artifact.candidateEmail,
-      submittedAt: artifact.submittedAt,
-      finalCode: artifact.finalCode,
-      starterCode: artifact.starterCode,
-      codeDiff: artifact.codeDiff,
-      testExecutionLog: artifact.testExecutionLog,
-      technicalExplanation: artifact.technicalExplanation,
-      telemetrySummary: artifact.telemetrySummary,
-      templateContentHash: artifact.templateContentHash,
-      submissionFingerprint: artifact.submissionFingerprint,
-      taskSubmissions: artifact.taskSubmissions || {},
-    });
-    return artifact;
+    try {
+      await db.insert(submissionArtifacts).values({
+        id: artifact.id,
+        sessionId: artifact.sessionId,
+        organizationId: artifact.organizationId,
+        templateId: artifact.templateId,
+        candidateName: artifact.candidateName,
+        candidateEmail: artifact.candidateEmail,
+        submittedAt: artifact.submittedAt,
+        finalCode: artifact.finalCode,
+        starterCode: artifact.starterCode,
+        codeDiff: artifact.codeDiff,
+        testExecutionLog: artifact.testExecutionLog,
+        technicalExplanation: artifact.technicalExplanation,
+        telemetrySummary: artifact.telemetrySummary,
+        templateContentHash: artifact.templateContentHash,
+        submissionFingerprint: artifact.submissionFingerprint,
+        taskSubmissions: artifact.taskSubmissions || {},
+        serverAcknowledgedRevision: artifact.serverAcknowledgedRevision ?? null,
+        finalizedBy: artifact.finalizedBy ?? null,
+        multiFileChanges: artifact.multiFileChanges ?? null,
+      });
+      return artifact;
+    } catch (err: unknown) {
+      // If unique constraint on sessionId violated, return existing persisted artifact (idempotent CAS)
+      const existing = await this.findBySessionId(artifact.sessionId);
+      if (existing) {
+        return existing;
+      }
+      throw err;
+    }
   }
 
   public async findBySessionId(sessionId: string): Promise<SubmissionArtifact | null> {
@@ -74,6 +86,9 @@ export class SubmissionRepository {
       templateContentHash: row.templateContentHash,
       submissionFingerprint: row.submissionFingerprint,
       taskSubmissions: (row.taskSubmissions as SubmissionArtifact["taskSubmissions"]) || {},
+      serverAcknowledgedRevision: row.serverAcknowledgedRevision ?? undefined,
+      finalizedBy: (row.finalizedBy as any) ?? undefined,
+      multiFileChanges: (row.multiFileChanges as any) ?? undefined,
     };
   }
 }

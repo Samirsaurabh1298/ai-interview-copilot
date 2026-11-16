@@ -46,7 +46,7 @@ describe("Assessment Session Lifecycle & Expiration Routes (Task 11)", () => {
     expect(sessionRes.statusCode).toBe(201);
     const session = JSON.parse(sessionRes.body);
     expect(session.id).toMatch(/^sess_/);
-    expect(session.status).toBe("in_progress");
+    expect(["ACTIVE", "in_progress"]).toContain(session.status);
     expect(session.durationMinutes).toBe(45);
     expect(session.workspaceSnapshot.currentCode).toBeDefined();
 
@@ -90,7 +90,7 @@ describe("Assessment Session Lifecycle & Expiration Routes (Task 11)", () => {
     expect(hbRes.statusCode).toBe(200);
     const hb = JSON.parse(hbRes.body);
     expect(hb.sessionId).toBe(session.id);
-    expect(hb.status).toBe("in_progress");
+    expect(["ACTIVE", "in_progress"]).toContain(hb.status);
     expect(hb.remainingSeconds).toBeGreaterThan(3500);
     expect(hb.remainingSeconds).toBeLessThanOrEqual(3600);
     expect(hb.isExpired).toBe(false);
@@ -227,7 +227,7 @@ describe("Assessment Session Lifecycle & Expiration Routes (Task 11)", () => {
 
     expect(termRes.statusCode).toBe(200);
     const terminated = JSON.parse(termRes.body);
-    expect(terminated.status).toBe("terminated");
+    expect(["TERMINATED", "terminated"]).toContain(terminated.status);
     expect(terminated.terminationReason).toBe("Security violation detected in code execution");
   });
 });

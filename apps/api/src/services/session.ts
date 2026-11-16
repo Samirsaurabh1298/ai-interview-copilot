@@ -1,16 +1,23 @@
 import crypto from "node:crypto";
-import type {
-  AssessmentSession,
-  CreateSessionRequest,
-  SessionHeartbeatResponse,
-  UpdateWorkspaceRequest,
-  SubmitSessionRequest,
+import {
+  type AssessmentSession,
+  type CreateSessionRequest,
+  type SessionHeartbeatResponse,
+  type UpdateWorkspaceRequest,
+  type SubmitSessionRequest,
+  SessionState,
+  normalizeSessionState,
+  transitionSessionState,
+  InvalidStateTransitionError,
+  SessionLockedError,
 } from "@ai-copilot/contracts";
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AIUsageGatewayService } from "./gateway.js";
 import type { SessionEventsService } from "./session-events.js";
 import { SessionRepository } from "../repositories/session.repo.js";
+
+export { SessionLockedError, InvalidStateTransitionError };
 
 export class SessionNotFoundError extends Error {
   constructor(message = "Assessment session not found") {
@@ -50,6 +57,10 @@ export class AssessmentSessionService {
   ) {
     this.eventsService = eventsService;
     this.repo = repo ?? new SessionRepository();
+  }
+
+  public getRepo(): SessionRepository {
+    return this.repo;
   }
 
   public setEventsService(eventsService: SessionEventsService): void {
@@ -106,7 +117,9 @@ export class AssessmentSessionService {
       invitationId: req.invitationId,
       candidateEmail: req.candidateEmail.toLowerCase().trim(),
       candidateName: req.candidateName.trim(),
-      status: "in_progress",
+      status: SessionState.ACTIVE,
+      stateVersion: 1,
+      lastPersistedRevision: 0,
       startedAt,
       expiresAt,
       totalPausedMs: 0,
@@ -118,6 +131,7 @@ export class AssessmentSessionService {
       workspaceSnapshot: {
         currentCode: template.starterCode,
         lastSavedAt: startedAt,
+        revision: 0,
       },
       createdAt: startedAt,
       updatedAt: startedAt,
@@ -157,26 +171,33 @@ export class AssessmentSessionService {
   public heartbeat(sessionId: string): SessionHeartbeatResponse {
     const session = this.getSession(sessionId);
     const now = Date.now();
-    const isPaused = session.status === "paused";
-    const isSubmitted = session.status === "submitted";
+    const isPaused = session.status === SessionState.PAUSED;
+    const isSubmitted = session.status === SessionState.SUBMITTED;
+    const isTerminated = session.status === SessionState.TERMINATED;
 
     let remainingSeconds = 0;
-    if (isSubmitted) {
+    if (isSubmitted || isTerminated) {
       remainingSeconds = 0;
     } else if (isPaused && session.pausedAt) {
       // When paused, remainingSeconds is frozen at the exact moment of pause
       const pauseAtMs = new Date(session.pausedAt).getTime();
       const expiresAtMs = new Date(session.expiresAt).getTime();
       remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - pauseAtMs) / 1000));
+    } else if (session.status === SessionState.GRACE_PERIOD || session.status === SessionState.FINALIZING) {
+      remainingSeconds = 0;
     } else {
       const expiresAtMs = new Date(session.expiresAt).getTime();
       remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - now) / 1000));
     }
 
     const expiresAtMs = new Date(session.expiresAt).getTime();
-    const gracePeriodMs = session.gracePeriodSeconds * 1000;
-    const isExpired = !isPaused && !isSubmitted && remainingSeconds <= 0;
-    const inGracePeriod = !isPaused && !isSubmitted && isExpired && now <= expiresAtMs + gracePeriodMs;
+    const isExpired =
+      !isPaused &&
+      !isSubmitted &&
+      (session.status === SessionState.GRACE_PERIOD ||
+        session.status === SessionState.FINALIZING ||
+        remainingSeconds <= 0);
+    const inGracePeriod = !isPaused && !isSubmitted && session.status === SessionState.GRACE_PERIOD;
 
     const budgetStatus = this.gateway.getBudgetStatus(sessionId);
     session.consumedAiBudgetUsd = budgetStatus.consumedBudgetUsd;
@@ -199,23 +220,37 @@ export class AssessmentSessionService {
   public assertCanCode(sessionId: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
-    if (session.status === "paused") {
+    if (session.status === SessionState.PAUSED) {
       throw new SessionInvalidStateError("Workspace is temporarily locked: assessment session has been paused by the proctor");
     }
 
-    if (session.status === "submitted") {
+    if (session.status === SessionState.SUBMITTED) {
       throw new SessionInvalidStateError("Cannot modify workspace: candidate assessment is already submitted");
     }
 
-    if (session.status === "terminated") {
+    if (session.status === SessionState.TERMINATED) {
       throw new SessionInvalidStateError("Cannot modify workspace: candidate session was terminated");
+    }
+
+    if (session.status === SessionState.FINALIZING) {
+      throw new SessionInvalidStateError("Workspace is locked: assessment finalization is currently in progress.");
+    }
+
+    if (session.status === SessionState.GRACE_PERIOD) {
+      throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
+    }
+
+    if (session.status !== SessionState.ACTIVE) {
+      throw new SessionInvalidStateError(`Cannot modify workspace: session status is '${session.status}'`);
     }
 
     const now = Date.now();
     const expiresAtMs = new Date(session.expiresAt).getTime();
 
     if (now > expiresAtMs) {
-      session.status = "expired";
+      session.status = SessionState.GRACE_PERIOD;
+      session.stateVersion = (session.stateVersion || 1) + 1;
+      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => {});
       throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
     }
 
@@ -225,17 +260,27 @@ export class AssessmentSessionService {
   public assertCanInvokeAI(sessionId: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
-    if (session.status === "paused") {
+    if (session.status === SessionState.PAUSED) {
       throw new SessionInvalidStateError("AI assistance is temporarily unavailable: session has been paused by the proctor");
     }
 
-    if (session.status !== "in_progress") {
+    if (session.status === SessionState.GRACE_PERIOD) {
+      throw new SessionExpiredError("Assessment editing deadline has elapsed. AI invocations are prohibited during grace period.");
+    }
+
+    if (session.status === SessionState.FINALIZING) {
+      throw new SessionInvalidStateError("AI assistance unavailable: session is finalizing");
+    }
+
+    if (session.status !== SessionState.ACTIVE) {
       throw new SessionInvalidStateError(`AI assistance unavailable: session status is '${session.status}'`);
     }
 
     const now = Date.now();
     if (now > new Date(session.expiresAt).getTime()) {
-      session.status = "expired";
+      session.status = SessionState.GRACE_PERIOD;
+      session.stateVersion = (session.stateVersion || 1) + 1;
+      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => {});
       throw new SessionExpiredError("Assessment session duration has elapsed. AI invocations are prohibited.");
     }
 
@@ -249,8 +294,10 @@ export class AssessmentSessionService {
     const session = this.assertCanCode(sessionId);
     const now = new Date();
 
+    session.lastPersistedRevision = (session.lastPersistedRevision ?? 0) + 1;
     session.workspaceSnapshot.currentCode = req.code;
     session.workspaceSnapshot.lastSavedAt = now;
+    session.workspaceSnapshot.revision = session.lastPersistedRevision;
     session.updatedAt = now;
 
     if (req.testResults) {
@@ -258,7 +305,7 @@ export class AssessmentSessionService {
       session.workspaceSnapshot.lastTestPassedCount = req.testResults.filter((t) => t.passed).length;
     }
 
-    // Durable write-through to PostgreSQL
+    // Durable write-through to PostgreSQL with atomic revision increment
     this.repo.updateWorkspaceSnapshot(sessionId, session.workspaceSnapshot).catch((err) => {
       console.error("[AssessmentSessionService] DB snapshot update error:", err);
     });
@@ -272,25 +319,22 @@ export class AssessmentSessionService {
   ): AssessmentSession {
     const session = this.getSession(sessionId);
 
-    if (session.status === "submitted") {
+    if (session.status === SessionState.SUBMITTED) {
       return session; // Idempotent submit
     }
 
-    if (session.status === "terminated") {
+    if (session.status === SessionState.TERMINATED) {
       throw new SessionInvalidStateError("Terminated session cannot be submitted");
     }
 
-    const now = Date.now();
-    const hardDeadlineMs =
-      new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
-    const isPastDeadline = now > hardDeadlineMs || session.status === "expired";
-
     const submitDate = new Date();
-    session.status = "submitted";
+    session.status = SessionState.SUBMITTED;
     session.submittedAt = submitDate;
     session.updatedAt = submitDate;
-    session.workspaceSnapshot.currentCode = req.finalCode;
-    session.workspaceSnapshot.lastSavedAt = submitDate;
+    if (req.finalCode) {
+      session.workspaceSnapshot.currentCode = req.finalCode;
+      session.workspaceSnapshot.lastSavedAt = submitDate;
+    }
 
     if (req.testResults) {
       session.workspaceSnapshot.lastTestTotalCount = req.testResults.length;
@@ -300,7 +344,7 @@ export class AssessmentSessionService {
     // Durable write-through to PostgreSQL
     this.repo
       .update(sessionId, {
-        status: "submitted",
+        status: SessionState.SUBMITTED,
         submittedAt: submitDate,
         workspaceSnapshot: session.workspaceSnapshot,
       })
@@ -314,28 +358,53 @@ export class AssessmentSessionService {
   public pauseSession(sessionId: string, reason?: string, initiatedBy?: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
-    if (session.status === "paused") {
+    if (session.status === SessionState.PAUSED) {
       return session; // Idempotent
     }
 
-    if (session.status !== "in_progress" && session.status !== "created") {
-      throw new SessionInvalidStateError(`Cannot pause session with status '${session.status}'`);
-    }
+    const guardContext = {
+      nowMs: Date.now(),
+      expiresAtMs: new Date(session.expiresAt).getTime(),
+      gracePeriodMs: (session.gracePeriodSeconds ?? 60) * 1000,
+      isProctorAuthorized: true,
+    };
+
+    transitionSessionState(
+      session.status,
+      {
+        type: "PROCTOR_PAUSE",
+        reason: reason || "Proctor incident pause",
+        initiatedBy: initiatedBy || "proctor",
+      },
+      guardContext
+    );
 
     const now = new Date();
-    session.status = "paused";
+    const pauseReason = reason || "Proctor incident pause";
+    session.status = SessionState.PAUSED;
     session.pausedAt = now;
-    session.pauseReason = reason || "Proctor incident pause";
+    session.pauseReason = pauseReason;
     session.updatedAt = now;
 
-    // Durable write-through to PostgreSQL
-    this.repo.update(sessionId, {
-      status: "paused",
-      pausedAt: now,
-      pauseReason: session.pauseReason,
-    }).catch((err) => {
-      console.error("[AssessmentSessionService] DB pause update error:", err);
-    });
+    // Durable write-through with atomic transition
+    this.repo
+      .atomicTransitionState(
+        sessionId,
+        [SessionState.ACTIVE, SessionState.CREATED],
+        SessionState.PAUSED,
+        {
+          pausedAt: now,
+          pauseReason,
+        }
+      )
+      .then((res) => {
+        if (res.session) {
+          session.stateVersion = res.session.stateVersion;
+        }
+      })
+      .catch((err) => {
+        console.error("[AssessmentSessionService] DB pause update error:", err);
+      });
 
     // Record server-authoritative audit trail event
     this.eventsService?.recordEventDirect(sessionId, "session_paused", {
@@ -350,9 +419,25 @@ export class AssessmentSessionService {
   public resumeSession(sessionId: string, initiatedBy?: string): AssessmentSession {
     const session = this.getSession(sessionId);
 
-    if (session.status !== "paused") {
+    if (session.status !== SessionState.PAUSED) {
       throw new SessionInvalidStateError(`Cannot resume session that is not paused (current status: '${session.status}')`);
     }
+
+    const guardContext = {
+      nowMs: Date.now(),
+      expiresAtMs: new Date(session.expiresAt).getTime(),
+      gracePeriodMs: (session.gracePeriodSeconds ?? 60) * 1000,
+      isProctorAuthorized: true,
+    };
+
+    transitionSessionState(
+      session.status,
+      {
+        type: "PROCTOR_RESUME",
+        initiatedBy: initiatedBy || "proctor",
+      },
+      guardContext
+    );
 
     const now = Date.now();
     const pausedAtMs = session.pausedAt ? new Date(session.pausedAt).getTime() : now;
@@ -362,17 +447,30 @@ export class AssessmentSessionService {
     session.expiresAt = new Date(new Date(session.expiresAt).getTime() + pauseDurationMs);
     session.pausedAt = undefined;
     session.pauseReason = undefined;
-    session.status = "in_progress";
+    session.status = SessionState.ACTIVE;
     session.updatedAt = new Date();
 
     // Durable write-through to PostgreSQL
-    this.repo.update(sessionId, {
-      status: "in_progress",
-      totalPausedMs: session.totalPausedMs,
-      expiresAt: session.expiresAt,
-    }).catch((err) => {
-      console.error("[AssessmentSessionService] DB resume update error:", err);
-    });
+    this.repo
+      .atomicTransitionState(
+        sessionId,
+        [SessionState.PAUSED],
+        SessionState.ACTIVE,
+        {
+          totalPausedMs: session.totalPausedMs,
+          expiresAt: session.expiresAt,
+          pausedAt: null as any,
+          pauseReason: null as any,
+        }
+      )
+      .then((res) => {
+        if (res.session) {
+          session.stateVersion = res.session.stateVersion;
+        }
+      })
+      .catch((err) => {
+        console.error("[AssessmentSessionService] DB resume update error:", err);
+      });
 
     // Record server-authoritative audit trail event
     this.eventsService?.recordEventDirect(sessionId, "session_resumed", {
@@ -386,18 +484,54 @@ export class AssessmentSessionService {
     return session;
   }
 
-  public terminateSession(sessionId: string, reason: string): AssessmentSession {
+  public terminateSession(sessionId: string, reason: string, initiatedBy?: string): AssessmentSession {
     const session = this.getSession(sessionId);
-    session.status = "terminated";
+
+    const guardContext = {
+      nowMs: Date.now(),
+      expiresAtMs: new Date(session.expiresAt).getTime(),
+      gracePeriodMs: (session.gracePeriodSeconds ?? 60) * 1000,
+      isProctorAuthorized: true,
+    };
+
+    transitionSessionState(
+      session.status,
+      {
+        type: "TERMINATE",
+        reason,
+        initiatedBy: initiatedBy || "proctor",
+      },
+      guardContext
+    );
+
+    session.status = SessionState.TERMINATED;
     session.terminationReason = reason;
     session.updatedAt = new Date();
 
     // Durable write-through to PostgreSQL
-    this.repo.update(sessionId, {
-      status: "terminated",
-      terminationReason: reason,
-    }).catch((err) => {
-      console.error("[AssessmentSessionService] DB terminate update error:", err);
+    this.repo
+      .atomicTransitionState(
+        sessionId,
+        [
+          SessionState.CREATED,
+          SessionState.ACTIVE,
+          SessionState.PAUSED,
+          SessionState.GRACE_PERIOD,
+          SessionState.FINALIZING,
+        ],
+        SessionState.TERMINATED,
+        {
+          terminationReason: reason,
+        }
+      )
+      .catch((err) => {
+        console.error("[AssessmentSessionService] DB terminate update error:", err);
+      });
+
+    this.eventsService?.recordEventDirect(sessionId, "session_terminated", {
+      reason,
+      terminatedAt: new Date().toISOString(),
+      initiatedBy: initiatedBy || "proctor",
     });
 
     return session;
@@ -455,7 +589,13 @@ export class AssessmentSessionService {
   public listAllActiveSessions(): AssessmentSession[] {
     const list: AssessmentSession[] = [];
     for (const session of this.sessions.values()) {
-      if (session.status === "in_progress" || session.status === "created" || session.status === "paused") {
+      if (
+        session.status === SessionState.ACTIVE ||
+        session.status === SessionState.CREATED ||
+        session.status === SessionState.PAUSED ||
+        session.status === SessionState.GRACE_PERIOD ||
+        session.status === SessionState.FINALIZING
+      ) {
         list.push(session);
       }
     }
@@ -479,14 +619,16 @@ export class AssessmentSessionService {
   }
 
   private checkAndUpdateExpiration(session: AssessmentSession): void {
-    if (session.status === "in_progress") {
+    if (session.status === SessionState.ACTIVE) {
       const now = Date.now();
-      const hardDeadlineMs =
-        new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
-      if (now > hardDeadlineMs) {
-        session.status = "expired";
+      const expiresAtMs = new Date(session.expiresAt).getTime();
+      if (now > expiresAtMs) {
+        session.status = SessionState.GRACE_PERIOD;
+        session.stateVersion = (session.stateVersion || 1) + 1;
+        this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch((err) => {
+          console.error(`[AssessmentSessionService] Expiration transition error for ${session.id}:`, err);
+        });
       }
     }
   }
 }
-

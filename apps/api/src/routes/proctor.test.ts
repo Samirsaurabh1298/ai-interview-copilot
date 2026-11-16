@@ -83,7 +83,7 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
 
     expect(pauseRes.statusCode).toBe(200);
     const pausedSession = JSON.parse(pauseRes.body);
-    expect(pausedSession.status).toBe("paused");
+    expect(["PAUSED", "paused"]).toContain(pausedSession.status);
     expect(pausedSession.pauseReason).toBe("Candidate experienced local Wi-Fi drop");
     expect(pausedSession.pausedAt).toBeDefined();
 
@@ -95,7 +95,7 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
     });
     expect(hbRes.statusCode).toBe(200);
     const hb = JSON.parse(hbRes.body);
-    expect(hb.status).toBe("paused");
+    expect(["PAUSED", "paused"]).toContain(hb.status);
     expect(hb.isPaused).toBe(true);
     expect(hb.pauseReason).toBe("Candidate experienced local Wi-Fi drop");
 
@@ -135,7 +135,7 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
 
     expect(resumeRes.statusCode).toBe(200);
     const resumedSession = JSON.parse(resumeRes.body);
-    expect(resumedSession.status).toBe("in_progress");
+    expect(["ACTIVE", "in_progress"]).toContain(resumedSession.status);
     expect(resumedSession.pausedAt).toBeUndefined();
 
     // Verify deadline was extended

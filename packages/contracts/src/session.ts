@@ -1,22 +1,39 @@
 import { z } from "zod";
 import { ToolPolicySchema } from "./assessment.js";
 import { SingleTestResultSchema } from "./validation.js";
+import {
+  SessionState,
+  AssessmentSessionStateSchema,
+  normalizeSessionState,
+  type AssessmentSessionState,
+} from "./session-fsm.js";
 
-export const AssessmentSessionStatusSchema = z.enum([
-  "created",
-  "in_progress",
-  "paused",
-  "submitted",
-  "expired",
-  "terminated",
-]);
-export type AssessmentSessionStatus = z.infer<typeof AssessmentSessionStatusSchema>;
+export {
+  SessionState,
+  AssessmentSessionStateSchema,
+  normalizeSessionState,
+  type AssessmentSessionState,
+};
+
+export const AssessmentSessionStatusSchema = z.preprocess((val) => {
+  if (typeof val === "string") {
+    try {
+      return normalizeSessionState(val);
+    } catch {
+      return val;
+    }
+  }
+  return val;
+}, AssessmentSessionStateSchema);
+
+export type AssessmentSessionStatus = AssessmentSessionState;
 
 export const WorkspaceSnapshotSchema = z.object({
   currentCode: z.string(),
   lastSavedAt: z.coerce.date().default(() => new Date()),
   lastTestPassedCount: z.number().int().optional(),
   lastTestTotalCount: z.number().int().optional(),
+  revision: z.number().int().default(0),
 });
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshotSchema>;
 
@@ -28,7 +45,11 @@ export const AssessmentSessionSchema = z.object({
   invitationId: z.string().optional(),
   candidateEmail: z.string().email(),
   candidateName: z.string().min(2).max(100),
-  status: AssessmentSessionStatusSchema.default("created"),
+  status: AssessmentSessionStatusSchema.default(SessionState.CREATED),
+  stateVersion: z.number().int().default(1),
+  finalizingAt: z.coerce.date().optional(),
+  finalizingBy: z.string().optional(),
+  lastPersistedRevision: z.number().int().default(0),
   startedAt: z.coerce.date(),
   expiresAt: z.coerce.date(),
   submittedAt: z.coerce.date().optional(),
@@ -62,6 +83,7 @@ export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
 export const SessionHeartbeatResponseSchema = z.object({
   sessionId: z.string(),
   status: AssessmentSessionStatusSchema,
+  stateVersion: z.number().int().optional(),
   remainingSeconds: z.number().int(),
   isExpired: z.boolean(),
   inGracePeriod: z.boolean(),

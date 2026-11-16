@@ -1,15 +1,16 @@
 import crypto from "node:crypto";
-import type {
-  SubmissionArtifact,
-  SubmitAssessmentRequest,
-  CodeDiffSummary,
-  TaskSubmissionResult,
+import {
+  type SubmissionArtifact,
+  type SubmitAssessmentRequest,
+  type CodeDiffSummary,
+  type TaskSubmissionResult,
+  SessionState,
+  InvalidStateTransitionError,
+  SessionLockedError,
 } from "@ai-copilot/contracts";
 import { CodeRunnerClient } from "@ai-copilot/code-runner";
 import type { AssessmentSessionService } from "./session.js";
 import type { CandidateInvitationService } from "./invitation.js";
-
-const codeRunnerClient = new CodeRunnerClient();
 import type { AssessmentTemplateService } from "./template.js";
 import type { SessionEventsService } from "./session-events.js";
 import {
@@ -18,6 +19,9 @@ import {
   SessionInvalidStateError,
 } from "./session.js";
 import { SubmissionRepository } from "../repositories/submission.repo.js";
+import { SessionRepository } from "../repositories/session.repo.js";
+
+const codeRunnerClient = new CodeRunnerClient();
 
 export class SubmissionNotFoundError extends Error {
   constructor(message = "Submission not found for this session") {
@@ -102,6 +106,7 @@ export class SubmissionService {
   private submissionsBySession = new Map<string, SubmissionArtifact>();
   private inFlightSubmissions = new Map<string, Promise<SubmissionArtifact>>();
   private repo: SubmissionRepository;
+  private sessionRepo: SessionRepository;
   private invitationService?: CandidateInvitationService;
 
   constructor(
@@ -109,9 +114,11 @@ export class SubmissionService {
     private templateService: AssessmentTemplateService,
     private eventsService: SessionEventsService,
     repo?: SubmissionRepository,
-    invitationService?: CandidateInvitationService
+    invitationService?: CandidateInvitationService,
+    sessionRepo?: SessionRepository
   ) {
     this.repo = repo ?? new SubmissionRepository();
+    this.sessionRepo = sessionRepo ?? sessionService.getRepo();
     this.invitationService = invitationService;
   }
 
@@ -139,13 +146,14 @@ export class SubmissionService {
 
   public async autoFinalizeSession(
     sessionId: string,
-    reason?: string
+    reason?: string,
+    finalizedBy: string = "system_expiry"
   ): Promise<SubmissionArtifact> {
     const session = this.sessionService.getSession(sessionId);
 
     // If already submitted, return existing
     const existing = this.submissionsBySession.get(sessionId);
-    if (existing && session.status === "submitted") {
+    if (existing && session.status === SessionState.SUBMITTED) {
       return existing;
     }
 
@@ -157,6 +165,7 @@ export class SubmissionService {
     return this.submitAssessment(sessionId, {
       finalCode: snapshotCode,
       technicalExplanation: explanation,
+      finalizedBy,
     });
   }
 
@@ -166,23 +175,106 @@ export class SubmissionService {
   ): Promise<SubmissionArtifact> {
     const session = this.sessionService.getSession(sessionId);
 
-    // If already submitted, return existing immutable artifact
+    // If already submitted in memory, return existing immutable artifact
     const existing = this.submissionsBySession.get(sessionId);
-    if (existing && session.status === "submitted") {
-      return existing;
+    if (existing && session.status === SessionState.SUBMITTED) {
+      return Object.assign({}, existing, { claimedByCaller: false });
     }
 
-    if (session.status === "terminated") {
+    // Check DB for existing artifact (e.g. from prior submission or peer instance)
+    const dbArtifact = await this.repo.findBySessionId(sessionId);
+    if (dbArtifact) {
+      this.submissionsBySession.set(sessionId, dbArtifact);
+      session.status = SessionState.SUBMITTED;
+      return Object.assign({}, dbArtifact, { claimedByCaller: false });
+    }
+
+    if (session.status === SessionState.TERMINATED) {
       throw new SessionInvalidStateError("Cannot submit a terminated session");
     }
 
-    // Atomic deduplication: if submission is already in flight for this session, reuse the existing promise
-    const inFlight = this.inFlightSubmissions.get(sessionId);
-    if (inFlight) {
-      return inFlight;
+    if (session.status === SessionState.PAUSED) {
+      throw new SessionInvalidStateError("Cannot submit a session while paused by proctor");
     }
 
-    const executionPromise = this.executeSubmissionInternal(session, req);
+    // In-memory Promise deduplication (fast-path optimization for concurrent requests in same process)
+    const inFlight = this.inFlightSubmissions.get(sessionId);
+    if (inFlight) {
+      const art = await inFlight;
+      return Object.assign({}, art, { claimedByCaller: false });
+    }
+
+    // Database-level CAS transition: ACTIVE or GRACE_PERIOD (or FINALIZING for crash recovery) -> FINALIZING
+    const isRecovery = req.finalizedBy === "system_recovery";
+    const allowedFromStates = isRecovery
+      ? [SessionState.ACTIVE, SessionState.GRACE_PERIOD, SessionState.FINALIZING]
+      : [SessionState.ACTIVE, SessionState.GRACE_PERIOD];
+
+    const transitionResult = await this.sessionRepo.atomicTransitionState(
+      sessionId,
+      allowedFromStates,
+      SessionState.FINALIZING,
+      {
+        finalizingAt: new Date(),
+        finalizingBy: req.finalizedBy || "candidate",
+      }
+    );
+
+    if (!transitionResult.success) {
+      const conflictState = transitionResult.conflictSession?.status || session.status;
+
+      // If conflicting state is SUBMITTED, fetch and return the artifact
+      if (conflictState === SessionState.SUBMITTED) {
+        const artifact = await this.repo.findBySessionId(sessionId);
+        if (artifact) {
+          this.submissionsBySession.set(sessionId, artifact);
+          session.status = SessionState.SUBMITTED;
+          return Object.assign({}, artifact, { claimedByCaller: false });
+        }
+      }
+
+      // If conflicting state is FINALIZING, another API instance/worker is currently processing it
+      if (conflictState === SessionState.FINALIZING) {
+        for (let attempt = 0; attempt < 25; attempt++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const artifact = await this.repo.findBySessionId(sessionId);
+          if (artifact) {
+            this.submissionsBySession.set(sessionId, artifact);
+            session.status = SessionState.SUBMITTED;
+            return Object.assign({}, artifact, { claimedByCaller: false });
+          }
+        }
+        throw new InvalidStateTransitionError(
+          SessionState.FINALIZING,
+          "START_FINALIZATION",
+          "Session is currently being finalized by another worker instance"
+        );
+      }
+
+      if (conflictState === SessionState.TERMINATED) {
+        throw new SessionInvalidStateError("Cannot submit a terminated session");
+      }
+
+      if (conflictState === SessionState.PAUSED) {
+        throw new SessionInvalidStateError("Cannot submit a session while paused by proctor");
+      }
+
+      throw new InvalidStateTransitionError(
+        conflictState,
+        "START_FINALIZATION",
+        "Session is not in an active or grace period state"
+      );
+    }
+
+    // Track wasGracePeriod to enforce Non-Negotiable Invariant 3:
+    // Grace period permits only submission of previously persisted server-acknowledged work.
+    const wasGracePeriod = session.status === SessionState.GRACE_PERIOD;
+    session.status = SessionState.FINALIZING;
+    if (transitionResult.session) {
+      session.stateVersion = transitionResult.session.stateVersion;
+    }
+
+    const executionPromise = this.executeSubmissionInternal(session, req, wasGracePeriod);
     this.inFlightSubmissions.set(sessionId, executionPromise);
 
     try {
@@ -194,15 +286,10 @@ export class SubmissionService {
 
   private async executeSubmissionInternal(
     session: ReturnType<AssessmentSessionService["getSession"]>,
-    req: SubmitAssessmentRequest
+    req: SubmitAssessmentRequest,
+    wasGracePeriod: boolean
   ): Promise<SubmissionArtifact> {
     const sessionId = session.id;
-
-    // Check expiration deadline against server authoritative clock
-    const now = Date.now();
-    const hardDeadlineMs =
-      new Date(session.expiresAt).getTime() + session.gracePeriodSeconds * 1000;
-    const isSubmittedAtExpiry = now > hardDeadlineMs || session.status === "expired";
 
     // 1. Fetch template for starterCode and verificationTestCode
     const template = this.templateService.getTemplateById(session.organizationId, session.templateId);
@@ -293,7 +380,14 @@ export class SubmissionService {
       }
     }
 
-    const effectiveCode = req.finalCode || Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code || template.starterCode;
+    // Invariant 3: In Grace Period or hard expiry, candidate edits are NOT accepted.
+    // Must seal from the last persisted server-acknowledged snapshot.
+    let effectiveCode: string;
+    if (wasGracePeriod || req.finalizedBy === "system_expiry" || req.finalizedBy === "system_recovery") {
+      effectiveCode = session.workspaceSnapshot?.currentCode || template.starterCode;
+    } else {
+      effectiveCode = req.finalCode || Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code || session.workspaceSnapshot?.currentCode || template.starterCode;
+    }
 
     // 2. Execute final code inside the isolated Node 22 sandbox to get authoritative test results
     const sandboxResult = await codeRunnerClient.execute({
@@ -353,7 +447,19 @@ export class SubmissionService {
     const submissionId = `sub_${crypto.randomBytes(8).toString("hex")}_${Date.now()}`;
     const submitDate = new Date();
 
-    // 6. Assemble pre-fingerprint payload
+    // Multi-file changes extraction
+    const multiFileChanges =
+      req.multiFileChanges ||
+      (req.taskSubmissions &&
+        Object.values(req.taskSubmissions).find((t: any) => t.finalFiles)?.finalFiles) ||
+      session.workspaceSnapshot?.files ||
+      undefined;
+
+    // Server-acknowledged revision (Invariant 3 & Phase 3)
+    const serverAcknowledgedRevision =
+      session.lastPersistedRevision ?? session.workspaceSnapshot?.revision ?? 0;
+
+    // 6. Assemble complete pre-fingerprint payload covering all evidence (Phase 3)
     const artifactDraft: Omit<SubmissionArtifact, "submissionFingerprint"> = {
       id: submissionId,
       sessionId,
@@ -380,6 +486,9 @@ export class SubmissionService {
       technicalExplanation: req.technicalExplanation,
       telemetrySummary,
       templateContentHash,
+      serverAcknowledgedRevision,
+      finalizedBy: req.finalizedBy || (wasGracePeriod ? "candidate_grace" : "candidate"),
+      multiFileChanges: multiFileChanges || undefined,
     };
 
     // 7. Compute cryptographic SHA-256 submission fingerprint
@@ -394,28 +503,41 @@ export class SubmissionService {
       submissionFingerprint,
     };
 
-    // 8. Persist immutable artifact
-    this.submissionsBySession.set(sessionId, finalArtifact);
+    // 8. Persist immutable artifact in PostgreSQL (with unique constraint deduplication)
+    const createdArtifact = await this.repo.create(finalArtifact);
+    this.submissionsBySession.set(sessionId, createdArtifact);
 
-    // Durable write-through to PostgreSQL
-    this.repo.create(finalArtifact).catch((err) => {
-      console.error("[SubmissionService] DB artifact create error:", err);
-    });
+    // 9. Database-level state transition: FINALIZING -> SUBMITTED
+    await this.sessionRepo.atomicTransitionState(
+      sessionId,
+      [SessionState.FINALIZING],
+      SessionState.SUBMITTED,
+      {
+        submittedAt: submitDate,
+        workspaceSnapshot: {
+          ...session.workspaceSnapshot,
+          currentCode: effectiveCode,
+          lastSavedAt: submitDate,
+          lastTestPassedCount: passedCount,
+          lastTestTotalCount: totalCount,
+        },
+      }
+    );
 
-    // 9. Update session status to submitted
-    this.sessionService.submitSession(sessionId, {
-      finalCode: req.finalCode,
-      explanation: req.technicalExplanation,
-    });
+    // Update in-memory session
+    session.status = SessionState.SUBMITTED;
+    session.submittedAt = submitDate;
+    session.workspaceSnapshot.currentCode = effectiveCode;
+    session.workspaceSnapshot.lastSavedAt = submitDate;
     session.workspaceSnapshot.lastTestPassedCount = passedCount;
     session.workspaceSnapshot.lastTestTotalCount = totalCount;
 
-    // 9b. Synchronize associated invitation to completed
+    // 10. Synchronize associated invitation to completed
     if (session.invitationId && this.invitationService) {
       this.invitationService.markInvitationCompleted(session.invitationId);
     }
 
-    // 10. Record submission event into telemetry audit stream
+    // 11. Record submission event into telemetry audit stream
     this.eventsService.recordEventDirect(sessionId, "session_submitted", {
       submissionId,
       submissionFingerprint,
@@ -423,9 +545,11 @@ export class SubmissionService {
       totalCount,
       totalChanges: codeDiff.totalChanges,
       aiQueriesCount,
+      serverAcknowledgedRevision,
+      finalizedBy: finalArtifact.finalizedBy,
     });
 
-    return finalArtifact;
+    return Object.assign({}, createdArtifact, { claimedByCaller: true });
   }
 
   public getSubmission(sessionId: string): SubmissionArtifact {

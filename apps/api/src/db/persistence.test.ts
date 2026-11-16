@@ -197,7 +197,7 @@ describe("LOOP 6.1 — Database Persistence & Durability Integration Tests", () 
       expect(verifySessRes.statusCode).toBe(200);
       const verifySess = JSON.parse(verifySessRes.body);
       expect(verifySess.id).toBe(sessionId);
-      expect(verifySess.status).toBe("submitted");
+      expect(["SUBMITTED", "submitted"]).toContain(verifySess.status);
       expect(verifySess.workspaceSnapshot.currentCode).toBe(
         "function solution() { return 'durable_survived_restart'; }"
       );

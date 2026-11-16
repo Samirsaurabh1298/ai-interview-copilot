@@ -58,6 +58,9 @@ export const SubmissionArtifactSchema = z.object({
   templateContentHash: z.string(),
   submissionFingerprint: z.string(), // Canonical SHA-256 fingerprint
   taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
+  serverAcknowledgedRevision: z.number().int().optional(),
+  finalizedBy: z.string().optional(),
+  multiFileChanges: z.record(z.string(), z.string()).optional(),
 });
 
 export type SubmissionArtifact = z.infer<typeof SubmissionArtifactSchema>;

@@ -37,6 +37,7 @@ import {
 import { ApiClient } from "../services/apiClient.js";
 import { ScorecardModal } from "./ScorecardModal.js";
 import { TelemetryClient } from "../services/telemetryClient.js";
+import { useAssessmentLifecycle } from "../hooks/useAssessmentLifecycle.js";
 import type {
   SessionBudgetStatus,
   AIResponse,
@@ -197,19 +198,25 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [candidateId] = useState(
     () => sessionData?.invitation.candidateName || "cand_frontend_pilot_1"
   );
-  const [timeLeftSeconds, setTimeLeftSeconds] = useState<number>(() => {
-    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") {
-      return 0;
-    }
-    if (sessionData?.remainingSeconds !== undefined) {
-      return Math.max(0, sessionData.remainingSeconds);
-    }
-    if (sessionData?.expiresAt) {
-      const diff = Math.ceil((new Date(sessionData.expiresAt).getTime() - Date.now()) / 1000);
-      return Math.max(0, diff);
-    }
-    return (sessionData?.durationMinutes ?? 60) * 60;
+  // Centralized Server-Authoritative Lifecycle State Machine (LOOP 10.0.4)
+  const { state: lifecycle, dispatch: lifecycleDispatch } = useAssessmentLifecycle({
+    status: sessionData?.status,
+    remainingSeconds: sessionData?.remainingSeconds,
+    expiresAt: sessionData?.expiresAt,
+    isSubmitted: sessionData?.isSubmitted || sessionData?.invitation?.status === "completed",
+    isPaused: Boolean(sessionData?.isPaused || sessionData?.status === "paused"),
+    pauseReason: sessionData?.pauseReason,
   });
+
+  const timeLeftSeconds = lifecycle.timeLeftSeconds;
+  const sessionStatus: AssessmentSessionStatus =
+    lifecycle.status === "SUBMITTED"
+      ? "submitted"
+      : (lifecycle.status.toLowerCase() as AssessmentSessionStatus);
+  const inGracePeriod = lifecycle.inGracePeriod;
+  const isExpired = lifecycle.isExpired;
+  const isPaused = lifecycle.isPaused;
+  const pauseReason = lifecycle.pauseReason;
   const [code, setCode] = useState(() => sessionData?.starterCode || STARTER_CODE);
   const verificationTestCode = sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE;
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
@@ -440,21 +447,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     }));
   };
 
-  // Server-Authoritative Session Lifecycle State
-  const [sessionStatus, setSessionStatus] = useState<AssessmentSessionStatus>(() => {
-    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") return "submitted";
-    return (sessionData?.status as AssessmentSessionStatus) || "in_progress";
-  });
-  const [inGracePeriod, setInGracePeriod] = useState(false);
-  const [isExpired, setIsExpired] = useState<boolean>(() => {
-    if (sessionData?.isSubmitted || sessionData?.invitation?.status === "completed") return false;
-    if (sessionData?.remainingSeconds === 0) return true;
-    if (sessionData?.expiresAt) {
-      return new Date(sessionData.expiresAt).getTime() <= Date.now();
-    }
-    return false;
-  });
-
   // Autosave State
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [isAutosaving, setIsAutosaving] = useState(false);
@@ -511,10 +503,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const [copiedReceiptFp, setCopiedReceiptFp] = useState(false);
   const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
-
-  // Proctor Incident & Pause Controls (Task 15)
-  const [isPaused, setIsPaused] = useState(false);
-  const [pauseReason, setPauseReason] = useState<string | null>(null);
 
   // Poll / Refresh budget helper
   const refreshBudget = async () => {
@@ -632,33 +620,15 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   }, [sessionId, sessionData?.candidateToken]);
 
   // Smooth local countdown timer calibrated against server-authoritative deadline (Criterion 5)
+  // Local countdown timer driven by centralized lifecycle reducer (Criterion 5)
   useEffect(() => {
-    if (sessionStatus === "submitted") {
-      setTimeLeftSeconds(0);
-      return;
-    }
+    if (lifecycle.isTerminal) return;
 
     const timer = setInterval(() => {
-      if (isPaused) return;
-
-      if (targetExpiryTimeRef.current !== null) {
-        const remaining = Math.max(0, Math.ceil((targetExpiryTimeRef.current - Date.now()) / 1000));
-        setTimeLeftSeconds(remaining);
-        if (remaining <= 0) {
-          setIsExpired(true);
-        }
-      } else {
-        setTimeLeftSeconds((prev) => {
-          if (prev <= 1) {
-            setIsExpired(true);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }
+      lifecycleDispatch({ type: "TICK" });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isPaused, sessionStatus]);
+  }, [lifecycle.isTerminal]);
 
   // Task 15: Automatic Crash Recovery from last autosaved snapshot on reload/reconnect
   useEffect(() => {
@@ -686,7 +656,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
   // Server-authoritative heartbeat every 5 seconds (Reconciliation & Sync)
   useEffect(() => {
-    if (sessionStatus === "submitted") return;
+    if (lifecycle.isTerminal) return;
 
     let isMounted = true;
 
@@ -695,27 +665,18 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         const hb = await ApiClient.getSessionHeartbeat(sessionId);
         if (!isMounted) return;
 
-        if (hb.status === "submitted") {
-          setSessionStatus("submitted");
-          setTimeLeftSeconds(0);
-          setIsExpired(false);
-          targetExpiryTimeRef.current = null;
-          return;
-        }
-
-        // Reconcile client countdown against authoritative server remaining seconds
-        if (hb.remainingSeconds !== undefined) {
-          setTimeLeftSeconds(hb.remainingSeconds);
-          targetExpiryTimeRef.current = Date.now() + hb.remainingSeconds * 1000;
-        }
-
-        setIsExpired(hb.isExpired);
-        setInGracePeriod(hb.inGracePeriod);
-        setIsPaused(Boolean(hb.isPaused || hb.status === "paused"));
-        setPauseReason(hb.pauseReason || null);
-        if (hb.status) {
-          setSessionStatus(hb.status);
-        }
+        lifecycleDispatch({
+          type: "HEARTBEAT_SYNC",
+          payload: {
+            status: hb.status,
+            remainingSeconds: hb.remainingSeconds,
+            isExpired: hb.isExpired,
+            inGracePeriod: hb.inGracePeriod,
+            isPaused: Boolean(hb.isPaused || hb.status === "paused"),
+            pauseReason: hb.pauseReason || null,
+            serverTimestamp: hb.serverTimestamp,
+          },
+        });
 
         setBudgetStatus((prev) => ({
           ...prev,
@@ -736,7 +697,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       isMounted = false;
       clearInterval(interval);
     };
-  }, [sessionId, sessionStatus]);
+  }, [sessionId, lifecycle.isTerminal]);
 
   // Autosave workspace code to backend
   const performAutosave = async (
@@ -1019,7 +980,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
   // Submit Final Assessment (Unified handler for Candidate submit and System Auto-Submit on Expiration)
   const executeSubmission = async (isAutoSubmit = false, customExplanation?: string) => {
-    if (sessionStatus === "submitted" || isSubmitting) return;
+    if (lifecycle.isTerminal || isSubmitting) return;
 
     const finalExplanation =
       customExplanation ||
@@ -1034,6 +995,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     }
 
     setIsSubmitting(true);
+    lifecycleDispatch({ type: "START_SUBMIT" });
     try {
       // First ensure test results exist (or proceed safely if execution is disabled)
       let tests = testResult?.tests ?? [];
@@ -1107,11 +1069,16 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           sessionData?.candidateToken
         );
         setSubmissionReceipt(receipt);
+        lifecycleDispatch({ type: "SUBMIT_SUCCESS", payload: receipt });
         if (!isAutoSubmit) {
           setIsReceiptModalOpen(true);
         }
       } catch (err) {
         console.warn("Server session submit warning:", err);
+        lifecycleDispatch({
+          type: "SUBMIT_FAILURE",
+          payload: { message: err instanceof Error ? err.message : String(err) },
+        });
       }
 
       telemetryRef.current?.record(
@@ -1164,9 +1131,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         // ignore
       }
 
-      setSessionStatus("submitted");
-      setTimeLeftSeconds(0);
-      setIsExpired(true);
       setIsSubmitModalOpen(false);
     } catch (err: unknown) {
       if (!isAutoSubmit) {

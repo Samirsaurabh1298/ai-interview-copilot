@@ -5,7 +5,7 @@ import type {
   VerifyInvitationResponse,
   AcceptInvitationResponse,
 } from "@ai-copilot/contracts";
-import { scrubTaskForCandidate } from "@ai-copilot/contracts";
+import { scrubTaskForCandidate, SessionState, normalizeSessionState } from "@ai-copilot/contracts";
 import type { AssessmentTemplateService } from "./template.js";
 import type { OrganizationService } from "./organization.js";
 import type { AuthService } from "./auth.js";
@@ -178,7 +178,7 @@ export class CandidateInvitationService {
     if (invitation.sessionId && this.sessionService && invitation.status !== "completed") {
       try {
         const session = this.sessionService.getSession(invitation.sessionId);
-        if (session.status === "submitted") {
+        if (normalizeSessionState(session.status) === SessionState.SUBMITTED) {
           invitation.status = "completed";
           this.repo.update(invitation.id, { status: "completed" }).catch(() => {});
         }
@@ -224,7 +224,7 @@ export class CandidateInvitationService {
     if (invitation.sessionId && this.sessionService) {
       try {
         const session = this.sessionService.getSession(invitation.sessionId);
-        if (session.status === "submitted") {
+        if (normalizeSessionState(session.status) === SessionState.SUBMITTED) {
           invitation.status = "completed";
           this.repo.update(invitation.id, { status: "completed" }).catch(() => {});
           throw new InvitationInvalidStateError("This assessment session has already been completed and submitted");

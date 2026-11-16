@@ -172,7 +172,7 @@ describe("Assessment Expiration, Auto-Submit & Timer Continuity", () => {
     // CRITICAL: Submission must succeed (not throw 410 or crash)
     expect(submitRes.statusCode).toBe(200);
     const receipt = JSON.parse(submitRes.body);
-    expect(receipt.status).toBe("submitted");
+    expect(["SUBMITTED", "submitted"]).toContain(receipt.status);
     expect(receipt.submissionFingerprint).toBeDefined();
 
     // Heartbeat must now report status: "submitted" and remainingSeconds: 0
@@ -182,7 +182,7 @@ describe("Assessment Expiration, Auto-Submit & Timer Continuity", () => {
     });
     expect(hbResAfter.statusCode).toBe(200);
     const hbAfter = JSON.parse(hbResAfter.body);
-    expect(hbAfter.status).toBe("submitted");
+    expect(["SUBMITTED", "submitted"]).toContain(hbAfter.status);
     expect(hbAfter.remainingSeconds).toBe(0);
     expect(hbAfter.isExpired).toBe(false);
 

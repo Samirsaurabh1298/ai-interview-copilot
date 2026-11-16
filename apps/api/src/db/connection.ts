@@ -190,7 +190,11 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
       invitation_id VARCHAR(128) REFERENCES candidate_invitations(id),
       candidate_email VARCHAR(255) NOT NULL,
       candidate_name VARCHAR(100) NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'created',
+      status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+      state_version INTEGER NOT NULL DEFAULT 1,
+      finalizing_at TIMESTAMPTZ,
+      finalizing_by VARCHAR(128),
+      last_persisted_revision INTEGER NOT NULL DEFAULT 0,
       started_at TIMESTAMPTZ NOT NULL,
       expires_at TIMESTAMPTZ NOT NULL,
       submitted_at TIMESTAMPTZ,
@@ -250,6 +254,16 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
     ALTER TABLE assessment_templates ADD COLUMN IF NOT EXISTS attempt_duration_minutes INTEGER NOT NULL DEFAULT 90;
     ALTER TABLE assessment_templates ADD COLUMN IF NOT EXISTS submission_deadline_days INTEGER NOT NULL DEFAULT 7;
     ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS task_submissions JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS server_acknowledged_revision INTEGER;
+    ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS finalized_by VARCHAR(128);
+    ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS multi_file_changes JSONB;
+
+    -- LOOP 10.0.4 Explicit State Machine Migrations
+    ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS state_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS finalizing_at TIMESTAMPTZ;
+    ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS finalizing_by VARCHAR(128);
+    ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS last_persisted_revision INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX IF NOT EXISTS idx_sessions_finalizing ON assessment_sessions (status, finalizing_at);
 
     CREATE TABLE IF NOT EXISTS reviewer_evaluations (
       id VARCHAR(128) PRIMARY KEY,

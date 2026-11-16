@@ -9,6 +9,8 @@ import {
   SessionNotFoundError,
   SessionExpiredError,
   SessionInvalidStateError,
+  SessionLockedError,
+  InvalidStateTransitionError,
 } from "../services/session.js";
 import type { AuthService } from "../services/auth.js";
 import {
@@ -130,10 +132,10 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionExpiredError) {
+      if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
       }
-      if (err instanceof SessionInvalidStateError) {
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
       throw err;
@@ -200,10 +202,10 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionExpiredError) {
+      if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
       }
-      if (err instanceof SessionInvalidStateError) {
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
       throw err;
@@ -278,7 +280,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionInvalidStateError) {
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
       throw err;
@@ -321,7 +323,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionInvalidStateError) {
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
       throw err;

@@ -1,7 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb, type AppDatabase } from "../db/connection.js";
 import { assessmentSessions } from "../db/schema.js";
-import type { AssessmentSession, WorkspaceSnapshot } from "@ai-copilot/contracts";
+import {
+  type AssessmentSession,
+  type WorkspaceSnapshot,
+  normalizeSessionState,
+} from "@ai-copilot/contracts";
 
 export class SessionRepository {
   constructor(private dbProvider: () => Promise<AppDatabase> = getDb) {}
@@ -16,7 +20,11 @@ export class SessionRepository {
       invitationId: session.invitationId ?? null,
       candidateEmail: session.candidateEmail,
       candidateName: session.candidateName,
-      status: session.status,
+      status: normalizeSessionState(session.status),
+      stateVersion: session.stateVersion ?? 1,
+      finalizingAt: session.finalizingAt ?? null,
+      finalizingBy: session.finalizingBy ?? null,
+      lastPersistedRevision: session.lastPersistedRevision ?? 0,
       startedAt: session.startedAt,
       expiresAt: session.expiresAt,
       submittedAt: session.submittedAt ?? null,
@@ -72,7 +80,12 @@ export class SessionRepository {
       updatedAt: new Date(),
     };
 
-    if (patch.status !== undefined) updateValues.status = patch.status;
+    if (patch.status !== undefined) updateValues.status = normalizeSessionState(patch.status);
+    if (patch.stateVersion !== undefined) updateValues.stateVersion = patch.stateVersion;
+    if (patch.finalizingAt !== undefined) updateValues.finalizingAt = patch.finalizingAt;
+    if (patch.finalizingBy !== undefined) updateValues.finalizingBy = patch.finalizingBy;
+    if (patch.lastPersistedRevision !== undefined)
+      updateValues.lastPersistedRevision = patch.lastPersistedRevision;
     if (patch.submittedAt !== undefined) updateValues.submittedAt = patch.submittedAt;
     if (patch.pausedAt !== undefined) updateValues.pausedAt = patch.pausedAt;
     if (patch.totalPausedMs !== undefined) updateValues.totalPausedMs = patch.totalPausedMs;
@@ -103,6 +116,7 @@ export class SessionRepository {
       .update(assessmentSessions)
       .set({
         workspaceSnapshot: snapshot,
+        lastPersistedRevision: sql`last_persisted_revision + 1`,
         updatedAt: new Date(),
       })
       .where(eq(assessmentSessions.id, id))
@@ -110,6 +124,77 @@ export class SessionRepository {
 
     if (rows.length === 0 || !rows[0]) return null;
     return this.mapSession(rows[0]);
+  }
+
+  /**
+   * Atomic conditional state transition with optimistic concurrency control (LOOP 10.0.4).
+   * Ensures that two concurrent API instances cannot finalize the same session.
+   */
+  public async atomicTransitionState(
+    id: string,
+    allowedFromStates: string[],
+    nextState: string,
+    patch: Partial<AssessmentSession> = {},
+    expectedVersion?: number
+  ): Promise<{ success: boolean; session?: AssessmentSession; conflictSession?: AssessmentSession }> {
+    const db = await this.dbProvider();
+    const normalizedNextState = normalizeSessionState(nextState);
+    const normalizedFromStates = allowedFromStates.map((s) => normalizeSessionState(s));
+
+    const updateValues: Record<string, unknown> = {
+      status: normalizedNextState,
+      stateVersion: sql`state_version + 1`,
+      updatedAt: new Date(),
+    };
+
+    if (patch.submittedAt !== undefined) updateValues.submittedAt = patch.submittedAt;
+    if (patch.pausedAt !== undefined) updateValues.pausedAt = patch.pausedAt;
+    if (patch.totalPausedMs !== undefined) updateValues.totalPausedMs = patch.totalPausedMs;
+    if (patch.pauseReason !== undefined) updateValues.pauseReason = patch.pauseReason;
+    if (patch.finalizingAt !== undefined) updateValues.finalizingAt = patch.finalizingAt;
+    if (patch.finalizingBy !== undefined) updateValues.finalizingBy = patch.finalizingBy;
+    if (patch.terminationReason !== undefined) updateValues.terminationReason = patch.terminationReason;
+    if (patch.workspaceSnapshot !== undefined) updateValues.workspaceSnapshot = patch.workspaceSnapshot;
+
+    const fromConditions = normalizedFromStates.map((s) => sql`${assessmentSessions.status} = ${s}`);
+    const stateMatchSql = sql`(${sql.join(fromConditions, sql` OR `)})`;
+
+    const conditions = [
+      eq(assessmentSessions.id, id),
+      stateMatchSql,
+    ];
+
+    if (expectedVersion !== undefined) {
+      conditions.push(eq(assessmentSessions.stateVersion, expectedVersion));
+    }
+
+    const rows = await db
+      .update(assessmentSessions)
+      .set(updateValues)
+      .where(sql.join(conditions, sql` AND `))
+      .returning();
+
+    if (rows.length === 0 || !rows[0]) {
+      const current = await this.findById(id);
+      return { success: false, conflictSession: current ?? undefined };
+    }
+
+    return { success: true, session: this.mapSession(rows[0]) };
+  }
+
+  /**
+   * Discovers sessions stuck in 'FINALIZING' state (e.g. following an API crash or timeout).
+   */
+  public async findStuckFinalizing(timeoutMs = 30000): Promise<AssessmentSession[]> {
+    const db = await this.dbProvider();
+    const cutoff = new Date(Date.now() - timeoutMs);
+    const rows = await db
+      .select()
+      .from(assessmentSessions)
+      .where(
+        sql`${assessmentSessions.status} = 'FINALIZING' AND ${assessmentSessions.finalizingAt} <= ${cutoff}`
+      );
+    return rows.map((r) => this.mapSession(r));
   }
 
   /**
