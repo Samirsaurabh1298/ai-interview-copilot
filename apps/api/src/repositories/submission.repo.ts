@@ -44,7 +44,7 @@ export class SubmissionRepository {
   /**
    * Transactionally seals an immutable submission artifact and transitions the assessment session to SUBMITTED.
    * Guarantees that an artifact cannot exist without the session transitioning, and vice versa.
-   * Enforces lease fencing via OCC expectedVersion check.
+   * Strictly enforces FINALIZING -> SUBMITTED with OCC expectedVersion and lease ownership checks.
    */
   public async sealArtifactAndTransitionSession(
     artifact: SubmissionArtifact,
@@ -52,8 +52,9 @@ export class SubmissionRepository {
       submittedAt: Date;
       workspaceSnapshot: Record<string, unknown>;
     },
-    expectedVersion?: number
-  ): Promise<{ success: boolean; artifact: SubmissionArtifact }> {
+    expectedVersion?: number,
+    finalizingBy?: string
+  ): Promise<{ success: boolean; artifact: SubmissionArtifact; conflictState?: string }> {
     const db = await this.dbProvider();
 
     // Idempotency fast path: if artifact already exists, return it
@@ -87,13 +88,16 @@ export class SubmissionRepository {
           multiFileChanges: artifact.multiFileChanges ?? null,
         });
 
-        // 2. Conditionally update session to SUBMITTED with OCC version fencing
+        // 2. Strictly require status = 'FINALIZING' with OCC version and lease fencing
         const conditions = [
           eq(assessmentSessions.id, artifact.sessionId),
-          sql`${assessmentSessions.status} IN ('FINALIZING', 'active', 'in_progress', 'ACTIVE', 'GRACE_PERIOD')`,
+          eq(assessmentSessions.status, "FINALIZING"),
         ];
         if (expectedVersion !== undefined) {
           conditions.push(eq(assessmentSessions.stateVersion, expectedVersion));
+        }
+        if (finalizingBy !== undefined) {
+          conditions.push(eq(assessmentSessions.finalizingBy, finalizingBy));
         }
 
         const updatedRows = await tx
@@ -120,7 +124,17 @@ export class SubmissionRepository {
         if (existingAfterConflict) {
           return { success: true, artifact: existingAfterConflict };
         }
-        return { success: false, artifact };
+        // Retrieve current DB status for structured conflict diagnostics
+        const currentRows = await db
+          .select({ status: assessmentSessions.status })
+          .from(assessmentSessions)
+          .where(eq(assessmentSessions.id, artifact.sessionId))
+          .limit(1);
+        return {
+          success: false,
+          artifact,
+          conflictState: currentRows[0]?.status,
+        };
       }
 
       // Check for unique key constraint collision (another worker committed artifact concurrently)

@@ -298,8 +298,10 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
       expect(artifact.finalCode).toBe(candidateCode);
       expect(artifact.submissionFingerprint).toMatch(/^[a-f0-9]{64}$/);
 
-      // 2. Test execution log indicates disabled execution without failing or running untrusted code on host
-      expect(artifact.testExecutionLog.passed).toBe(false);
+      // 2. Test execution log indicates disabled execution without representing it as passed or failed
+      expect(artifact.testExecutionLog.status).toBe("NOT_RUN");
+      expect(artifact.testExecutionLog.passed).toBeNull();
+      expect(artifact.testExecutionLog.exitCode).toBeNull();
       expect(artifact.testExecutionLog.stderr).toContain("Automated sandbox verification disabled");
 
       // 3. Session must be cleanly transitioned to SUBMITTED

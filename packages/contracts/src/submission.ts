@@ -16,6 +16,33 @@ export const CodeDiffSummarySchema = z.object({
 export type CodeDiffSummary = z.infer<typeof CodeDiffSummarySchema>;
 
 // ==============================================================================
+// Test Execution Log Contract (LOOP 10.0.4.2)
+// ==============================================================================
+
+export const TestExecutionStatusSchema = z.enum([
+  "SUCCESS",
+  "FAILURE",
+  "NOT_RUN",
+  "UNAVAILABLE",
+]);
+export type TestExecutionStatus = z.infer<typeof TestExecutionStatusSchema>;
+
+export const TestExecutionLogSchema = z.object({
+  status: TestExecutionStatusSchema.default("SUCCESS"),
+  statusReason: z.string().optional(),
+  success: z.boolean(),
+  passed: z.boolean().nullable().optional(),
+  passedCount: z.number().int(),
+  totalCount: z.number().int(),
+  durationMs: z.number(),
+  tests: z.array(SingleTestResultSchema),
+  stdout: z.string().optional(),
+  stderr: z.string().optional(),
+  exitCode: z.number().int().nullable().optional(),
+});
+export type TestExecutionLog = z.infer<typeof TestExecutionLogSchema>;
+
+// ==============================================================================
 // Immutable Submission Artifact Schema (Task 14 / AD #9)
 // ==============================================================================
 
@@ -30,17 +57,7 @@ export const SubmissionArtifactSchema = z.object({
   finalCode: z.string(),
   starterCode: z.string(),
   codeDiff: CodeDiffSummarySchema,
-  testExecutionLog: z.object({
-    success: z.boolean(),
-    passed: z.boolean(),
-    passedCount: z.number().int(),
-    totalCount: z.number().int(),
-    durationMs: z.number(),
-    tests: z.array(SingleTestResultSchema),
-    stdout: z.string().optional(),
-    stderr: z.string().optional(),
-    exitCode: z.number().int(),
-  }),
+  testExecutionLog: TestExecutionLogSchema,
   technicalExplanation: z.string(),
   telemetrySummary: z.object({
     totalEvents: z.number().int(),

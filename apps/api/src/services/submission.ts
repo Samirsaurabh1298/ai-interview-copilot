@@ -131,13 +131,17 @@ export class SubmissionService {
     testCode: string,
     language = "typescript"
   ): Promise<{
+    status: "SUCCESS" | "FAILURE" | "NOT_RUN" | "UNAVAILABLE";
+    statusReason?: string;
     success: boolean;
-    passed: boolean;
+    passed: boolean | null;
+    passedCount: number;
+    totalCount: number;
     tests: Array<{ id: string; name: string; passed: boolean; message?: string }>;
     durationMs: number;
-    stdout: string;
-    stderr: string;
-    exitCode: number;
+    stdout?: string;
+    stderr?: string;
+    exitCode: number | null;
   }> {
     const isRunnerDisabled =
       process.env.RUNNER_EXECUTION_ENABLED === "false" ||
@@ -145,14 +149,18 @@ export class SubmissionService {
 
     if (isRunnerDisabled) {
       return {
-        success: true,
-        passed: false,
+        status: "NOT_RUN",
+        statusReason: "Automated test execution disabled pending isolated Linux gVisor worker deployment.",
+        success: false,
+        passed: null,
+        passedCount: 0,
+        totalCount: 0,
         tests: [],
         durationMs: 0,
         stdout: "",
         stderr:
           "Automated sandbox verification disabled. Candidate code preserved for reviewer rubric evaluation.",
-        exitCode: 0,
+        exitCode: null,
       };
     }
 
@@ -164,9 +172,15 @@ export class SubmissionService {
         timeoutMs: 5000,
         memoryLimitMb: 128,
       });
+      const pCount = result.tests ? result.tests.filter((t) => t.passed).length : 0;
+      const tCount = result.tests ? result.tests.length : 0;
       return {
+        status: result.passed ? "SUCCESS" : "FAILURE",
+        statusReason: result.passed ? "All verification tests passed." : "One or more verification tests failed.",
         success: result.success ?? true,
         passed: result.passed,
+        passedCount: pCount,
+        totalCount: tCount,
         tests: result.tests || [],
         durationMs: result.durationMs,
         stdout: result.stdout || "",
@@ -176,13 +190,17 @@ export class SubmissionService {
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       return {
+        status: "UNAVAILABLE",
+        statusReason: `Sandbox runner unavailable: ${errorMsg}`,
         success: false,
-        passed: false,
+        passed: null,
+        passedCount: 0,
+        totalCount: 0,
         tests: [],
         durationMs: 0,
         stdout: "",
         stderr: `Automated sandbox verification unavailable: ${errorMsg}. Candidate code preserved for reviewer rubric evaluation.`,
-        exitCode: 1,
+        exitCode: null,
       };
     }
   }
@@ -455,8 +473,8 @@ export class SubmissionService {
       "typescript"
     );
 
-    const passedCount = sandboxResult.tests.filter((t) => t.passed).length;
-    const totalCount = sandboxResult.tests.length;
+    const passedCount = sandboxResult.passedCount;
+    const totalCount = sandboxResult.totalCount;
 
     // 3. Compute code diff against template starterCode
     const codeDiff = computeLineDiff(template.starterCode, effectiveCode);
@@ -530,6 +548,8 @@ export class SubmissionService {
       codeDiff,
       taskSubmissions: Object.keys(evaluatedTaskSubmissions).length > 0 ? evaluatedTaskSubmissions : undefined,
       testExecutionLog: {
+        status: sandboxResult.status,
+        statusReason: sandboxResult.statusReason,
         success: sandboxResult.success,
         passed: sandboxResult.passed,
         passedCount,
@@ -572,10 +592,12 @@ export class SubmissionService {
       },
     };
 
+    const effectiveFinalizingBy = req.finalizedBy || "candidate";
     const sealResult = await this.repo.sealArtifactAndTransitionSession(
       finalArtifact,
       sessionPatch,
-      session.stateVersion
+      session.stateVersion,
+      effectiveFinalizingBy
     );
 
     if (!sealResult.success) {

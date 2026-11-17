@@ -87,6 +87,7 @@ export class SessionRepository {
     if (patch.lastPersistedRevision !== undefined)
       updateValues.lastPersistedRevision = patch.lastPersistedRevision;
     if (patch.submittedAt !== undefined) updateValues.submittedAt = patch.submittedAt;
+    if (patch.expiresAt !== undefined) updateValues.expiresAt = patch.expiresAt;
     if (patch.pausedAt !== undefined) updateValues.pausedAt = patch.pausedAt;
     if (patch.totalPausedMs !== undefined) updateValues.totalPausedMs = patch.totalPausedMs;
     if (patch.pauseReason !== undefined) updateValues.pauseReason = patch.pauseReason;
@@ -124,7 +125,7 @@ export class SessionRepository {
         lastPersistedRevision: sql`last_persisted_revision + 1`,
         updatedAt: new Date(),
       })
-      .where(sql`${assessmentSessions.id} = ${id} AND ${statusMatchSql}`)
+      .where(sql`${assessmentSessions.id} = ${id} AND ${statusMatchSql} AND NOW() <= ${assessmentSessions.expiresAt}`)
       .returning();
 
     if (rows.length === 0 || !rows[0]) return null;
@@ -153,6 +154,7 @@ export class SessionRepository {
     };
 
     if (patch.submittedAt !== undefined) updateValues.submittedAt = patch.submittedAt;
+    if (patch.expiresAt !== undefined) updateValues.expiresAt = patch.expiresAt;
     if (patch.pausedAt !== undefined) updateValues.pausedAt = patch.pausedAt;
     if (patch.totalPausedMs !== undefined) updateValues.totalPausedMs = patch.totalPausedMs;
     if (patch.pauseReason !== undefined) updateValues.pauseReason = patch.pauseReason;

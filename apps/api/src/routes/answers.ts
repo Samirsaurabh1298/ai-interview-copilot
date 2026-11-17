@@ -3,7 +3,11 @@ import { AIRequestSchema, type AIResponse } from "@ai-copilot/contracts";
 import type { AIOrchestrationService } from "@ai-copilot/ai-core";
 import { AIProviderError } from "@ai-copilot/ai-core";
 import type { AIUsageGatewayService } from "../services/gateway.js";
-import type { AssessmentSessionService } from "../services/session.js";
+import {
+  type AssessmentSessionService,
+  SessionExpiredError,
+  SessionInvalidStateError,
+} from "../services/session.js";
 import type { AssessmentTemplateService } from "../services/template.js";
 
 export const answersRoutes: FastifyPluginAsync<{
@@ -29,6 +33,27 @@ export const answersRoutes: FastifyPluginAsync<{
       sessionId?: string;
       taskId?: string;
     } | undefined;
+
+    // Assessment Session State & Deadline Enforcement (Non-Negotiable Invariant 2)
+    if (query?.sessionId && sessionService) {
+      try {
+        sessionService.assertCanInvokeAI(query.sessionId);
+      } catch (err: unknown) {
+        if (err instanceof SessionExpiredError) {
+          return reply.status(410).send({
+            error: "SESSION_EXPIRED",
+            message: err.message,
+          });
+        }
+        if (err instanceof SessionInvalidStateError) {
+          return reply.status(409).send({
+            error: "INVALID_STATE",
+            message: err.message,
+          });
+        }
+        throw err;
+      }
+    }
 
     // Task-level AI Policy Enforcement
     if (query?.taskId && query?.sessionId && sessionService && templateService) {

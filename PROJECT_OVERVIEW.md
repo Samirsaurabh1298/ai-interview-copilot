@@ -42,6 +42,7 @@
    - [4.23. Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10)](#423-private-company-pilot-readiness-security-gate--magic-link-authentication-loop-10)
    - [4.24. Pilot Hardening & Policy Consistency (LOOP 10.0.1)](#424-pilot-hardening--policy-consistency-loop-1001)
    - [4.25. External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2)](#425-external-pilot-launch-gate--delivery-architecture-loop-1002)
+   - [4.26. Assessment Lifecycle FSM, Database Deadline Enforcement & Strict Finalization Contracts (LOOP 10.0.4 - 10.0.4.2)](#426-assessment-lifecycle-fsm-database-deadline-enforcement--strict-finalization-contracts-loop-1004---10042)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -671,6 +672,68 @@ LOOP 10.0.2 completes the final security and operational milestones required for
   - Contextual `[Run Tests]` button displayed only for coding and repository challenges (suppressed on Question Set tasks).
   - Multi-select radio/checkbox bubbling resolved to eliminate double-dispatch toggle issues.
 
+### 4.26. Assessment Lifecycle FSM, Database Deadline Enforcement & Strict Finalization Contracts (LOOP 10.0.4 - 10.0.4.2)
+
+LOOP 10.0.4 through 10.0.4.2 replaces all implicit assessment lifecycle behavior with an explicit, server-authoritative, database-coordinated finite state machine (FSM), strict finalization transition contracts, SQL-level deadline enforcement, and decoupled sandbox result semantics:
+
+- **Formal 7-State Lifecycle Finite State Machine:**
+  - Defined explicit states: `CREATED`, `ACTIVE`, `PAUSED`, `GRACE_PERIOD`, `FINALIZING`, `SUBMITTED`, `TERMINATED`.
+  - Strict actor-scoped transition rules:
+    - `candidate`: Can ignite session (`CREATED -> ACTIVE`) and submit (`ACTIVE / GRACE_PERIOD -> FINALIZING`).
+    - `proctor`: Can pause and resume active sessions (`ACTIVE <-> PAUSED`) with authenticated justification.
+    - `system`: Background expiry processor drives transitions (`ACTIVE -> GRACE_PERIOD`, `GRACE_PERIOD -> FINALIZING`, `FINALIZING -> SUBMITTED`, `ACTIVE/PAUSED -> TERMINATED`).
+  - Terminal states (`SUBMITTED`, `TERMINATED`) are strictly immutable and cannot be reopened or mutated by any actor.
+
+| Current State | Event | Target State | Authorized Actor | Guard Condition |
+| :--- | :--- | :--- | :--- | :--- |
+| `CREATED` | `SESSION_START` | `ACTIVE` | `candidate` | Within invitation validity window |
+| `ACTIVE` | `PROCTOR_PAUSE` | `PAUSED` | `proctor` | Session currently running |
+| `PAUSED` | `PROCTOR_RESUME` | `ACTIVE` | `proctor` | Session paused; extends `expiresAt` by pause duration |
+| `ACTIVE` | `TIME_EXPIRED` | `GRACE_PERIOD` | `system` | `now >= expiresAt` |
+| `ACTIVE` | `CANDIDATE_SUBMIT` | `FINALIZING` | `candidate` | `now <= expiresAt` |
+| `GRACE_PERIOD` | `GRACE_SUBMIT` | `FINALIZING` | `candidate` | `now <= graceExpiresAt` |
+| `GRACE_PERIOD` | `GRACE_EXPIRED` | `FINALIZING` | `system` | `now > graceExpiresAt` |
+| `FINALIZING` | `ARTIFACT_SEALED` | `SUBMITTED` | `system` | Valid lease owner & version match |
+| `ACTIVE` / `PAUSED` | `HARD_EXPIRY` | `TERMINATED` | `system` | Absolute maximum lifespan exceeded |
+
+- **Database-Level Atomicity & Optimistic Concurrency Control (CAS):**
+  - Session table tracks `state_version` (integer), `finalizing_by` (worker UUID), and `finalizing_at` (timestamp).
+  - All state transitions execute conditional atomic SQL:
+    ```sql
+    UPDATE assessment_sessions
+    SET status = $newStatus, state_version = state_version + 1, ...
+    WHERE id = $sessionId AND status = $expectedStatus AND state_version = $expectedVersion;
+    ```
+  - Lease fencing prevents stale or crashed workers from corrupting finalizations. If a worker crashes during `FINALIZING`, the background sweep reclaims stale leases after 60 seconds with incremented version.
+
+- **Strict Two-Stage Finalization Transition (`FINALIZING -> SUBMITTED` Only):**
+  - Final artifact sealing function strictly requires:
+    ```sql
+    UPDATE assessment_sessions
+    SET status = 'SUBMITTED', state_version = state_version + 1, finalized_at = NOW()
+    WHERE id = $sessionId AND status = 'FINALIZING' AND state_version = $expectedVersion AND finalizing_by = $finalizingBy;
+    ```
+  - Artifact sealing directly from `ACTIVE` or `GRACE_PERIOD` is strictly prohibited and rolled back.
+  - Exactly one logical submission artifact per assessment session is guaranteed by database unique constraint (`UNIQUE(session_id)`).
+
+- **Database-Authoritative Deadline Enforcement:**
+  - Candidate code autosaves execute SQL-level conditional guards:
+    ```sql
+    UPDATE assessment_sessions
+    SET candidate_code = $code, updated_at = NOW()
+    WHERE id = $id AND status IN ('ACTIVE', 'in_progress') AND NOW() <= expires_at;
+    ```
+  - Candidate writes attempting to update code after `expires_at` or during `GRACE_PERIOD`, `PAUSED`, `FINALIZING`, `SUBMITTED`, or `TERMINATED` return zero affected rows and are rejected with HTTP 410 `SESSION_EXPIRED` or HTTP 409 `INVALID_STATE`.
+  - AI requests are guarded via `assertCanInvokeAI`, rejecting requests outside active, unexpired sessions.
+
+- **Sandbox Result Contract & Decoupled Execution Status:**
+  - Explicit taxonomy distinguishing 4 operational states:
+    1. `SUCCESS`: Sandboxed tests executed and passed all assertions.
+    2. `FAILURE`: Sandboxed tests executed and failed assertions or timed out.
+    3. `NOT_RUN`: Runner execution disabled (`RUNNER_EXECUTION_ENABLED = false`), returning explicit reason, `passed: null`, and `exitCode: null` (never reporting false `exitCode: 0` or false `passed: true/false`).
+    4. `UNAVAILABLE`: Standalone runner microservice unreachable or infrastructure failure, safely preserving the candidate's complete evidence bundle without dropping the submission.
+  - Arbitrary candidate code execution on the host fallback remains strictly disabled. Zero untrusted code runs on the host.
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -741,9 +804,9 @@ LOOP 10.0.2 completes the final security and operational milestones required for
 2. **Select Candidate Session:**
    - Select candidate (e.g. *"Jordan Lee"* or *"Elena Rostova"*).
    - View live elapsed timer, status (`active`, `grace_period`, `submitted`), and consumed AI budget.
-3. **Inspect Real-Time Integrity & Anti-Cheat Control Room (LOOP 7):**
+3. **Inspect Real-Time Proctor & Integrity Console:**
    - Click **`[Live Proctor & Integrity]`** to open the real-time proctoring console.
-   - **Dynamic 0–100 Risk Dial:** Gauge visually displays candidate integrity score with dynamic status indicator (`clean`, `low`, `medium`, `high`).
+   - **Calibrated Operational Status:** Review status indicator (`verified`, `review_recommended`, `unresolved_incident`) based on factual evidentiary logs without composite score deductions.
    - **4 Live Metric Breakdown Cards:**
      - *Focus Rate %:* Percentage of elapsed time candidate remained actively focused on the assessment workspace.
      - *External Pastes:* Count and character volume of clipboard pastes not originating from accepted AI diff proposals.
