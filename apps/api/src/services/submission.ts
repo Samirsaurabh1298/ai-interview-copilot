@@ -126,6 +126,67 @@ export class SubmissionService {
     this.invitationService = invitationService;
   }
 
+  private async executeSandboxSafely(
+    code: string,
+    testCode: string,
+    language = "typescript"
+  ): Promise<{
+    success: boolean;
+    passed: boolean;
+    tests: Array<{ id: string; name: string; passed: boolean; message?: string }>;
+    durationMs: number;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }> {
+    const isRunnerDisabled =
+      process.env.RUNNER_EXECUTION_ENABLED === "false" ||
+      (process.env.RUNNER_EXECUTION_ENABLED === undefined && process.env.NODE_ENV !== "test");
+
+    if (isRunnerDisabled) {
+      return {
+        success: true,
+        passed: false,
+        tests: [],
+        durationMs: 0,
+        stdout: "",
+        stderr:
+          "Automated sandbox verification disabled. Candidate code preserved for reviewer rubric evaluation.",
+        exitCode: 0,
+      };
+    }
+
+    try {
+      const result = await codeRunnerClient.execute({
+        code,
+        testCode,
+        language,
+        timeoutMs: 5000,
+        memoryLimitMb: 128,
+      });
+      return {
+        success: result.success ?? true,
+        passed: result.passed,
+        tests: result.tests || [],
+        durationMs: result.durationMs,
+        stdout: result.stdout || "",
+        stderr: result.stderr || "",
+        exitCode: result.exitCode ?? (result.passed ? 0 : 1),
+      };
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        passed: false,
+        tests: [],
+        durationMs: 0,
+        stdout: "",
+        stderr: `Automated sandbox verification unavailable: ${errorMsg}. Candidate code preserved for reviewer rubric evaluation.`,
+        exitCode: 1,
+      };
+    }
+  }
+
   public async loadFromDatabase(sessionId?: string): Promise<void> {
     try {
       if (sessionId) {
@@ -340,13 +401,11 @@ export class SubmissionService {
           const codeToValidate = rawTaskSub.codeSubmission.code;
           const fullTestCode = (taskDef.config.verificationTestCode || "") + (taskDef.config.hiddenTestCode ? "\n" + taskDef.config.hiddenTestCode : "");
           try {
-            const taskSandbox = await codeRunnerClient.execute({
-              code: codeToValidate,
-              testCode: fullTestCode || template.verificationTestCode,
-              language: taskDef.config.language || template.language || "typescript",
-              timeoutMs: 5000,
-              memoryLimitMb: 128,
-            });
+            const taskSandbox = await this.executeSandboxSafely(
+              codeToValidate,
+              fullTestCode || template.verificationTestCode,
+              taskDef.config.language || template.language || "typescript"
+            );
             const pCount = taskSandbox.tests.filter((t) => t.passed).length;
             const tCount = taskSandbox.tests.length;
             const earned = tCount > 0 ? Math.round((pCount / tCount) * taskDef.points) : 0;
@@ -390,13 +449,11 @@ export class SubmissionService {
     }
 
     // 2. Execute final code inside the isolated Node 22 sandbox to get authoritative test results
-    const sandboxResult = await codeRunnerClient.execute({
-      code: effectiveCode,
-      testCode: template.verificationTestCode,
-      language: "typescript",
-      timeoutMs: 5000,
-      memoryLimitMb: 128,
-    });
+    const sandboxResult = await this.executeSandboxSafely(
+      effectiveCode,
+      template.verificationTestCode,
+      "typescript"
+    );
 
     const passedCount = sandboxResult.tests.filter((t) => t.passed).length;
     const totalCount = sandboxResult.tests.length;
@@ -503,26 +560,41 @@ export class SubmissionService {
       submissionFingerprint,
     };
 
-    // 8. Persist immutable artifact in PostgreSQL (with unique constraint deduplication)
-    const createdArtifact = await this.repo.create(finalArtifact);
-    this.submissionsBySession.set(sessionId, createdArtifact);
+    // 8. Transactionally persist immutable artifact and transition session state with OCC lease fencing
+    const sessionPatch = {
+      submittedAt: submitDate,
+      workspaceSnapshot: {
+        ...session.workspaceSnapshot,
+        currentCode: effectiveCode,
+        lastSavedAt: submitDate,
+        lastTestPassedCount: passedCount,
+        lastTestTotalCount: totalCount,
+      },
+    };
 
-    // 9. Database-level state transition: FINALIZING -> SUBMITTED
-    await this.sessionRepo.atomicTransitionState(
-      sessionId,
-      [SessionState.FINALIZING],
-      SessionState.SUBMITTED,
-      {
-        submittedAt: submitDate,
-        workspaceSnapshot: {
-          ...session.workspaceSnapshot,
-          currentCode: effectiveCode,
-          lastSavedAt: submitDate,
-          lastTestPassedCount: passedCount,
-          lastTestTotalCount: totalCount,
-        },
-      }
+    const sealResult = await this.repo.sealArtifactAndTransitionSession(
+      finalArtifact,
+      sessionPatch,
+      session.stateVersion
     );
+
+    if (!sealResult.success) {
+      // Lease was fenced out or session status changed concurrently
+      const conflictSession = await this.sessionRepo.findById(sessionId);
+      if (conflictSession?.status === SessionState.SUBMITTED) {
+        session.status = SessionState.SUBMITTED;
+        const existingArt = await this.repo.findBySessionId(sessionId);
+        if (existingArt) return Object.assign({}, existingArt, { claimedByCaller: false });
+      }
+      throw new InvalidStateTransitionError(
+        conflictSession?.status || SessionState.FINALIZING,
+        "COMPLETE_FINALIZATION",
+        "Lease expired or session state was modified concurrently; finalization worker was fenced out."
+      );
+    }
+
+    const createdArtifact = sealResult.artifact;
+    this.submissionsBySession.set(sessionId, createdArtifact);
 
     // Update in-memory session
     session.status = SessionState.SUBMITTED;

@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, type AppDatabase } from "../db/connection.js";
-import { submissionArtifacts } from "../db/schema.js";
+import { submissionArtifacts, assessmentSessions } from "../db/schema.js";
 import type { SubmissionArtifact } from "@ai-copilot/contracts";
 
 export class SubmissionRepository {
@@ -36,6 +36,97 @@ export class SubmissionRepository {
       const existing = await this.findBySessionId(artifact.sessionId);
       if (existing) {
         return existing;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Transactionally seals an immutable submission artifact and transitions the assessment session to SUBMITTED.
+   * Guarantees that an artifact cannot exist without the session transitioning, and vice versa.
+   * Enforces lease fencing via OCC expectedVersion check.
+   */
+  public async sealArtifactAndTransitionSession(
+    artifact: SubmissionArtifact,
+    sessionPatch: {
+      submittedAt: Date;
+      workspaceSnapshot: Record<string, unknown>;
+    },
+    expectedVersion?: number
+  ): Promise<{ success: boolean; artifact: SubmissionArtifact }> {
+    const db = await this.dbProvider();
+
+    // Idempotency fast path: if artifact already exists, return it
+    const existing = await this.findBySessionId(artifact.sessionId);
+    if (existing) {
+      return { success: true, artifact: existing };
+    }
+
+    try {
+      return await db.transaction(async (tx) => {
+        // 1. Insert immutable artifact
+        await tx.insert(submissionArtifacts).values({
+          id: artifact.id,
+          sessionId: artifact.sessionId,
+          organizationId: artifact.organizationId,
+          templateId: artifact.templateId,
+          candidateName: artifact.candidateName,
+          candidateEmail: artifact.candidateEmail,
+          submittedAt: artifact.submittedAt,
+          finalCode: artifact.finalCode,
+          starterCode: artifact.starterCode,
+          codeDiff: artifact.codeDiff,
+          testExecutionLog: artifact.testExecutionLog,
+          technicalExplanation: artifact.technicalExplanation,
+          telemetrySummary: artifact.telemetrySummary,
+          templateContentHash: artifact.templateContentHash,
+          submissionFingerprint: artifact.submissionFingerprint,
+          taskSubmissions: artifact.taskSubmissions || {},
+          serverAcknowledgedRevision: artifact.serverAcknowledgedRevision ?? null,
+          finalizedBy: artifact.finalizedBy ?? null,
+          multiFileChanges: artifact.multiFileChanges ?? null,
+        });
+
+        // 2. Conditionally update session to SUBMITTED with OCC version fencing
+        const conditions = [
+          eq(assessmentSessions.id, artifact.sessionId),
+          sql`${assessmentSessions.status} IN ('FINALIZING', 'active', 'in_progress', 'ACTIVE', 'GRACE_PERIOD')`,
+        ];
+        if (expectedVersion !== undefined) {
+          conditions.push(eq(assessmentSessions.stateVersion, expectedVersion));
+        }
+
+        const updatedRows = await tx
+          .update(assessmentSessions)
+          .set({
+            status: "SUBMITTED",
+            stateVersion: sql`state_version + 1`,
+            submittedAt: sessionPatch.submittedAt,
+            workspaceSnapshot: sessionPatch.workspaceSnapshot,
+            updatedAt: new Date(),
+          })
+          .where(sql.join(conditions, sql` AND `))
+          .returning();
+
+        if (updatedRows.length === 0) {
+          throw new Error("LEASE_FENCING_CONFLICT");
+        }
+
+        return { success: true, artifact };
+      });
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "LEASE_FENCING_CONFLICT") {
+        const existingAfterConflict = await this.findBySessionId(artifact.sessionId);
+        if (existingAfterConflict) {
+          return { success: true, artifact: existingAfterConflict };
+        }
+        return { success: false, artifact };
+      }
+
+      // Check for unique key constraint collision (another worker committed artifact concurrently)
+      const existingAfterCatch = await this.findBySessionId(artifact.sessionId);
+      if (existingAfterCatch) {
+        return { success: true, artifact: existingAfterCatch };
       }
       throw err;
     }

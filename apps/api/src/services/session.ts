@@ -313,6 +313,45 @@ export class AssessmentSessionService {
     return session;
   }
 
+  public async updateWorkspaceCodeAsync(
+    sessionId: string,
+    req: UpdateWorkspaceRequest
+  ): Promise<AssessmentSession> {
+    const session = this.assertCanCode(sessionId);
+    const now = new Date();
+
+    const currentRevision = (session.lastPersistedRevision ?? 0) + 1;
+    const snapshot: WorkspaceSnapshot = {
+      ...session.workspaceSnapshot,
+      currentCode: req.code,
+      lastSavedAt: now,
+      revision: currentRevision,
+      lastTestTotalCount: req.testResults ? req.testResults.length : session.workspaceSnapshot.lastTestTotalCount,
+      lastTestPassedCount: req.testResults ? req.testResults.filter((t) => t.passed).length : session.workspaceSnapshot.lastTestPassedCount,
+    };
+
+    const updated = await this.repo.updateWorkspaceSnapshot(sessionId, snapshot);
+    if (!updated) {
+      const dbSession = await this.repo.findById(sessionId);
+      const conflictStatus = dbSession?.status || session.status;
+      if (conflictStatus === SessionState.GRACE_PERIOD) {
+        throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
+      }
+      if (conflictStatus === SessionState.FINALIZING) {
+        throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
+      }
+      if (conflictStatus === SessionState.SUBMITTED) {
+        throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+      }
+      throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${conflictStatus}'`);
+    }
+
+    session.lastPersistedRevision = updated.lastPersistedRevision;
+    session.workspaceSnapshot = updated.workspaceSnapshot;
+    session.updatedAt = updated.updatedAt;
+    return session;
+  }
+
   public submitSession(
     sessionId: string,
     req: SubmitSessionRequest

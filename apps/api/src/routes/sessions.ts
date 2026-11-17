@@ -119,7 +119,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
         authService.assertSessionAccess(auth, sessionId);
       }
 
-      const updated = sessionService.updateWorkspaceCode(sessionId, parse.data);
+      const updated = await sessionService.updateWorkspaceCodeAsync(sessionId, parse.data);
       return reply.status(200).send({
         sessionId: updated.id,
         lastSavedAt: updated.workspaceSnapshot.lastSavedAt,

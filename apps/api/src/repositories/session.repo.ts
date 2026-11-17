@@ -109,9 +109,14 @@ export class SessionRepository {
 
   public async updateWorkspaceSnapshot(
     id: string,
-    snapshot: WorkspaceSnapshot
+    snapshot: WorkspaceSnapshot,
+    allowedStatuses: string[] = ["ACTIVE", "in_progress"]
   ): Promise<AssessmentSession | null> {
     const db = await this.dbProvider();
+    const normalizedStatuses = allowedStatuses.map((s) => normalizeSessionState(s));
+    const statusConditions = normalizedStatuses.map((s) => sql`${assessmentSessions.status} = ${s}`);
+    const statusMatchSql = sql`(${sql.join(statusConditions, sql` OR `)})`;
+
     const rows = await db
       .update(assessmentSessions)
       .set({
@@ -119,7 +124,7 @@ export class SessionRepository {
         lastPersistedRevision: sql`last_persisted_revision + 1`,
         updatedAt: new Date(),
       })
-      .where(eq(assessmentSessions.id, id))
+      .where(sql`${assessmentSessions.id} = ${id} AND ${statusMatchSql}`)
       .returning();
 
     if (rows.length === 0 || !rows[0]) return null;
@@ -256,6 +261,10 @@ export class SessionRepository {
       candidateEmail: row.candidateEmail,
       candidateName: row.candidateName,
       status: row.status as AssessmentSession["status"],
+      stateVersion: row.stateVersion ?? 1,
+      finalizingAt: row.finalizingAt ? new Date(row.finalizingAt) : undefined,
+      finalizingBy: row.finalizingBy ?? undefined,
+      lastPersistedRevision: row.lastPersistedRevision ?? 0,
       startedAt: new Date(row.startedAt),
       expiresAt: new Date(row.expiresAt),
       submittedAt: row.submittedAt ? new Date(row.submittedAt) : undefined,
