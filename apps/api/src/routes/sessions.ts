@@ -10,6 +10,7 @@ import {
   SessionExpiredError,
   SessionInvalidStateError,
   SessionLockedError,
+  SessionStaleRevisionError,
   InvalidStateTransitionError,
 } from "../services/session.js";
 import type { AuthService } from "../services/auth.js";
@@ -135,6 +136,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
       if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
       }
+      if (err instanceof SessionStaleRevisionError) {
+        return reply.status(409).send({ error: "STALE_REVISION", message: err.message });
+      }
       if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
       }
@@ -204,6 +208,9 @@ export const sessionsRoutes: FastifyPluginAsync<{
       }
       if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
         return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
+      }
+      if (err instanceof SessionStaleRevisionError) {
+        return reply.status(409).send({ error: "STALE_REVISION", message: err.message });
       }
       if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
         return reply.status(409).send({ error: "INVALID_STATE", message: err.message });

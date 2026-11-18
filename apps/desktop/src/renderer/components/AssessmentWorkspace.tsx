@@ -218,6 +218,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   const isPaused = lifecycle.isPaused;
   const pauseReason = lifecycle.pauseReason;
   const [code, setCode] = useState(() => sessionData?.starterCode || STARTER_CODE);
+  const clientRevisionRef = useRef<number>(0);
   const verificationTestCode = sessionData?.verificationTestCode || VERIFICATION_TESTS_CODE;
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
 
@@ -707,9 +708,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     if (sessionStatus === "submitted" || (isExpired && !inGracePeriod)) return;
     try {
       setIsAutosaving(true);
+      clientRevisionRef.current += 1;
       const res = await ApiClient.autosaveWorkspace(sessionId, {
         code: currentCode,
         testResults,
+        clientRevision: clientRevisionRef.current,
       });
       setLastSavedAt(new Date(res.lastSavedAt));
       lastSavedCodeRef.current = currentCode;

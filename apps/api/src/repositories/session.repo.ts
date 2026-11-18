@@ -111,21 +111,39 @@ export class SessionRepository {
   public async updateWorkspaceSnapshot(
     id: string,
     snapshot: WorkspaceSnapshot,
-    allowedStatuses: string[] = ["ACTIVE", "in_progress"]
+    allowedStatuses: string[] = ["ACTIVE", "in_progress"],
+    opts?: { expectedBaseRevision?: number; clientRevision?: number }
   ): Promise<AssessmentSession | null> {
     const db = await this.dbProvider();
     const normalizedStatuses = allowedStatuses.map((s) => normalizeSessionState(s));
     const statusConditions = normalizedStatuses.map((s) => sql`${assessmentSessions.status} = ${s}`);
     const statusMatchSql = sql`(${sql.join(statusConditions, sql` OR `)})`;
 
+    const conditions = [
+      sql`${assessmentSessions.id} = ${id}`,
+      statusMatchSql,
+      sql`clock_timestamp() <= ${assessmentSessions.expiresAt}`,
+    ];
+
+    if (opts?.expectedBaseRevision !== undefined) {
+      conditions.push(sql`${assessmentSessions.lastPersistedRevision} = ${opts.expectedBaseRevision}`);
+    } else if (opts?.clientRevision !== undefined) {
+      conditions.push(sql`${assessmentSessions.lastPersistedRevision} < ${opts.clientRevision}`);
+    }
+
+    const nextRevisionSql =
+      opts?.clientRevision !== undefined
+        ? sql`GREATEST(last_persisted_revision + 1, ${opts.clientRevision})`
+        : sql`last_persisted_revision + 1`;
+
     const rows = await db
       .update(assessmentSessions)
       .set({
         workspaceSnapshot: snapshot,
-        lastPersistedRevision: sql`last_persisted_revision + 1`,
+        lastPersistedRevision: nextRevisionSql,
         updatedAt: new Date(),
       })
-      .where(sql`${assessmentSessions.id} = ${id} AND ${statusMatchSql} AND NOW() <= ${assessmentSessions.expiresAt}`)
+      .where(sql.join(conditions, sql` AND `))
       .returning();
 
     if (rows.length === 0 || !rows[0]) return null;

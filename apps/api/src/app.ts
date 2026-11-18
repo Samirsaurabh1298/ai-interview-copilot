@@ -361,6 +361,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
     gateway,
     sessionService,
     templateService,
+    authService,
   });
 
   await app.register(providersRoutes, {

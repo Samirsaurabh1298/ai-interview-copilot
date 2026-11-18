@@ -40,6 +40,13 @@ export class SessionInvalidStateError extends Error {
   }
 }
 
+export class SessionStaleRevisionError extends Error {
+  constructor(message = "Stale workspace revision rejected: incoming revision is older than currently persisted revision") {
+    super(message);
+    this.name = "SessionStaleRevisionError";
+  }
+}
+
 export class AssessmentSessionService {
   // Key: sessionId -> AssessmentSession
   private sessions = new Map<string, AssessmentSession>();
@@ -320,7 +327,7 @@ export class AssessmentSessionService {
     const session = this.assertCanCode(sessionId);
     const now = new Date();
 
-    const currentRevision = (session.lastPersistedRevision ?? 0) + 1;
+    const currentRevision = req.clientRevision ?? (session.lastPersistedRevision ?? 0) + 1;
     const snapshot: WorkspaceSnapshot = {
       ...session.workspaceSnapshot,
       currentCode: req.code,
@@ -330,7 +337,10 @@ export class AssessmentSessionService {
       lastTestPassedCount: req.testResults ? req.testResults.filter((t) => t.passed).length : session.workspaceSnapshot.lastTestPassedCount,
     };
 
-    const updated = await this.repo.updateWorkspaceSnapshot(sessionId, snapshot);
+    const updated = await this.repo.updateWorkspaceSnapshot(sessionId, snapshot, ["ACTIVE", "in_progress"], {
+      expectedBaseRevision: req.baseRevision,
+      clientRevision: req.clientRevision,
+    });
     if (!updated) {
       const dbSession = await this.repo.findById(sessionId);
       const conflictStatus = dbSession?.status || session.status;
@@ -342,6 +352,18 @@ export class AssessmentSessionService {
       }
       if (conflictStatus === SessionState.SUBMITTED) {
         throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+      }
+      if (dbSession && new Date() > new Date(dbSession.expiresAt)) {
+        throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
+      }
+      if (
+        dbSession &&
+        ((req.baseRevision !== undefined && dbSession.lastPersistedRevision !== req.baseRevision) ||
+         (req.clientRevision !== undefined && dbSession.lastPersistedRevision >= req.clientRevision))
+      ) {
+        throw new SessionStaleRevisionError(
+          `Stale workspace revision rejected: incoming revision is older than currently persisted revision (${dbSession.lastPersistedRevision})`
+        );
       }
       throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${conflictStatus}'`);
     }

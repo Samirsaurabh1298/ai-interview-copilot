@@ -9,14 +9,16 @@ import {
   SessionInvalidStateError,
 } from "../services/session.js";
 import type { AssessmentTemplateService } from "../services/template.js";
+import type { AuthService } from "../services/auth.js";
 
 export const answersRoutes: FastifyPluginAsync<{
   orchestrator: AIOrchestrationService;
   gateway?: AIUsageGatewayService;
   sessionService?: AssessmentSessionService;
   templateService?: AssessmentTemplateService;
+  authService?: AuthService;
 }> = async (fastify, opts) => {
-  const { orchestrator, gateway, sessionService, templateService } = opts;
+  const { orchestrator, gateway, sessionService, templateService, authService } = opts;
 
   fastify.post("/generate", async (request, reply) => {
     const parseResult = AIRequestSchema.safeParse(request.body);
@@ -34,10 +36,22 @@ export const answersRoutes: FastifyPluginAsync<{
       taskId?: string;
     } | undefined;
 
-    // Assessment Session State & Deadline Enforcement (Non-Negotiable Invariant 2)
-    if (query?.sessionId && sessionService) {
+    let effectiveSessionId = query?.sessionId;
+    if (!effectiveSessionId && authService && request.headers.authorization) {
       try {
-        sessionService.assertCanInvokeAI(query.sessionId);
+        const auth = authService.parseAuthHeader(request.headers.authorization);
+        if (auth.role === "candidate" && auth.sessionId) {
+          effectiveSessionId = auth.sessionId;
+        }
+      } catch {
+        // Fall through if unauthenticated or invalid token
+      }
+    }
+
+    // Assessment Session State & Deadline Enforcement (Non-Negotiable Invariant 2)
+    if (effectiveSessionId && sessionService) {
+      try {
+        sessionService.assertCanInvokeAI(effectiveSessionId);
       } catch (err: unknown) {
         if (err instanceof SessionExpiredError) {
           return reply.status(410).send({
@@ -56,9 +70,9 @@ export const answersRoutes: FastifyPluginAsync<{
     }
 
     // Task-level AI Policy Enforcement
-    if (query?.taskId && query?.sessionId && sessionService && templateService) {
+    if (query?.taskId && effectiveSessionId && sessionService && templateService) {
       try {
-        const session = sessionService.getSession(query.sessionId);
+        const session = sessionService.getSession(effectiveSessionId);
         const template = templateService.getTemplateById(session.organizationId, session.templateId);
         const task = template?.tasks?.find((t) => t.id === query.taskId);
 
@@ -76,8 +90,8 @@ export const answersRoutes: FastifyPluginAsync<{
     let reservationId: string | undefined;
 
     try {
-      if (gateway && query?.sessionId) {
-        reservationId = gateway.reserveBudget(query.sessionId, query?.model || "default");
+      if (gateway && effectiveSessionId) {
+        reservationId = gateway.reserveBudget(effectiveSessionId, query?.model || "default");
       }
 
       let response: AIResponse;
@@ -99,17 +113,17 @@ export const answersRoutes: FastifyPluginAsync<{
         });
       }
 
-      if (gateway && query?.sessionId && reservationId) {
+      if (gateway && effectiveSessionId && reservationId) {
         gateway.commitUsage(
-          query.sessionId,
+          effectiveSessionId,
           reservationId,
           response.model || query?.model || "default",
           response.usage?.inputTokens ?? 250,
           response.usage?.outputTokens ?? 350
         );
-      } else if (gateway && query?.sessionId) {
+      } else if (gateway && effectiveSessionId) {
         gateway.recordUsage(
-          query.sessionId,
+          effectiveSessionId,
           response.model || query?.model || "default",
           response.usage?.inputTokens ?? 250,
           response.usage?.outputTokens ?? 350
@@ -118,8 +132,8 @@ export const answersRoutes: FastifyPluginAsync<{
 
       return reply.status(200).send(response);
     } catch (err: unknown) {
-      if (gateway && query?.sessionId && reservationId) {
-        gateway.releaseReservation(query.sessionId, reservationId);
+      if (gateway && effectiveSessionId && reservationId) {
+        gateway.releaseReservation(effectiveSessionId, reservationId);
       }
 
       if (err instanceof AIProviderError && (err.code === "QUOTA_EXHAUSTED" || err.code === "SESSION_EXPIRED")) {

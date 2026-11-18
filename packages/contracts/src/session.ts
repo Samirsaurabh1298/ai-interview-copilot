@@ -99,6 +99,8 @@ export type SessionHeartbeatResponse = z.infer<typeof SessionHeartbeatResponseSc
 export const UpdateWorkspaceRequestSchema = z.object({
   code: z.string(),
   testResults: z.array(SingleTestResultSchema).optional(),
+  clientRevision: z.number().int().nonnegative().optional(),
+  baseRevision: z.number().int().nonnegative().optional(),
 });
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 
