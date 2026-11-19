@@ -127,7 +127,8 @@ export class SessionRepository {
 
     if (opts?.expectedBaseRevision !== undefined) {
       conditions.push(sql`${assessmentSessions.lastPersistedRevision} = ${opts.expectedBaseRevision}`);
-    } else if (opts?.clientRevision !== undefined) {
+    }
+    if (opts?.clientRevision !== undefined) {
       conditions.push(sql`${assessmentSessions.lastPersistedRevision} < ${opts.clientRevision}`);
     }
 

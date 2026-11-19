@@ -356,6 +356,21 @@ export class AssessmentSessionService {
       if (dbSession && new Date() > new Date(dbSession.expiresAt)) {
         throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
       }
+
+      // Idempotent recovery for retried requests where the response was lost
+      if (
+        dbSession &&
+        dbSession.workspaceSnapshot?.currentCode === req.code &&
+        ((req.clientRevision !== undefined && dbSession.lastPersistedRevision === req.clientRevision) ||
+         (req.baseRevision !== undefined && dbSession.lastPersistedRevision === req.baseRevision + 1) ||
+         (req.clientRevision === undefined && req.baseRevision === undefined))
+      ) {
+        session.lastPersistedRevision = dbSession.lastPersistedRevision;
+        session.workspaceSnapshot = dbSession.workspaceSnapshot;
+        session.updatedAt = dbSession.updatedAt;
+        return session;
+      }
+
       if (
         dbSession &&
         ((req.baseRevision !== undefined && dbSession.lastPersistedRevision !== req.baseRevision) ||
