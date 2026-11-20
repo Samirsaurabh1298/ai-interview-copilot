@@ -112,7 +112,7 @@ export class SessionRepository {
     id: string,
     snapshot: WorkspaceSnapshot,
     allowedStatuses: string[] = ["ACTIVE", "in_progress"],
-    opts?: { expectedBaseRevision?: number; clientRevision?: number }
+    opts?: { expectedBaseRevision?: number }
   ): Promise<AssessmentSession | null> {
     const db = await this.dbProvider();
     const normalizedStatuses = allowedStatuses.map((s) => normalizeSessionState(s));
@@ -128,20 +128,12 @@ export class SessionRepository {
     if (opts?.expectedBaseRevision !== undefined) {
       conditions.push(sql`${assessmentSessions.lastPersistedRevision} = ${opts.expectedBaseRevision}`);
     }
-    if (opts?.clientRevision !== undefined) {
-      conditions.push(sql`${assessmentSessions.lastPersistedRevision} < ${opts.clientRevision}`);
-    }
-
-    const nextRevisionSql =
-      opts?.clientRevision !== undefined
-        ? sql`GREATEST(last_persisted_revision + 1, ${opts.clientRevision})`
-        : sql`last_persisted_revision + 1`;
 
     const rows = await db
       .update(assessmentSessions)
       .set({
         workspaceSnapshot: snapshot,
-        lastPersistedRevision: nextRevisionSql,
+        lastPersistedRevision: sql`last_persisted_revision + 1`,
         updatedAt: new Date(),
       })
       .where(sql.join(conditions, sql` AND `))

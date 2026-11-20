@@ -483,7 +483,7 @@ export class ApiClient {
   public static async autosaveWorkspace(
     sessionId: string,
     req: UpdateWorkspaceRequest
-  ): Promise<{ sessionId: string; lastSavedAt: Date; status: string }> {
+  ): Promise<{ sessionId: string; lastSavedAt: Date; status: string; revision?: number; clientMutationId?: string }> {
     const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/workspace`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -496,7 +496,7 @@ export class ApiClient {
       };
       throw new Error(err.message || err.error || "Failed to autosave workspace");
     }
-    return (await res.json()) as { sessionId: string; lastSavedAt: Date; status: string };
+    return (await res.json()) as { sessionId: string; lastSavedAt: Date; status: string; revision?: number; clientMutationId?: string };
   }
 
   public static async submitAssessmentSession(

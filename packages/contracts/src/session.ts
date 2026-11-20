@@ -34,6 +34,16 @@ export const WorkspaceSnapshotSchema = z.object({
   lastTestPassedCount: z.number().int().optional(),
   lastTestTotalCount: z.number().int().optional(),
   revision: z.number().int().default(0),
+  clientMutationId: z.string().optional(),
+  recentMutations: z
+    .record(
+      z.object({
+        code: z.string(),
+        revision: z.number().int(),
+        lastSavedAt: z.coerce.date(),
+      })
+    )
+    .optional(),
 });
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshotSchema>;
 
@@ -101,6 +111,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   testResults: z.array(SingleTestResultSchema).optional(),
   clientRevision: z.number().int().nonnegative().optional(),
   baseRevision: z.number().int().nonnegative().optional(),
+  clientMutationId: z.string().min(1).optional(),
 });
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 
