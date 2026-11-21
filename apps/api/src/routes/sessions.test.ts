@@ -128,6 +128,8 @@ describe("Assessment Session Lifecycle & Expiration Routes (Task 11)", () => {
       url: `/api/v1/sessions/${session.id}/workspace`,
       payload: {
         code: newCode,
+        baseRevision: 0,
+        clientMutationId: "mut_test_1",
         testResults: [
           { name: "test 1", passed: true, durationMs: 12 },
           { name: "test 2", passed: false, durationMs: 15, error: "AssertionFailed" },
@@ -190,7 +192,7 @@ describe("Assessment Session Lifecycle & Expiration Routes (Task 11)", () => {
     const blockedPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${session.id}/workspace`,
-      payload: { code: "trying to modify after submit" },
+      payload: { code: "trying to modify after submit", baseRevision: 0, clientMutationId: "mut_post_submit" },
     });
     expect(blockedPatch.statusCode).toBe(409);
   });

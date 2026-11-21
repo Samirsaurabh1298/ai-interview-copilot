@@ -130,23 +130,24 @@ export const sessionsRoutes: FastifyPluginAsync<{
         clientMutationId: updated.workspaceSnapshot.clientMutationId,
       });
     } catch (err: unknown) {
-      if (err instanceof SessionNotFoundError) {
-        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      const errName = (err as any)?.name;
+      if (err instanceof SessionNotFoundError || errName === "SessionNotFoundError") {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: (err as any).message });
       }
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
-        return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
+      if (err instanceof SessionExpiredError || err instanceof SessionLockedError || errName === "SessionExpiredError" || errName === "SessionLockedError") {
+        return reply.status(410).send({ error: "SESSION_EXPIRED", message: (err as any).message });
       }
-      if (err instanceof MutationIdConflictError) {
-        return reply.status(409).send({ error: "MUTATION_ID_CONFLICT", message: err.message });
+      if (err instanceof MutationIdConflictError || errName === "MutationIdConflictError") {
+        return reply.status(409).send({ error: "MUTATION_ID_CONFLICT", message: (err as any).message });
       }
-      if (err instanceof SessionStaleRevisionError) {
-        return reply.status(409).send({ error: "STALE_REVISION", message: err.message });
+      if (err instanceof SessionStaleRevisionError || errName === "SessionStaleRevisionError") {
+        return reply.status(409).send({ error: "STALE_REVISION", message: (err as any).message });
       }
-      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
-        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError || errName === "SessionInvalidStateError" || errName === "InvalidStateTransitionError") {
+        return reply.status(409).send({ error: "INVALID_STATE", message: (err as any).message });
       }
       throw err;
     }
@@ -206,20 +207,21 @@ export const sessionsRoutes: FastifyPluginAsync<{
         submittedAt: submitted.submittedAt,
       });
     } catch (err: unknown) {
-      if (err instanceof SessionNotFoundError) {
-        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: err.message });
+      const errName = (err as any)?.name;
+      if (err instanceof SessionNotFoundError || errName === "SessionNotFoundError") {
+        return reply.status(404).send({ error: "SESSION_NOT_FOUND", message: (err as any).message });
       }
       if (isTenantOrAuthForbiddenError(err)) {
         return reply.status(403).send({ error: "FORBIDDEN", message: err instanceof Error ? err.message : "Forbidden" });
       }
-      if (err instanceof SessionExpiredError || err instanceof SessionLockedError) {
-        return reply.status(410).send({ error: "SESSION_EXPIRED", message: err.message });
+      if (err instanceof SessionExpiredError || err instanceof SessionLockedError || errName === "SessionExpiredError" || errName === "SessionLockedError") {
+        return reply.status(410).send({ error: "SESSION_EXPIRED", message: (err as any).message });
       }
-      if (err instanceof SessionStaleRevisionError) {
-        return reply.status(409).send({ error: "STALE_REVISION", message: err.message });
+      if (err instanceof SessionStaleRevisionError || errName === "SessionStaleRevisionError") {
+        return reply.status(409).send({ error: "STALE_REVISION", message: (err as any).message });
       }
-      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError) {
-        return reply.status(409).send({ error: "INVALID_STATE", message: err.message });
+      if (err instanceof SessionInvalidStateError || err instanceof InvalidStateTransitionError || errName === "SessionInvalidStateError" || errName === "InvalidStateTransitionError") {
+        return reply.status(409).send({ error: "INVALID_STATE", message: (err as any).message });
       }
       throw err;
     }

@@ -332,6 +332,21 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_proctor_incidents_session ON proctor_incidents (session_id);
     CREATE INDEX IF NOT EXISTS idx_proctor_incidents_org ON proctor_incidents (organization_id);
+
+    -- LOOP 10.0.4.2.4 Durable Autosave Idempotency
+    CREATE TABLE IF NOT EXISTS session_autosave_mutations (
+      id VARCHAR(128) PRIMARY KEY,
+      session_id VARCHAR(128) NOT NULL REFERENCES assessment_sessions(id) ON DELETE CASCADE,
+      client_mutation_id VARCHAR(128) NOT NULL,
+      base_revision INTEGER NOT NULL,
+      server_revision INTEGER NOT NULL,
+      request_hash CHAR(64) NOT NULL,
+      committed_snapshot JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_mutation ON session_autosave_mutations (session_id, client_mutation_id);
+    CREATE INDEX IF NOT EXISTS idx_session_mutations_session ON session_autosave_mutations (session_id);
   `;
 
   if (pgliteInstance) {

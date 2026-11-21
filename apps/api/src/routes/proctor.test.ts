@@ -104,7 +104,7 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
       method: "PATCH",
       url: `/api/v1/sessions/${session.id}/workspace`,
       headers: { Authorization: `Bearer ${candidateToken}` },
-      payload: { code: "export const modified = true;" },
+      payload: { code: "export const modified = true;", baseRevision: 0, clientMutationId: "mut_proctor_paused" },
     });
     expect(editRes.statusCode).toBe(409);
     const err = JSON.parse(editRes.body);
@@ -147,7 +147,7 @@ describe("Proctor Controls & Incident Handling Routes (Task 15)", () => {
       method: "PATCH",
       url: `/api/v1/sessions/${session.id}/workspace`,
       headers: { Authorization: `Bearer ${candidateToken}` },
-      payload: { code: "export const recovered = true;" },
+      payload: { code: "export const recovered = true;", baseRevision: 0, clientMutationId: "mut_proctor_rec" },
     });
     expect(editRes.statusCode).toBe(200);
   });

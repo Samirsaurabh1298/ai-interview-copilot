@@ -372,7 +372,7 @@ describe("Adversarial Multi-Tenant Security & IDOR Attack Suite", () => {
         method: "PATCH",
         url: `/api/v1/sessions/${betaSessionId}/workspace`,
         headers: { authorization: `Bearer ${tokenCandidateAlpha}` },
-        payload: { code: "malicious code injection" },
+        payload: { code: "malicious code injection", baseRevision: 0, clientMutationId: "mut_idor_alpha" },
       });
 
       expect(res.statusCode).toBe(403);

@@ -110,8 +110,8 @@ export const UpdateWorkspaceRequestSchema = z.object({
   code: z.string(),
   testResults: z.array(SingleTestResultSchema).optional(),
   clientRevision: z.number().int().nonnegative().optional(),
-  baseRevision: z.number().int().nonnegative().optional(),
-  clientMutationId: z.string().min(1).optional(),
+  baseRevision: z.number().int().nonnegative(),
+  clientMutationId: z.string().min(1),
 });
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 

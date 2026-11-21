@@ -116,7 +116,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
     await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: snapshotCode },
+      payload: { code: snapshotCode, baseRevision: 0, clientMutationId: "mut_expiry_c2" },
     });
 
     // Advance session past duration and grace period (hard deadline reached)
@@ -160,7 +160,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
     const patchRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const maliciousLateCode = true;" },
+      payload: { code: "export const maliciousLateCode = true;", baseRevision: 0, clientMutationId: "mut_expiry_c3" },
     });
 
     expect(patchRes.statusCode).toBe(410);
@@ -177,7 +177,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
     await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: candidateFinalCode },
+      payload: { code: candidateFinalCode, baseRevision: 0, clientMutationId: "mut_expiry_c4" },
     });
 
     // Simulate both candidate clicking submit AND server-side autoFinalizeSession running simultaneously
@@ -268,7 +268,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
     await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export function rebootProof() { return true; }" },
+      payload: { code: "export function rebootProof() { return true; }", baseRevision: 0, clientMutationId: "mut_expiry_c6" },
     });
 
     // Simulate API crashed while candidate session expired
@@ -362,7 +362,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
       await app.inject({
         method: "PATCH",
         url: `/api/v1/sessions/${sessionId}/workspace`,
-        payload: { code: codeMidway },
+        payload: { code: codeMidway, baseRevision: 0, clientMutationId: "mut_expiry_scen_a" },
       });
 
       // Browser refreshes (candidate calls accept again with invitation token)
@@ -395,7 +395,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
       await app.inject({
         method: "PATCH",
         url: `/api/v1/sessions/${sessionId}/workspace`,
-        payload: { code: lastSavedCode },
+        payload: { code: lastSavedCode, baseRevision: 0, clientMutationId: "mut_expiry_scen_b" },
       });
 
       // Candidate's laptop battery dies, browser disappears completely.
@@ -437,7 +437,7 @@ describe("LOOP 10.0.3: Server-Authoritative Assessment Expiry & Finalization Rel
       const postExpiryPatch = await app.inject({
         method: "PATCH",
         url: `/api/v1/sessions/${sessionId}/workspace`,
-        payload: { code: "new code" },
+        payload: { code: "new code", baseRevision: 0, clientMutationId: "mut_expiry_scen_c" },
       });
       expect([409, 410]).toContain(postExpiryPatch.statusCode);
 

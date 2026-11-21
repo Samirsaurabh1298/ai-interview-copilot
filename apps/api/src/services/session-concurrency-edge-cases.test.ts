@@ -129,7 +129,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
 
     // Now test deadline enforcement in sessionRepo:
     const { sessionId } = await createCandidateSession("clock_ts@test.com", "Clock Ts Candidate");
-    
+
     // Set expiresAt to 10ms from now
     const nearExpiry = new Date(Date.now() + 10);
     await sessionRepo.update(sessionId, { expiresAt: nearExpiry });
@@ -243,6 +243,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
         code: "export const revisionOne = true;",
         clientRevision: 1,
         baseRevision: 0,
+        clientMutationId: "mut_ooo_1",
       },
     });
     expect(save1.statusCode).toBe(200);
@@ -260,6 +261,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
         code: "export const revisionTwo = true;",
         clientRevision: 2,
         baseRevision: 1,
+        clientMutationId: "mut_ooo_2",
       },
     });
     expect(save2.statusCode).toBe(200);
@@ -278,6 +280,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
         code: "export const staleOldCode = true;",
         clientRevision: 1, // older than DB's revision 2
         baseRevision: 0,
+        clientMutationId: "mut_ooo_delayed_stale",
       },
     });
     expect(staleSave.statusCode).toBe(409);
@@ -303,7 +306,11 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
         method: "PATCH",
         url: `/api/v1/sessions/${sessionId}/workspace`,
         headers: { Authorization: `Bearer ${candidateToken}` },
-        payload: { code: "export const probe = 1;" },
+        payload: {
+          code: "export const probe = 1;",
+          baseRevision: 0,
+          clientMutationId: `mut_probe_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        },
       });
       expect(wsRes.statusCode).toBe(expectedWorkspaceStatus);
 
@@ -374,6 +381,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
         code: "export const initialCode = true;",
         clientRevision: 1,
         baseRevision: 0,
+        clientMutationId: "mut_race_init",
       },
     });
     expect(initSave.statusCode).toBe(200);
@@ -391,6 +399,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
           code: "export const alphaCode = true;",
           clientRevision: 2,
           baseRevision: 1,
+          clientMutationId: "mut_race_alpha",
         },
       }),
       app.inject({
@@ -401,6 +410,7 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
           code: "export const betaCode = true;",
           clientRevision: 2,
           baseRevision: 1,
+          clientMutationId: "mut_race_beta",
         },
       }),
     ]);

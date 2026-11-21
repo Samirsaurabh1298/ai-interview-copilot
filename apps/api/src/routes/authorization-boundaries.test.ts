@@ -327,6 +327,8 @@ describe("LOOP 10.0.2: Candidate-to-Company Authorization Boundary Verification"
         headers: { authorization: `Bearer ${candidateTokenA}` },
         payload: {
           code: "// Malicious candidate A payload injected into Candidate B",
+          baseRevision: 0,
+          clientMutationId: "mut_auth_boundary",
         },
       });
       expect(res.statusCode).toBe(403);

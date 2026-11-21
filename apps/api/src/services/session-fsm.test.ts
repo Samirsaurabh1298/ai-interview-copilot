@@ -305,7 +305,11 @@ describe("LOOP 10.0.4: Assessment Lifecycle State Machine, CAS & Concurrency Sui
     await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: acknowledgedSnapshot },
+      payload: {
+        code: acknowledgedSnapshot,
+        baseRevision: 0,
+        clientMutationId: "mut_fsm_acknowledged",
+      },
     });
 
     // Advance session past duration (soft expiry -> GRACE_PERIOD)
@@ -317,7 +321,11 @@ describe("LOOP 10.0.4: Assessment Lifecycle State Machine, CAS & Concurrency Sui
     const patchRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const lateCheatingCode = true;" },
+      payload: {
+        code: "export const lateCheatingCode = true;",
+        baseRevision: 1,
+        clientMutationId: "mut_fsm_late_cheating",
+      },
     });
     expect(patchRes.statusCode).toBe(410);
 

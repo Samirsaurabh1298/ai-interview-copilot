@@ -100,7 +100,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
     const { sessionId } = await createCandidateSession("post_deadline@test.com", "Post Deadline");
 
     // Save initial valid code
-    await sessionService.updateWorkspaceCodeAsync(sessionId, { code: "export const legitimateCode = 1;" });
+    await sessionService.updateWorkspaceCodeAsync(sessionId, {
+      code: "export const legitimateCode = 1;",
+      baseRevision: 0,
+      clientMutationId: "mut_life_init",
+    });
 
     // Simulate clock passing expiresAt by mutating expiresAt 5 seconds into the past
     // Note: status in DB remains 'ACTIVE', simulating the window BEFORE background sweep
@@ -113,7 +117,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
     const patchRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const illegalLateCode = 999;" },
+      payload: {
+        code: "export const illegalLateCode = 999;",
+        baseRevision: 1,
+        clientMutationId: "mut_life_illegal_late",
+      },
     });
 
     // Must be rejected with 410 SESSION_EXPIRED
@@ -131,7 +139,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
   it("Test 2: handles race between candidate autosave and server ACTIVE -> GRACE_PERIOD transition", async () => {
     const { sessionId } = await createCandidateSession("race_grace@test.com", "Race Grace");
 
-    await sessionService.updateWorkspaceCodeAsync(sessionId, { code: "export const validWork = true;" });
+    await sessionService.updateWorkspaceCodeAsync(sessionId, {
+      code: "export const validWork = true;",
+      baseRevision: 0,
+      clientMutationId: "mut_life_valid_work",
+    });
 
     // Transition to GRACE_PERIOD in DB
     await sessionRepo.atomicTransitionState(
@@ -159,7 +171,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
   it("Test 3: handles race between candidate autosave and ACTIVE -> FINALIZING transition", async () => {
     const { sessionId } = await createCandidateSession("race_final@test.com", "Race Finalizing");
 
-    await sessionService.updateWorkspaceCodeAsync(sessionId, { code: "export const preFinalCode = 1;" });
+    await sessionService.updateWorkspaceCodeAsync(sessionId, {
+      code: "export const preFinalCode = 1;",
+      baseRevision: 0,
+      clientMutationId: "mut_life_pre_final",
+    });
 
     // Session transitions to FINALIZING (e.g. candidate buzzer submit or expiry processor)
     await sessionRepo.atomicTransitionState(
@@ -173,7 +189,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
     const patchRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const injectedLateCode = 2;" },
+      payload: {
+        code: "export const injectedLateCode = 2;",
+        baseRevision: 1,
+        clientMutationId: "mut_life_injected_late",
+      },
     });
 
     expect([409, 410]).toContain(patchRes.statusCode);
@@ -201,7 +221,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
     const pausePatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const whilePaused = false;" },
+      payload: {
+        code: "export const whilePaused = false;",
+        baseRevision: 0,
+        clientMutationId: "mut_life_while_paused",
+      },
     });
     expect(pausePatch.statusCode).toBe(409);
 
@@ -222,7 +246,11 @@ describe("LOOP 10.0.4.2: Deadline Enforcement & Finalization Contract Suite", ()
     const resumePatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export const afterResume = true;" },
+      payload: {
+        code: "export const afterResume = true;",
+        baseRevision: 0,
+        clientMutationId: "mut_life_after_resume",
+      },
     });
     expect(resumePatch.statusCode).toBe(200);
   });

@@ -1,11 +1,57 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import crypto from "node:crypto";
 import { getDb, type AppDatabase } from "../db/connection.js";
-import { assessmentSessions } from "../db/schema.js";
+import { assessmentSessions, sessionAutosaveMutations } from "../db/schema.js";
 import {
   type AssessmentSession,
   type WorkspaceSnapshot,
+  type SingleTestResult,
+  SessionState,
   normalizeSessionState,
 } from "@ai-copilot/contracts";
+import {
+  SessionNotFoundError,
+  SessionExpiredError,
+  SessionLockedError,
+  SessionStaleRevisionError,
+  SessionInvalidStateError,
+  MutationIdConflictError,
+} from "../services/session-errors.js";
+
+export function computeCanonicalRequestHash(req: {
+  code: string;
+  testResults?: Array<{ name: string; passed: boolean; error?: string | null }>;
+}): string {
+  const normalizedTestResults = req.testResults && req.testResults.length > 0
+    ? req.testResults.map((t) => ({
+        error: t.error ?? null,
+        name: t.name,
+        passed: Boolean(t.passed),
+      }))
+    : null;
+
+  const canonicalPayload = {
+    code: req.code,
+    testResults: normalizedTestResults,
+  };
+
+  return crypto.createHash("sha256").update(JSON.stringify(canonicalPayload)).digest("hex");
+}
+
+export interface SaveAutosaveMutationParams {
+  sessionId: string;
+  clientMutationId: string;
+  baseRevision: number;
+  code: string;
+  testResults?: SingleTestResult[];
+}
+
+export interface SaveAutosaveMutationResult {
+  idempotent: boolean;
+  session: AssessmentSession;
+  serverRevision: number;
+  snapshot: WorkspaceSnapshot;
+}
 
 export class SessionRepository {
   constructor(private dbProvider: () => Promise<AppDatabase> = getDb) {}
@@ -141,6 +187,241 @@ export class SessionRepository {
 
     if (rows.length === 0 || !rows[0]) return null;
     return this.mapSession(rows[0]);
+  }
+
+  public async findMutation(
+    sessionId: string,
+    clientMutationId: string
+  ): Promise<typeof sessionAutosaveMutations.$inferSelect | null> {
+    const db = await this.dbProvider();
+    const rows = await db
+      .select()
+      .from(sessionAutosaveMutations)
+      .where(
+        and(
+          eq(sessionAutosaveMutations.sessionId, sessionId),
+          eq(sessionAutosaveMutations.clientMutationId, clientMutationId)
+        )
+      )
+      .limit(1);
+    return rows[0] || null;
+  }
+
+  public async listMutations(
+    sessionId: string
+  ): Promise<(typeof sessionAutosaveMutations.$inferSelect)[]> {
+    const db = await this.dbProvider();
+    return await db
+      .select()
+      .from(sessionAutosaveMutations)
+      .where(eq(sessionAutosaveMutations.sessionId, sessionId));
+  }
+
+  /**
+   * LOOP 10.0.4.2.4 — Durable Autosave Idempotency & Revision CAS.
+   * Transactionally checks and executes CAS update on assessment_sessions
+   * and persists immutable mutation record with unique database constraint.
+   */
+  public async saveAutosaveMutationTransactional(
+    params: SaveAutosaveMutationParams
+  ): Promise<SaveAutosaveMutationResult> {
+    const db = await this.dbProvider();
+    const requestHash = computeCanonicalRequestHash({
+      code: params.code,
+      testResults: params.testResults,
+    });
+
+    // 1. Fast idempotency check before transaction
+    const existingFast = await this.findMutation(params.sessionId, params.clientMutationId);
+    if (existingFast) {
+      if (existingFast.requestHash === requestHash) {
+        const session = await this.findById(params.sessionId);
+        if (!session) throw new SessionNotFoundError(`Assessment session ${params.sessionId} not found`);
+        return {
+          idempotent: true,
+          session,
+          serverRevision: existingFast.serverRevision,
+          snapshot: existingFast.committedSnapshot as WorkspaceSnapshot,
+        };
+      } else {
+        throw new MutationIdConflictError(
+          `Mutation ID '${params.clientMutationId}' was already committed with different content`
+        );
+      }
+    }
+
+    try {
+      return await db.transaction(async (tx) => {
+        // Double-check inside transaction in case another request inserted it concurrently
+        const [existingInTx] = await tx
+          .select()
+          .from(sessionAutosaveMutations)
+          .where(
+            and(
+              eq(sessionAutosaveMutations.sessionId, params.sessionId),
+              eq(sessionAutosaveMutations.clientMutationId, params.clientMutationId)
+            )
+          )
+          .limit(1);
+
+        if (existingInTx) {
+          if (existingInTx.requestHash === requestHash) {
+            const [sessionRow] = await tx
+              .select()
+              .from(assessmentSessions)
+              .where(eq(assessmentSessions.id, params.sessionId))
+              .limit(1);
+            if (!sessionRow) throw new SessionNotFoundError(`Assessment session ${params.sessionId} not found`);
+            return {
+              idempotent: true,
+              session: this.mapSession(sessionRow),
+              serverRevision: existingInTx.serverRevision,
+              snapshot: existingInTx.committedSnapshot as WorkspaceSnapshot,
+            };
+          } else {
+            throw new MutationIdConflictError(
+              `Mutation ID '${params.clientMutationId}' was already committed with different content`
+            );
+          }
+        }
+
+        // Fetch current session in tx
+        const [current] = await tx
+          .select()
+          .from(assessmentSessions)
+          .where(eq(assessmentSessions.id, params.sessionId))
+          .limit(1);
+
+        if (!current) {
+          throw new SessionNotFoundError(`Assessment session ${params.sessionId} not found`);
+        }
+
+        const normStatus = normalizeSessionState(current.status);
+        if (normStatus === SessionState.GRACE_PERIOD) {
+          throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
+        }
+        if (normStatus === SessionState.FINALIZING) {
+          throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
+        }
+        if (normStatus === SessionState.SUBMITTED) {
+          throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+        }
+        if (normStatus !== SessionState.ACTIVE) {
+          throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${current.status}'`);
+        }
+
+        // Stale base revision check before CAS
+        if (current.lastPersistedRevision !== params.baseRevision) {
+          throw new SessionStaleRevisionError(
+            `Stale workspace revision rejected: incoming base revision (${params.baseRevision}) does not match currently persisted revision (${current.lastPersistedRevision})`
+          );
+        }
+
+        const now = new Date();
+        const newServerRevision = current.lastPersistedRevision + 1;
+        const currentSnapshot = current.workspaceSnapshot as WorkspaceSnapshot;
+
+        const newSnapshot: WorkspaceSnapshot = {
+          ...currentSnapshot,
+          currentCode: params.code,
+          lastSavedAt: now,
+          revision: newServerRevision,
+          clientMutationId: params.clientMutationId,
+          lastTestTotalCount: params.testResults ? params.testResults.length : currentSnapshot.lastTestTotalCount,
+          lastTestPassedCount: params.testResults ? params.testResults.filter((t) => t.passed).length : currentSnapshot.lastTestPassedCount,
+        };
+
+        // CAS update on assessment_sessions
+        const updatedRows = await tx
+          .update(assessmentSessions)
+          .set({
+            workspaceSnapshot: newSnapshot,
+            lastPersistedRevision: sql`last_persisted_revision + 1`,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(assessmentSessions.id, params.sessionId),
+              sql`(${assessmentSessions.status} = 'ACTIVE' OR ${assessmentSessions.status} = 'in_progress')`,
+              sql`clock_timestamp() <= ${assessmentSessions.expiresAt}`,
+              eq(assessmentSessions.lastPersistedRevision, params.baseRevision)
+            )
+          )
+          .returning();
+
+        if (updatedRows.length === 0 || !updatedRows[0]) {
+          const [checkRow] = await tx
+            .select()
+            .from(assessmentSessions)
+            .where(eq(assessmentSessions.id, params.sessionId))
+            .limit(1);
+
+          if (!checkRow) throw new SessionNotFoundError(`Assessment session ${params.sessionId} not found`);
+          const st = normalizeSessionState(checkRow.status);
+          if (st === SessionState.GRACE_PERIOD) {
+            throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
+          }
+          if (st === SessionState.FINALIZING) {
+            throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
+          }
+          if (st === SessionState.SUBMITTED) {
+            throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+          }
+          if (st !== SessionState.ACTIVE) {
+            throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${checkRow.status}'`);
+          }
+          if (checkRow.lastPersistedRevision !== params.baseRevision) {
+            throw new SessionStaleRevisionError(
+              `Stale workspace revision rejected: incoming base revision (${params.baseRevision}) does not match currently persisted revision (${checkRow.lastPersistedRevision})`
+            );
+          }
+          throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
+        }
+
+        const updatedSession = this.mapSession(updatedRows[0]);
+
+        // Insert durable mutation record
+        const mutationRecordId = `mut_${crypto.randomUUID()}`;
+        await tx.insert(sessionAutosaveMutations).values({
+          id: mutationRecordId,
+          sessionId: params.sessionId,
+          clientMutationId: params.clientMutationId,
+          baseRevision: params.baseRevision,
+          serverRevision: newServerRevision,
+          requestHash,
+          committedSnapshot: newSnapshot,
+          createdAt: now,
+        });
+
+        return {
+          idempotent: false,
+          session: updatedSession,
+          serverRevision: newServerRevision,
+          snapshot: newSnapshot,
+        };
+      });
+    } catch (err: unknown) {
+      // Concurrent duplicate request recovery
+      const existingAfterCatch = await this.findMutation(params.sessionId, params.clientMutationId);
+      if (existingAfterCatch) {
+        if (existingAfterCatch.requestHash === requestHash) {
+          const session = await this.findById(params.sessionId);
+          if (session) {
+            return {
+              idempotent: true,
+              session,
+              serverRevision: existingAfterCatch.serverRevision,
+              snapshot: existingAfterCatch.committedSnapshot as WorkspaceSnapshot,
+            };
+          }
+        } else {
+          throw new MutationIdConflictError(
+            `Mutation ID '${params.clientMutationId}' was already committed with different content`
+          );
+        }
+      }
+      throw err;
+    }
   }
 
   /**

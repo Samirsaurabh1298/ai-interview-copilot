@@ -226,6 +226,8 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
     // 1. In ACTIVE state, autosaves persist and increment revision
     const activeUpdate = await sessionService.updateWorkspaceCodeAsync(sessionId, {
       code: "export function activeCode() { return 1; }",
+      baseRevision: 0,
+      clientMutationId: "mut_fsm_active_1",
     });
     expect(activeUpdate.workspaceSnapshot.currentCode).toBe("export function activeCode() { return 1; }");
     expect(activeUpdate.lastPersistedRevision).toBe(1);
@@ -257,14 +259,22 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
 
     // 3. HTTP route / service level check: assertCanCode / updateWorkspaceCodeAsync throws 410 SESSION_EXPIRED
     await expect(
-      sessionService.updateWorkspaceCodeAsync(sessionId, { code: "export function lateHack() { return 999; }" })
+      sessionService.updateWorkspaceCodeAsync(sessionId, {
+        code: "export function lateHack() { return 999; }",
+        baseRevision: 1,
+        clientMutationId: "mut_fsm_late_hack",
+      })
     ).rejects.toThrow(SessionExpiredError);
 
     // 4. HTTP endpoint invocation returns 410
     const httpRes = await app.inject({
       method: "PATCH",
       url: `/api/v1/sessions/${sessionId}/workspace`,
-      payload: { code: "export function lateHack() { return 999; }" },
+      payload: {
+        code: "export function lateHack() { return 999; }",
+        baseRevision: 1,
+        clientMutationId: "mut_fsm_late_hack_http",
+      },
     });
     expect(httpRes.statusCode).toBe(410);
     const body = httpRes.json();
@@ -279,7 +289,11 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
 
     // Candidate persists working code
     const candidateCode = "export function solveChallenge() { return 'completed_without_runner'; }";
-    await sessionService.updateWorkspaceCodeAsync(sessionId, { code: candidateCode });
+    await sessionService.updateWorkspaceCodeAsync(sessionId, {
+      code: candidateCode,
+      baseRevision: 0,
+      clientMutationId: "mut_fsm_candidate_code",
+    });
 
     // Explicitly disable runner execution via environment flag
     const originalFlag = process.env.RUNNER_EXECUTION_ENABLED;

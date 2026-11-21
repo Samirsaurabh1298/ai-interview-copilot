@@ -143,6 +143,8 @@ describe("LOOP 6.1 — Database Persistence & Durability Integration Tests", () 
       url: `/api/v1/sessions/${sessionId}/workspace`,
       payload: {
         code: "function solution() { return 'durable_survived_restart'; }",
+        baseRevision: 0,
+        clientMutationId: "mut_persist_1",
       },
     });
     expect(updateRes.statusCode).toBe(200);

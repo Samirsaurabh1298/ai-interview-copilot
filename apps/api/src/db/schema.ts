@@ -365,4 +365,28 @@ export const proctorIncidents = pgTable(
   ]
 );
 
+// ==============================================================================
+// 13. Session Autosave Mutations Table (LOOP 10.0.4.2.4 Durable Idempotency)
+// ==============================================================================
+export const sessionAutosaveMutations = pgTable(
+  "session_autosave_mutations",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sessionId: varchar("session_id", { length: 128 })
+      .notNull()
+      .references(() => assessmentSessions.id, { onDelete: "cascade" }),
+    clientMutationId: varchar("client_mutation_id", { length: 128 }).notNull(),
+    baseRevision: integer("base_revision").notNull(),
+    serverRevision: integer("server_revision").notNull(),
+    requestHash: char("request_hash", { length: 64 }).notNull(),
+    committedSnapshot: jsonb("committed_snapshot").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("uniq_session_mutation").on(table.sessionId, table.clientMutationId),
+    index("idx_session_mutations_session").on(table.sessionId),
+  ]
+);
+
+
 

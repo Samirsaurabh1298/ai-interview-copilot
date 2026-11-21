@@ -106,6 +106,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const writeOne = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t1_w1",
       },
     });
     expect(write1.statusCode).toBe(200);
@@ -119,6 +120,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const writeTwo = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t1_w2",
       },
     });
     expect(write2.statusCode).toBe(409);
@@ -147,6 +149,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
           code: `export const rev${r + 1} = true;`,
           baseRevision: r,
           clientRevision: r + 1,
+          clientMutationId: `mut_cas_t2_${r}`,
         },
       });
       expect(res.statusCode).toBe(200);
@@ -165,6 +168,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const clobberAttempt = true;",
         baseRevision: 1, // Stale base revision!
         clientRevision: 10, // Artificially high client revision
+        clientMutationId: "mut_cas_t2_clobber",
       },
     });
 
@@ -193,6 +197,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const codeRev1 = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t3_1",
       },
     });
 
@@ -205,6 +210,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const codeRev2 = true;",
         baseRevision: 1,
         clientRevision: 2,
+        clientMutationId: "mut_cas_t3_2",
       },
     });
 
@@ -222,6 +228,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const codeRev1Delayed = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t3_delayed",
       },
     });
 
@@ -244,6 +251,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
       code: "export const retryCode = true;",
       baseRevision: 0,
       clientRevision: 1,
+      clientMutationId: "mut_cas_t4_retry",
     };
 
     // First attempt: succeeds and writes to DB
@@ -295,6 +303,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const preDeadline = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t5_1",
       },
     });
 
@@ -313,6 +322,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const postDeadlineAttempt = true;",
         baseRevision: 1,
         clientRevision: 2,
+        clientMutationId: "mut_cas_t5_late",
       },
     });
 
@@ -340,6 +350,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
         code: "export const baseCode = true;",
         baseRevision: 0,
         clientRevision: 1,
+        clientMutationId: "mut_cas_t6_base",
       },
     });
 
@@ -353,6 +364,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
           code: "export const alphaCode = true;",
           baseRevision: 1,
           clientRevision: 2,
+          clientMutationId: "mut_cas_t6_alpha",
         },
       }),
       app.inject({
@@ -363,6 +375,7 @@ describe("LOOP 10.0.4.2.2: Strict Autosave Revision CAS Suite", () => {
           code: "export const betaCode = true;",
           baseRevision: 1,
           clientRevision: 2,
+          clientMutationId: "mut_cas_t6_beta",
         },
       }),
     ]);

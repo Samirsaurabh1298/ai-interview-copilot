@@ -17,42 +17,16 @@ import type { AIUsageGatewayService } from "./gateway.js";
 import type { SessionEventsService } from "./session-events.js";
 import { SessionRepository } from "../repositories/session.repo.js";
 
-export { SessionLockedError, InvalidStateTransitionError };
+import {
+  SessionNotFoundError,
+  SessionExpiredError,
+  SessionInvalidStateError,
+  SessionStaleRevisionError,
+  MutationIdConflictError,
+} from "./session-errors.js";
 
-export class SessionNotFoundError extends Error {
-  constructor(message = "Assessment session not found") {
-    super(message);
-    this.name = "SessionNotFoundError";
-  }
-}
-
-export class SessionExpiredError extends Error {
-  constructor(message = "Assessment session has expired. Modifications and AI calls are blocked.") {
-    super(message);
-    this.name = "SessionExpiredError";
-  }
-}
-
-export class SessionInvalidStateError extends Error {
-  constructor(message = "Assessment session is not in a valid state for this operation") {
-    super(message);
-    this.name = "SessionInvalidStateError";
-  }
-}
-
-export class SessionStaleRevisionError extends Error {
-  constructor(message = "Stale workspace revision rejected: incoming revision is older than currently persisted revision") {
-    super(message);
-    this.name = "SessionStaleRevisionError";
-  }
-}
-
-export class MutationIdConflictError extends Error {
-  constructor(message = "Mutation ID was already committed with different content") {
-    super(message);
-    this.name = "MutationIdConflictError";
-  }
-}
+export * from "./session-errors.js";
+export { computeCanonicalRequestHash } from "../repositories/session.repo.js";
 
 export class AssessmentSessionService {
   // Key: sessionId -> AssessmentSession
@@ -264,7 +238,7 @@ export class AssessmentSessionService {
     if (now > expiresAtMs) {
       session.status = SessionState.GRACE_PERIOD;
       session.stateVersion = (session.stateVersion || 1) + 1;
-      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => {});
+      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => { });
       throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
     }
 
@@ -294,7 +268,7 @@ export class AssessmentSessionService {
     if (now > new Date(session.expiresAt).getTime()) {
       session.status = SessionState.GRACE_PERIOD;
       session.stateVersion = (session.stateVersion || 1) + 1;
-      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => {});
+      this.repo.atomicTransitionState(session.id, [SessionState.ACTIVE], SessionState.GRACE_PERIOD).catch(() => { });
       throw new SessionExpiredError("Assessment session duration has elapsed. AI invocations are prohibited.");
     }
 
@@ -332,143 +306,18 @@ export class AssessmentSessionService {
     req: UpdateWorkspaceRequest
   ): Promise<AssessmentSession> {
     const session = this.assertCanCode(sessionId);
-    const now = new Date();
 
-    // 1. Fetch current database state to verify pre-conditions
-    const dbSession = await this.repo.findById(sessionId);
-    if (!dbSession) {
-      throw new SessionNotFoundError(`Assessment session ${sessionId} not found`);
-    }
-
-    // 2. Check for mutation ID reuse before attempting any update
-    if (req.clientMutationId) {
-      const recent = dbSession.workspaceSnapshot?.recentMutations;
-      const existingMutation = recent?.[req.clientMutationId];
-      if (existingMutation) {
-        if (existingMutation.code === req.code) {
-          // Requirement 4: Identical retry returns the original committed result
-          session.lastPersistedRevision = existingMutation.revision;
-          session.workspaceSnapshot = {
-            ...dbSession.workspaceSnapshot,
-            currentCode: existingMutation.code,
-            lastSavedAt: new Date(existingMutation.lastSavedAt),
-            revision: existingMutation.revision,
-            clientMutationId: req.clientMutationId,
-          };
-          session.updatedAt = dbSession.updatedAt;
-          return session;
-        } else {
-          // Requirement 5: Reusing a mutation ID with different content returns HTTP 409
-          throw new MutationIdConflictError(
-            `Mutation ID '${req.clientMutationId}' was already committed with different content`
-          );
-        }
-      }
-    }
-
-    // 3. Idempotent recovery for retried requests where clientMutationId was omitted
-    if (
-      dbSession.workspaceSnapshot?.currentCode === req.code &&
-      ((req.baseRevision !== undefined && dbSession.lastPersistedRevision === req.baseRevision + 1) ||
-       (req.clientRevision !== undefined && dbSession.lastPersistedRevision === req.clientRevision))
-    ) {
-      session.lastPersistedRevision = dbSession.lastPersistedRevision;
-      session.workspaceSnapshot = dbSession.workspaceSnapshot;
-      session.updatedAt = dbSession.updatedAt;
-      return session;
-    }
-
-    // 4. Stale base revision check
-    if (req.baseRevision !== undefined && dbSession.lastPersistedRevision !== req.baseRevision) {
-      throw new SessionStaleRevisionError(
-        `Stale workspace revision rejected: incoming base revision (${req.baseRevision}) does not match currently persisted revision (${dbSession.lastPersistedRevision})`
-      );
-    }
-
-    // 4. Server revision increments exactly by one
-    const newRevision = (dbSession.lastPersistedRevision ?? 0) + 1;
-
-    // Update recent mutations map (bounded to last 50)
-    const recentMutations: Record<string, { code: string; revision: number; lastSavedAt: Date }> = {
-      ...(dbSession.workspaceSnapshot?.recentMutations || {}),
-    };
-    if (req.clientMutationId) {
-      recentMutations[req.clientMutationId] = {
-        code: req.code,
-        revision: newRevision,
-        lastSavedAt: now,
-      };
-      const keys = Object.keys(recentMutations);
-      if (keys.length > 50) {
-        delete recentMutations[keys[0]];
-      }
-    }
-
-    const snapshot: WorkspaceSnapshot = {
-      ...session.workspaceSnapshot,
-      currentCode: req.code,
-      lastSavedAt: now,
-      revision: newRevision,
+    const result = await this.repo.saveAutosaveMutationTransactional({
+      sessionId,
       clientMutationId: req.clientMutationId,
-      recentMutations,
-      lastTestTotalCount: req.testResults ? req.testResults.length : session.workspaceSnapshot.lastTestTotalCount,
-      lastTestPassedCount: req.testResults ? req.testResults.filter((t) => t.passed).length : session.workspaceSnapshot.lastTestPassedCount,
-    };
-
-    // 5. Execute conditional atomic update
-    const updated = await this.repo.updateWorkspaceSnapshot(sessionId, snapshot, ["ACTIVE", "in_progress"], {
-      expectedBaseRevision: req.baseRevision,
+      baseRevision: req.baseRevision,
+      code: req.code,
+      testResults: req.testResults,
     });
 
-    if (!updated) {
-      const latestDbSession = await this.repo.findById(sessionId);
-      const conflictStatus = latestDbSession?.status || session.status;
-      if (conflictStatus === SessionState.GRACE_PERIOD) {
-        throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
-      }
-      if (conflictStatus === SessionState.FINALIZING) {
-        throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
-      }
-      if (conflictStatus === SessionState.SUBMITTED) {
-        throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
-      }
-      if (latestDbSession && new Date() > new Date(latestDbSession.expiresAt)) {
-        throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked.");
-      }
-
-      // Check if a concurrent request with the same clientMutationId succeeded in the race
-      if (req.clientMutationId && latestDbSession?.workspaceSnapshot?.recentMutations?.[req.clientMutationId]) {
-        const raceMutation = latestDbSession.workspaceSnapshot.recentMutations[req.clientMutationId];
-        if (raceMutation.code === req.code) {
-          session.lastPersistedRevision = raceMutation.revision;
-          session.workspaceSnapshot = {
-            ...latestDbSession.workspaceSnapshot,
-            currentCode: raceMutation.code,
-            lastSavedAt: new Date(raceMutation.lastSavedAt),
-            revision: raceMutation.revision,
-            clientMutationId: req.clientMutationId,
-          };
-          session.updatedAt = latestDbSession.updatedAt;
-          return session;
-        } else {
-          throw new MutationIdConflictError(
-            `Mutation ID '${req.clientMutationId}' was already committed with different content`
-          );
-        }
-      }
-
-      if (req.baseRevision !== undefined && latestDbSession && latestDbSession.lastPersistedRevision !== req.baseRevision) {
-        throw new SessionStaleRevisionError(
-          `Stale workspace revision rejected: incoming base revision (${req.baseRevision}) does not match currently persisted revision (${latestDbSession.lastPersistedRevision})`
-        );
-      }
-
-      throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${conflictStatus}'`);
-    }
-
-    session.lastPersistedRevision = updated.lastPersistedRevision;
-    session.workspaceSnapshot = updated.workspaceSnapshot;
-    session.updatedAt = updated.updatedAt;
+    session.lastPersistedRevision = result.serverRevision;
+    session.workspaceSnapshot = result.snapshot;
+    session.updatedAt = result.session.updatedAt;
     return session;
   }
 
