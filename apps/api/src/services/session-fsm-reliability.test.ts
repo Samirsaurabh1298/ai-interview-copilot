@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
+import { loadConfig, type AppConfig } from "../config.js";
 import {
   SessionState,
-  SessionExpiredError,
-  SessionLockedError,
   type SubmissionArtifact,
 } from "@ai-copilot/contracts";
-import type { AssessmentSessionService } from "./session.js";
+import {
+  type AssessmentSessionService,
+  SessionExpiredError,
+} from "./session.js";
 import type { SubmissionService } from "./submission.js";
 import type { SessionRepository } from "../repositories/session.repo.js";
 import type { SubmissionRepository } from "../repositories/submission.repo.js";
@@ -24,18 +26,14 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
   let adminToken: string;
 
   beforeAll(async () => {
-    app = await buildApp({
+    const config: AppConfig = {
+      ...loadConfig(),
       PORT: 0,
       NODE_ENV: "test",
-      CORS_ORIGIN: "*",
-      LOG_LEVEL: "silent",
-      ANTHROPIC_API_KEY: undefined,
-      GOOGLE_GENERATIVE_AI_API_KEY: undefined,
-      OPENAI_API_KEY: undefined,
-      GROQ_API_KEY: undefined,
       DEFAULT_AI_PROVIDER: "mock",
       JWT_SECRET: jwtSecret,
-    });
+    };
+    app = await buildApp(config);
 
     await app.ready();
 
@@ -155,10 +153,25 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
       submittedAt: new Date(),
       finalCode: "export function staleCode() { return 'worker_A'; }",
       starterCode: "// starter",
-      codeDiff: { addedLines: 1, removedLines: 0, totalChanges: 1, patch: "" },
-      testExecutionLog: { passed: false, tests: [] },
+      codeDiff: { additions: 1, deletions: 0, totalChanges: 1, unifiedDiff: "" },
+      testExecutionLog: {
+        status: "FAILURE",
+        success: false,
+        passed: false,
+        passedCount: 0,
+        totalCount: 0,
+        durationMs: 0,
+        tests: [],
+        exitCode: 1,
+      },
       technicalExplanation: "Stale submission from Worker A",
-      telemetrySummary: { totalEvents: 0, aiQueriesCount: 0, attentionMetrics: { blurCount: 0, pasteCount: 0 } },
+      telemetrySummary: {
+        totalEvents: 0,
+        aiQueriesCount: 0,
+        consumedAiBudgetUsd: 0,
+        patchDecisions: { accepted: 0, rejected: 0 },
+        attentionMetrics: { blurCount: 0, pasteCount: 0 },
+      },
       templateContentHash: "0".repeat(64),
       submissionFingerprint: "a".repeat(64),
     };
@@ -190,10 +203,25 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
       submittedAt: new Date(),
       finalCode: "export function authoritativeCode() { return 'worker_B'; }",
       starterCode: "// starter",
-      codeDiff: { addedLines: 1, removedLines: 0, totalChanges: 1, patch: "" },
-      testExecutionLog: { passed: true, tests: [] },
+      codeDiff: { additions: 1, deletions: 0, totalChanges: 1, unifiedDiff: "" },
+      testExecutionLog: {
+        status: "SUCCESS",
+        success: true,
+        passed: true,
+        passedCount: 0,
+        totalCount: 0,
+        durationMs: 0,
+        tests: [],
+        exitCode: 0,
+      },
       technicalExplanation: "Authoritative submission from Recovery Worker B",
-      telemetrySummary: { totalEvents: 0, aiQueriesCount: 0, attentionMetrics: { blurCount: 0, pasteCount: 0 } },
+      telemetrySummary: {
+        totalEvents: 0,
+        aiQueriesCount: 0,
+        consumedAiBudgetUsd: 0,
+        patchDecisions: { accepted: 0, rejected: 0 },
+        attentionMetrics: { blurCount: 0, pasteCount: 0 },
+      },
       templateContentHash: "0".repeat(64),
       submissionFingerprint: "b".repeat(64),
     };
@@ -355,10 +383,25 @@ describe("LOOP 10.0.4.1: FSM Reliability Acceptance Suite", () => {
       submittedAt: new Date(),
       finalCode: "export const txWork = 42;",
       starterCode: "// starter",
-      codeDiff: { addedLines: 1, removedLines: 0, totalChanges: 1, patch: "" },
-      testExecutionLog: { passed: true, tests: [] },
+      codeDiff: { additions: 1, deletions: 0, totalChanges: 1, unifiedDiff: "" },
+      testExecutionLog: {
+        status: "SUCCESS",
+        success: true,
+        passed: true,
+        passedCount: 0,
+        totalCount: 0,
+        durationMs: 0,
+        tests: [],
+        exitCode: 0,
+      },
       technicalExplanation: "Atomically sealed submission artifact.",
-      telemetrySummary: { totalEvents: 1, aiQueriesCount: 0, attentionMetrics: { blurCount: 0, pasteCount: 0 } },
+      telemetrySummary: {
+        totalEvents: 1,
+        aiQueriesCount: 0,
+        consumedAiBudgetUsd: 0,
+        patchDecisions: { accepted: 0, rejected: 0 },
+        attentionMetrics: { blurCount: 0, pasteCount: 0 },
+      },
       templateContentHash: "f".repeat(64),
       submissionFingerprint: "e".repeat(64),
     };

@@ -93,6 +93,7 @@ export const SubmitAssessmentRequestSchema = z.object({
     .optional()
     .default("Candidate completed assessment tasks."),
   taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
+  finalizedBy: z.string().optional(),
 });
 
 export type SubmitAssessmentRequest = z.infer<typeof SubmitAssessmentRequestSchema>;
