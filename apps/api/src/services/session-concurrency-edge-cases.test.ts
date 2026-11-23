@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
+import { loadConfig, type AppConfig } from "../config.js";
 import {
   SessionState,
   type SubmissionArtifact,
@@ -25,18 +26,14 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
   let adminToken: string;
 
   beforeAll(async () => {
-    app = await buildApp({
+    const config: AppConfig = {
+      ...loadConfig(),
       PORT: 0,
       NODE_ENV: "test",
-      CORS_ORIGIN: "*",
-      LOG_LEVEL: "silent",
-      ANTHROPIC_API_KEY: undefined,
-      GOOGLE_GENERATIVE_AI_API_KEY: undefined,
-      OPENAI_API_KEY: undefined,
-      GROQ_API_KEY: undefined,
       DEFAULT_AI_PROVIDER: "mock",
       JWT_SECRET: jwtSecret,
-    });
+    };
+    app = await buildApp(config);
 
     await app.ready();
 
@@ -171,7 +168,19 @@ describe("LOOP 10.0.4.2.1: Database Concurrency & Deadline Edge-Case Verificatio
       finalCode: "export const rollbackCode = true;",
       starterCode: "// starter",
       codeDiff: { additions: 1, deletions: 0, totalChanges: 1, unifiedDiff: "" },
-      testExecutionLog: { status: "NOT_RUN", statusReason: "Disabled", passed: null, exitCode: null, passedCount: 0, totalCount: 0, durationMs: 0, stdout: "", stderr: "" },
+      testExecutionLog: {
+        status: "NOT_RUN",
+        statusReason: "Disabled",
+        success: false,
+        passed: null,
+        exitCode: null,
+        passedCount: 0,
+        totalCount: 0,
+        durationMs: 0,
+        tests: [],
+        stdout: "",
+        stderr: "",
+      },
       technicalExplanation: "Attempt sealing from ACTIVE - must rollback",
       telemetrySummary: { totalEvents: 0, aiQueriesCount: 0, consumedAiBudgetUsd: 0, patchDecisions: { accepted: 0, rejected: 0 }, attentionMetrics: { blurCount: 0, pasteCount: 0 } },
       templateContentHash: "a".repeat(64),
