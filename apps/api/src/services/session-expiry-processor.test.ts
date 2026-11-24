@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { buildApp } from "../app.js";
 import type { FastifyInstance } from "fastify";
-import type { AppConfig } from "../config.js";
+import { loadConfig, type AppConfig } from "../config.js";
 import type { AssessmentSessionService } from "./session.js";
 import type { SubmissionService } from "./submission.js";
 import type { CandidateInvitationService } from "./invitation.js";
@@ -9,8 +9,8 @@ import type { SessionExpiryProcessor } from "./session-expiry-processor.js";
 import type { SessionEventsService } from "./session-events.js";
 
 const testConfig: AppConfig = {
+  ...loadConfig(),
   PORT: 4016,
-  HOST: "127.0.0.1",
   NODE_ENV: "test",
   DEFAULT_AI_PROVIDER: "mock",
   JWT_SECRET: "test-secret-key-32-chars-minimum-safe-12345",
