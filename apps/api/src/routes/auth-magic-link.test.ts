@@ -230,6 +230,70 @@ describe("LOOP 10: Production Magic Link Authentication & Runner Security Gate",
 
       await lockedApp.close();
     });
+
+    it("rejects empty code and empty files on /api/v1/code/validate (400) and enforces security gate for multi-file payloads", async () => {
+      const invalidRes = await app.inject({
+        method: "POST",
+        url: "/api/v1/code/validate",
+        payload: {
+          language: "typescript",
+          code: "",
+          files: {},
+          testCode: "test('noop', () => {});",
+        },
+      });
+      expect(invalidRes.statusCode).toBe(400);
+
+      // With RUNNER_EXECUTION_ENABLED=false, multi-file requests must also be gated with 403
+      const lockedConfig = loadConfig();
+      lockedConfig.NODE_ENV = "test";
+      lockedConfig.RUNNER_EXECUTION_ENABLED = false;
+
+      const lockedApp = await buildApp(lockedConfig);
+      await lockedApp.ready();
+
+      const gatedMultiRes = await lockedApp.inject({
+        method: "POST",
+        url: "/api/v1/code/validate",
+        payload: {
+          language: "typescript",
+          files: {
+            "src/index.ts": "export const val = 42;",
+          },
+          testCode: "import assert from 'node:assert/strict'; import { val } from './src/index.ts'; test('val', () => assert.equal(val, 42));",
+        },
+      });
+
+      expect(gatedMultiRes.statusCode).toBe(403);
+      expect(gatedMultiRes.json().error).toBe("RUNNER_EXECUTION_DISABLED");
+
+      await lockedApp.close();
+    });
+
+    it("executes multi-file virtual workspace via /api/v1/code/validate when test execution is enabled", async () => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/code/validate",
+        payload: {
+          language: "typescript",
+          files: {
+            "src/math.ts": "export function mul(a: number, b: number) { return a * b; }",
+          },
+          testCode: `
+            import assert from "node:assert/strict";
+            import { mul } from "./src/math.ts";
+            test("multi-file route execution", () => {
+              assert.equal(mul(3, 4), 12);
+            });
+          `,
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.passed).toBe(true);
+      expect(body.tests[0]?.passed).toBe(true);
+    }, 15000);
   });
 });
 

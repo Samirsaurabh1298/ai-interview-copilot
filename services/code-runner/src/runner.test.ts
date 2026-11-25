@@ -296,5 +296,218 @@ func TestLRUCacheEviction(t *testing.T) {}
     expect(goResult.tests[0]?.name).toBe("TestLRUCacheOperations");
     expect(goResult.tests[1]?.name).toBe("TestLRUCacheEviction");
   });
+
+  it("executes multi-file TypeScript codebase with cross-file imports and detects bugs accurately", async () => {
+    const buggyResult = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: {
+        "src/types.ts": `export interface Ticket { id: string; priority: "P0" | "P1" | "P2"; createdAt: number; }`,
+        "src/sorter.ts": `import type { Ticket } from "./types.ts";
+export function sortTickets(tickets: Ticket[]): Ticket[] {
+  // BUG: mutates input and ignores priority
+  return tickets.sort((a, b) => a.createdAt - b.createdAt);
+}`,
+        "src/service.ts": `import { sortTickets } from "./sorter.ts";
+import type { Ticket } from "./types.ts";
+export function getNextTicket(queue: Ticket[]): Ticket | undefined {
+  return sortTickets(queue)[0];
+}`,
+      },
+      testCode: `
+import assert from "node:assert/strict";
+import { sortTickets } from "./src/sorter.ts";
+import { getNextTicket } from "./src/service.ts";
+import type { Ticket } from "./src/types.ts";
+
+test("sortTickets prioritizes P0 over P2 immutably", () => {
+  const input: Ticket[] = [
+    { id: "low", priority: "P2", createdAt: 10 },
+    { id: "crit", priority: "P0", createdAt: 20 },
+  ];
+  const snapshot = JSON.stringify(input);
+  const next = getNextTicket(input);
+  assert.equal(next?.id, "crit", "Expected P0 ticket first");
+  assert.equal(JSON.stringify(input), snapshot, "Input array must not be mutated");
+});
+`,
+      timeoutMs: 8000,
+      memoryLimitMb: 128,
+    });
+
+    expect(buggyResult.success).toBe(true);
+    expect(buggyResult.passed).toBe(false);
+    expect(buggyResult.tests.length).toBe(1);
+    expect(buggyResult.tests[0]?.passed).toBe(false);
+    expect(buggyResult.tests[0]?.error).toContain("Expected P0 ticket first");
+
+    const fixedResult = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: {
+        "src/types.ts": `export interface Ticket { id: string; priority: "P0" | "P1" | "P2"; createdAt: number; }`,
+        "src/sorter.ts": `import type { Ticket } from "./types.ts";
+const WEIGHT: Record<Ticket["priority"], number> = { P0: 3, P1: 2, P2: 1 };
+export function sortTickets(tickets: Ticket[]): Ticket[] {
+  return [...tickets].sort((a, b) => WEIGHT[b.priority] - WEIGHT[a.priority] || a.createdAt - b.createdAt);
+}`,
+        "src/service.ts": `import { sortTickets } from "./sorter.ts";
+import type { Ticket } from "./types.ts";
+export function getNextTicket(queue: Ticket[]): Ticket | undefined {
+  return sortTickets(queue)[0];
+}`,
+      },
+      testCode: `
+import assert from "node:assert/strict";
+import { getNextTicket } from "./src/service.ts";
+import type { Ticket } from "./src/types.ts";
+
+test("sortTickets prioritizes P0 over P2 immutably", () => {
+  const input: Ticket[] = [
+    { id: "low", priority: "P2", createdAt: 10 },
+    { id: "crit", priority: "P0", createdAt: 20 },
+  ];
+  const snapshot = JSON.stringify(input);
+  const next = getNextTicket(input);
+  assert.equal(next?.id, "crit");
+  assert.equal(JSON.stringify(input), snapshot);
+});
+`,
+      timeoutMs: 8000,
+      memoryLimitMb: 128,
+    });
+
+    expect(fixedResult.success).toBe(true);
+    expect(fixedResult.passed).toBe(true);
+    expect(fixedResult.exitCode).toBe(0);
+    expect(fixedResult.tests[0]?.passed).toBe(true);
+  }, 20000);
+
+  it("enforces network and environment traps inside imported multi-file TypeScript modules", async () => {
+    process.env.MULTI_FILE_TEST_SECRET = "TOP_SECRET_VALUE";
+    try {
+      const result = await executeCodeInSandbox({
+        language: "typescript",
+        code: "",
+        files: {
+          "src/exfil.ts": `
+export async function probe() {
+  const envVal = process.env.MULTI_FILE_TEST_SECRET;
+  let networkBlocked = false;
+  try {
+    await fetch("https://attacker.invalid");
+  } catch (e: any) {
+    networkBlocked = String(e?.message || e).includes("SecurityException");
+  }
+  return { envVal, networkBlocked };
+}
+`,
+        },
+        testCode: `
+import assert from "node:assert/strict";
+import { probe } from "./src/exfil.ts";
+
+test("multi-file imported modules cannot leak env or access network", async () => {
+  const res = await probe();
+  assert.equal(res.envVal, undefined);
+  assert.equal(res.networkBlocked, true);
+});
+`,
+        timeoutMs: 8000,
+        memoryLimitMb: 128,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.passed).toBe(true);
+      expect(result.tests[0]?.passed).toBe(true);
+    } finally {
+      delete process.env.MULTI_FILE_TEST_SECRET;
+    }
+  }, 15000);
+
+  it("rejects path traversal, illegal separators, reserved filenames, and oversized workspaces", async () => {
+    const traversal = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: {
+        "../../escape.ts": "export const x = 1;",
+      },
+      testCode: `test("noop", () => {});`,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+    expect(traversal.success).toBe(false);
+    expect(traversal.passed).toBe(false);
+    expect(traversal.error).toContain("traversal");
+
+    const backslash = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: {
+        "src\\bad.ts": "export const x = 1;",
+      },
+      testCode: `test("noop", () => {});`,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+    expect(backslash.success).toBe(false);
+    expect(backslash.error).toContain("separator");
+
+    const reserved = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: {
+        "runner.ts": "process.exit(0);",
+      },
+      testCode: `test("noop", () => {});`,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+    expect(reserved.success).toBe(false);
+    expect(reserved.error).toContain("reserved sandbox runtime file");
+
+    const tooManyFiles: Record<string, string> = {};
+    for (let i = 0; i < 55; i++) {
+      tooManyFiles[`src/file_${i}.ts`] = `export const v${i} = ${i};`;
+    }
+    const overLimit = await executeCodeInSandbox({
+      language: "typescript",
+      code: "",
+      files: tooManyFiles,
+      testCode: `test("noop", () => {});`,
+      timeoutMs: 3000,
+      memoryLimitMb: 64,
+    });
+    expect(overLimit.success).toBe(false);
+    expect(overLimit.error).toContain("maximum allowed file count");
+  });
+
+  it("executes multi-file Python modules cleanly", async () => {
+    const pyRes = await executeCodeInSandbox({
+      language: "python",
+      code: "",
+      files: {
+        "pkg/__init__.py": "",
+        "pkg/calc.py": `
+def multiply(a, b):
+    return a * b
+`,
+      },
+      testCode: `
+from pkg.calc import multiply
+
+def test_mult():
+    assert multiply(6, 7) == 42
+
+test("multi-file python multiply", test_mult)
+`,
+      timeoutMs: 5000,
+      memoryLimitMb: 64,
+    });
+
+    expect(pyRes.success).toBe(true);
+    expect(pyRes.passed).toBe(true);
+    expect(pyRes.tests[0]?.passed).toBe(true);
+  });
 });
 

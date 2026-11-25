@@ -752,16 +752,42 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
+  const getRepoFilesMap = (): Record<string, string> | undefined => {
+    if (activeTask?.type !== "repository_task") return undefined;
+    const filesMap: Record<string, string> = {};
+    for (const [p, f] of Object.entries(repoFiles)) {
+      filesMap[p] = f.content;
+    }
+    return Object.keys(filesMap).length > 0 ? filesMap : undefined;
+  };
+
   // Run isolated tests
   const handleRunVerification = async (codeToRun?: string) => {
-    const targetCode = typeof codeToRun === "string" ? codeToRun : code;
+    const isRepoTask = activeTask?.type === "repository_task";
+    const filesPayload = getRepoFilesMap();
+    const primaryRepoPath =
+      activeTask?.config?.primaryFilePath ||
+      activeTask?.config?.primaryFileToEdit ||
+      activeRepoFilePath;
+    const targetCode =
+      typeof codeToRun === "string"
+        ? codeToRun
+        : isRepoTask
+          ? repoFiles[primaryRepoPath]?.content || code
+          : code;
+    const targetLanguage =
+      (isRepoTask ? activeTask?.config?.targetLanguage : activeTask?.config?.language) ||
+      "typescript";
+    const targetTests = activeTask?.config?.verificationTestCode || verificationTestCode;
+
     setIsRunningTests(true);
     setActiveBottomTab("tests");
     try {
       const result = await ApiClient.validateCode({
-        language: "typescript",
+        language: targetLanguage,
         code: targetCode,
-        testCode: verificationTestCode,
+        ...(filesPayload ? { files: filesPayload } : {}),
+        testCode: targetTests,
         timeoutMs: 4000,
         memoryLimitMb: 128,
       });
@@ -1011,10 +1037,16 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       let tests = testResult?.tests ?? [];
       if (!testResult) {
         try {
+          const filesPayload = getRepoFilesMap();
+          const targetLanguage =
+            (activeTask?.type === "repository_task"
+              ? activeTask?.config?.targetLanguage
+              : activeTask?.config?.language) || "typescript";
           const val = await ApiClient.validateCode({
-            language: "typescript",
+            language: targetLanguage,
             code,
-            testCode: verificationTestCode,
+            ...(filesPayload ? { files: filesPayload } : {}),
+            testCode: activeTask?.config?.verificationTestCode || verificationTestCode,
             timeoutMs: 4000,
             memoryLimitMb: 128,
           });

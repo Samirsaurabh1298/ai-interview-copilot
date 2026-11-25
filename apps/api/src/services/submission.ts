@@ -129,7 +129,8 @@ export class SubmissionService {
   private async executeSandboxSafely(
     code: string,
     testCode: string,
-    language = "typescript"
+    language = "typescript",
+    files?: Record<string, string>
   ): Promise<{
     status: "SUCCESS" | "FAILURE" | "NOT_RUN" | "UNAVAILABLE";
     statusReason?: string;
@@ -167,6 +168,7 @@ export class SubmissionService {
     try {
       const result = await codeRunnerClient.execute({
         code,
+        ...(files && Object.keys(files).length > 0 ? { files } : {}),
         testCode,
         language,
         timeoutMs: 5000,
@@ -451,6 +453,47 @@ export class SubmissionService {
               completedAt: new Date(),
             };
           }
+        } else if (taskDef.type === "repository_task" && rawTaskSub.finalFiles) {
+          const repoCode =
+            rawTaskSub.codeSubmission?.code ||
+            rawTaskSub.finalFiles[taskDef.config.primaryFilePath || taskDef.config.primaryFileToEdit || "src/index.ts"] ||
+            "";
+          const repoTests = taskDef.config.verificationTestCode || template.verificationTestCode;
+          const repoLang = taskDef.config.targetLanguage || template.language || "typescript";
+          try {
+            const taskSandbox = await this.executeSandboxSafely(
+              repoCode,
+              repoTests,
+              repoLang,
+              rawTaskSub.finalFiles
+            );
+            const pCount = taskSandbox.tests.filter((t) => t.passed).length;
+            const tCount = taskSandbox.tests.length;
+            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskDef.points) : 0;
+            evaluatedTaskSubmissions[tId] = {
+              ...rawTaskSub,
+              earnedPoints: earned,
+              maxPoints: taskDef.points,
+              status: "completed",
+              completedAt: new Date(),
+              codeSubmission: {
+                ...(rawTaskSub.codeSubmission || { code: repoCode, language: repoLang }),
+                testResults: {
+                  passed: taskSandbox.passed,
+                  passedCount: pCount,
+                  totalCount: tCount,
+                  durationMs: taskSandbox.durationMs,
+                  tests: taskSandbox.tests,
+                },
+              },
+            };
+          } catch {
+            evaluatedTaskSubmissions[tId] = {
+              ...rawTaskSub,
+              status: "completed",
+              completedAt: new Date(),
+            };
+          }
         } else {
           evaluatedTaskSubmissions[tId] = rawTaskSub;
         }
@@ -459,18 +502,34 @@ export class SubmissionService {
 
     // Invariant 3: In Grace Period or hard expiry, candidate edits are NOT accepted.
     // Must seal from the last persisted server-acknowledged snapshot.
+    const isServerAuthoritativeSeal =
+      wasGracePeriod || req.finalizedBy === "system_expiry" || req.finalizedBy === "system_recovery";
+
     let effectiveCode: string;
-    if (wasGracePeriod || req.finalizedBy === "system_expiry" || req.finalizedBy === "system_recovery") {
+    if (isServerAuthoritativeSeal) {
       effectiveCode = session.workspaceSnapshot?.currentCode || template.starterCode;
     } else {
-      effectiveCode = req.finalCode || Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code || session.workspaceSnapshot?.currentCode || template.starterCode;
+      effectiveCode =
+        req.finalCode ||
+        Object.values(evaluatedTaskSubmissions).find((t) => t.codeSubmission?.code)?.codeSubmission?.code ||
+        session.workspaceSnapshot?.currentCode ||
+        template.starterCode;
     }
+
+    const multiFileChanges = isServerAuthoritativeSeal
+      ? session.workspaceSnapshot?.files || undefined
+      : req.multiFileChanges ||
+        (req.taskSubmissions &&
+          Object.values(req.taskSubmissions).find((t: any) => t.finalFiles)?.finalFiles) ||
+        session.workspaceSnapshot?.files ||
+        undefined;
 
     // 2. Execute final code inside the isolated Node 22 sandbox to get authoritative test results
     const sandboxResult = await this.executeSandboxSafely(
       effectiveCode,
       template.verificationTestCode,
-      "typescript"
+      template.language || "typescript",
+      multiFileChanges
     );
 
     const passedCount = sandboxResult.passedCount;
@@ -521,14 +580,6 @@ export class SubmissionService {
 
     const submissionId = `sub_${crypto.randomBytes(8).toString("hex")}_${Date.now()}`;
     const submitDate = new Date();
-
-    // Multi-file changes extraction
-    const multiFileChanges =
-      req.multiFileChanges ||
-      (req.taskSubmissions &&
-        Object.values(req.taskSubmissions).find((t: any) => t.finalFiles)?.finalFiles) ||
-      session.workspaceSnapshot?.files ||
-      undefined;
 
     // Server-acknowledged revision (Invariant 3 & Phase 3)
     const serverAcknowledgedRevision =

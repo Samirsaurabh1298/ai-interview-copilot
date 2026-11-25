@@ -9,6 +9,10 @@ import type {
 } from "@ai-copilot/contracts";
 import { LANGUAGE_RUNTIME_PROFILES } from "@ai-copilot/contracts";
 import type { ExecutionProvider, ExecutionEnvironmentInfo } from "./types.js";
+import {
+  materializeWorkspaceFiles,
+  WorkspaceValidationError,
+} from "../workspace-materializer.js";
 
 export class OciGvisorExecutionProvider implements ExecutionProvider {
   public readonly name = "oci-gvisor";
@@ -192,9 +196,31 @@ export class OciGvisorExecutionProvider implements ExecutionProvider {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ai-copilot-oci-"));
 
     try {
+      // Materialize multi-file virtual repository if provided
+      if (request.files && Object.keys(request.files).length > 0) {
+        try {
+          materializeWorkspaceFiles(tmpDir, request.files);
+        } catch (err: unknown) {
+          if (err instanceof WorkspaceValidationError) {
+            return {
+              success: false,
+              passed: false,
+              exitCode: 1,
+              stdout: "",
+              stderr: err.message,
+              durationMs: Date.now() - startTime,
+              tests: [],
+              sandboxed: true,
+              error: err.message,
+            };
+          }
+          throw err;
+        }
+      }
+
       // Write solution and test harness files into ephemeral scratch directory
       const solutionFile = path.join(tmpDir, "solution_code.txt");
-      fs.writeFileSync(solutionFile, request.code, "utf8");
+      fs.writeFileSync(solutionFile, request.code ?? "", "utf8");
 
       const testFile = path.join(tmpDir, "test_code.txt");
       fs.writeFileSync(testFile, request.testCode, "utf8");

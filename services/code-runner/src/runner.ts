@@ -7,6 +7,11 @@ import type {
   CodeValidationResponse,
   SingleTestResult,
 } from "@ai-copilot/contracts";
+import {
+  materializeWorkspaceFiles,
+  resolveSafeTestFilePath,
+  WorkspaceValidationError,
+} from "./workspace-materializer.js";
 
 export async function executeCodeInSandbox(
   request: CodeValidationRequest
@@ -20,10 +25,65 @@ export async function executeCodeInSandbox(
     let args: string[];
 
     const lang = (request.language || "typescript").toLowerCase().trim();
+    const hasFiles = Boolean(request.files && Object.keys(request.files).length > 0);
+    const codeText = request.code ?? "";
+
+    // Materialize multi-file virtual workspace before harness setup
+    if (hasFiles && request.files) {
+      try {
+        materializeWorkspaceFiles(tmpDir, request.files);
+      } catch (err: unknown) {
+        if (err instanceof WorkspaceValidationError) {
+          return {
+            success: false,
+            passed: false,
+            exitCode: 1,
+            stdout: "",
+            stderr: err.message,
+            durationMs: Date.now() - startTime,
+            tests: [],
+            sandboxed: true,
+            error: err.message,
+          };
+        }
+        throw err;
+      }
+    }
 
     if (lang === "javascript" || lang === "typescript") {
       // Use runner.ts with Node's native strip-types support to seamlessly execute both TS and JS
       scriptPath = path.join(tmpDir, "runner.ts");
+      const hasStaticImports =
+        /^\s*import\s+/m.test(codeText) || /^\s*import\s+/m.test(request.testCode);
+      const useModuleImportMode =
+        hasFiles && (hasStaticImports || Boolean(request.entryTestFile) || codeText.trim().length === 0);
+
+      let testEntryAbsPath: string | null = null;
+      if (useModuleImportMode) {
+        try {
+          testEntryAbsPath = resolveSafeTestFilePath(
+            tmpDir,
+            request.entryTestFile || "__sandbox_tests__.ts"
+          );
+          fs.writeFileSync(testEntryAbsPath, request.testCode, "utf8");
+        } catch (err: unknown) {
+          if (err instanceof WorkspaceValidationError) {
+            return {
+              success: false,
+              passed: false,
+              exitCode: 1,
+              stdout: "",
+              stderr: err.message,
+              durationMs: Date.now() - startTime,
+              tests: [],
+              sandboxed: true,
+              error: err.message,
+            };
+          }
+          throw err;
+        }
+      }
+
       // Generate harness file combining security traps, solution, and tests
       const harnessCode = `
 // === Security Sandbox Trap Layer ===
@@ -75,15 +135,26 @@ const __tests: { name: string; fn: () => void | Promise<void> }[] = [];
 function test(name: string, fn: () => void | Promise<void>) {
   __tests.push({ name, fn });
 }
+(globalThis as any).test = test;
 
-// === Candidate Code ===
-${request.code}
+${
+  testEntryAbsPath
+    ? `// Multi-file workspace module mode: tests imported dynamically after security traps`
+    : `// === Candidate Code ===
+${codeText}
 
 // === Test Suite ===
-${request.testCode}
+${request.testCode}`
+}
 
 // === Test Execution Harness ===
 async function run() {
+  ${
+    testEntryAbsPath
+      ? `const { pathToFileURL } = await import("node:url");
+  await import(pathToFileURL(${JSON.stringify(testEntryAbsPath)}).href);`
+      : ""
+  }
   const results: any[] = [];
   let allPassed = true;
   for (const t of __tests) {
@@ -127,10 +198,37 @@ run().catch((err) => {
       ];
     } else if (lang === "python") {
       scriptPath = path.join(tmpDir, "runner.py");
+      let pyTestEntryAbsPath: string | null = null;
+      if (hasFiles && request.entryTestFile) {
+        try {
+          pyTestEntryAbsPath = resolveSafeTestFilePath(tmpDir, request.entryTestFile);
+          fs.writeFileSync(pyTestEntryAbsPath, request.testCode, "utf8");
+        } catch (err: unknown) {
+          if (err instanceof WorkspaceValidationError) {
+            return {
+              success: false,
+              passed: false,
+              exitCode: 1,
+              stdout: "",
+              stderr: err.message,
+              durationMs: Date.now() - startTime,
+              tests: [],
+              sandboxed: true,
+              error: err.message,
+            };
+          }
+          throw err;
+        }
+      }
+
       const harnessCode = `
 import time
 import sys
 import json
+import os
+
+# Expose materialized workspace directory on sys.path for multi-file imports
+sys.path.insert(0, os.getcwd())
 
 # === Security Sandbox Trap Layer ===
 class BlockedSecurityModule:
@@ -141,7 +239,6 @@ for mod in ["socket", "urllib", "urllib.request", "requests", "http", "http.clie
     sys.modules[mod] = BlockedSecurityModule()
 
 try:
-    import os
     os.system = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("SecurityException: Process execution is prohibited."))
     os.popen = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("SecurityException: Process execution is prohibited."))
 except Exception:
@@ -160,10 +257,15 @@ def test(name, fn):
     __tests.append((name, fn))
 
 # === Candidate Code ===
-${request.code}
+${codeText}
 
 # === Test Suite ===
-${request.testCode}
+${
+  pyTestEntryAbsPath
+    ? `with open(${JSON.stringify(pyTestEntryAbsPath)}, "r", encoding="utf-8") as __tf:
+    exec(compile(__tf.read(), ${JSON.stringify(pyTestEntryAbsPath)}, "exec"), globals())`
+    : request.testCode
+}
 
 # === Test Execution Harness ===
 results = []
@@ -334,7 +436,9 @@ function performPolyglotStaticVerification(
   request: CodeValidationRequest,
   startTime: number
 ): CodeValidationResponse {
-  const code = request.code;
+  const code = [request.code || "", ...Object.values(request.files || {})]
+    .filter(Boolean)
+    .join("\n");
   const testCode = request.testCode;
   const tests: SingleTestResult[] = [];
   let isSyntaxValid = true;

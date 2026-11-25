@@ -11,13 +11,25 @@ export const ProgrammingLanguageSchema = z.enum([
 ]);
 export type ProgrammingLanguage = z.infer<typeof ProgrammingLanguageSchema>;
 
-export const CodeValidationRequestSchema = z.object({
-  language: ProgrammingLanguageSchema,
-  code: z.string().min(1, "Code cannot be empty"),
-  testCode: z.string().min(1, "Test code cannot be empty"),
-  timeoutMs: z.number().int().min(500).max(15000).default(5000),
-  memoryLimitMb: z.number().int().min(32).max(512).default(128),
-});
+export const CodeValidationRequestSchema = z
+  .object({
+    language: ProgrammingLanguageSchema,
+    code: z.string().optional().default(""),
+    files: z.record(z.string(), z.string()).optional(),
+    entryTestFile: z.string().optional(),
+    testCode: z.string().min(1, "Test code cannot be empty"),
+    timeoutMs: z.number().int().min(500).max(15000).default(5000),
+    memoryLimitMb: z.number().int().min(32).max(512).default(128),
+  })
+  .refine(
+    (req) =>
+      req.code.trim().length > 0 ||
+      (req.files !== undefined && Object.keys(req.files).length > 0),
+    {
+      message: "Either code or a non-empty files map must be provided",
+      path: ["code"],
+    }
+  );
 
 export type CodeValidationRequest = z.infer<typeof CodeValidationRequestSchema>;
 
