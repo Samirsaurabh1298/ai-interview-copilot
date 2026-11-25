@@ -9,7 +9,7 @@ import { InterviewAnswerSchema } from "@ai-copilot/contracts";
 import type { AIProvider } from "@ai-copilot/ai-core";
 import {
   AIProviderError,
-  SYSTEM_INTERVIEW_COPILOT_PROMPT,
+  getSystemPromptForRequest,
   buildPromptForRequest,
 } from "@ai-copilot/ai-core";
 import { extractQuestionWithGroq } from "./vision.js";
@@ -181,11 +181,11 @@ export class GroqProvider implements AIProvider {
       const completion = await this.client.chat.completions.create({
         model,
         messages: [
-          { role: "system", content: SYSTEM_INTERVIEW_COPILOT_PROMPT },
+          { role: "system", content: getSystemPromptForRequest(request) },
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.1,
+        temperature: request.policyMode === "flawed_junior" ? 0.5 : 0.1,
         max_tokens: 2400,
       });
 
@@ -204,11 +204,11 @@ export class GroqProvider implements AIProvider {
           const fallbackCompletion = await this.client.chat.completions.create({
             model: usedModel,
             messages: [
-              { role: "system", content: SYSTEM_INTERVIEW_COPILOT_PROMPT },
+              { role: "system", content: getSystemPromptForRequest(request) },
               { role: "user", content: `${userPrompt}\n\nCRITICAL: Respond with a single raw JSON object adhering to the schema.` },
             ],
             response_format: { type: "json_object" },
-            temperature: 0.1,
+            temperature: request.policyMode === "flawed_junior" ? 0.5 : 0.1,
             max_tokens: 2400,
           });
 

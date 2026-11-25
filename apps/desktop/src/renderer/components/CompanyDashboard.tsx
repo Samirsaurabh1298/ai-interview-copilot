@@ -3767,6 +3767,37 @@ describe("useDebouncedFetch verification suite", () => {
                 </div>
               </div>
 
+              {/* Diff-Anchored Post-Fix Defense Responses (LOOP 11.0.2) */}
+              {selectedSubmissionArtifact.defenseResponses && selectedSubmissionArtifact.defenseResponses.length > 0 && (
+                <div className="space-y-2">
+                  <span className="font-semibold text-indigo-700 dark:text-indigo-400 text-xs">
+                    Diff-Anchored Post-Fix Defense ({selectedSubmissionArtifact.defenseResponses.length} responses):
+                  </span>
+                  <div className="space-y-2">
+                    {selectedSubmissionArtifact.defenseResponses.map((dr, drIdx) => (
+                      <div
+                        key={dr.questionId || drIdx}
+                        className="p-3.5 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/70 dark:border-indigo-900/50 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-slate-800 dark:text-gray-200">
+                            {dr.prompt}
+                          </span>
+                          {dr.targetFile && (
+                            <span className="px-2 py-0.5 rounded bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-800 font-mono text-[10px] text-indigo-700 dark:text-indigo-300">
+                              {dr.targetFile}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-700 dark:text-gray-300 leading-relaxed font-sans">
+                          {dr.answer}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Unified Code Diff */}
               <div className="space-y-1.5">
                 <span className="font-semibold text-slate-900 dark:text-white text-xs flex items-center justify-between">

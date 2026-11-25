@@ -27,6 +27,7 @@ export const TaskAIPolicyModeSchema = z.enum([
   "prohibited",
   "full_copilot",
   "restricted_explainer",
+  "flawed_junior",
 ]);
 export type TaskAIPolicyMode = z.infer<typeof TaskAIPolicyModeSchema>;
 

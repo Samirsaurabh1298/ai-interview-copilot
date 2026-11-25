@@ -617,6 +617,9 @@ export class SubmissionService {
       serverAcknowledgedRevision,
       finalizedBy: req.finalizedBy || (wasGracePeriod ? "candidate_grace" : "candidate"),
       multiFileChanges: multiFileChanges || undefined,
+      ...(req.defenseResponses && req.defenseResponses.length > 0
+        ? { defenseResponses: req.defenseResponses }
+        : {}),
     };
 
     // 7. Compute cryptographic SHA-256 submission fingerprint

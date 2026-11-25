@@ -97,11 +97,13 @@ export class ApiClient {
   public static async generateAnswer(
     request: AIRequest,
     providerId?: string,
-    sessionId?: string
+    sessionId?: string,
+    taskId?: string
   ): Promise<AIResponse> {
     const params = new URLSearchParams();
     if (providerId) params.append("provider", providerId);
     if (sessionId) params.append("sessionId", sessionId);
+    if (taskId) params.append("taskId", taskId);
 
     const queryString = params.toString() ? `?${params.toString()}` : "";
     const url = `${API_BASE_URL}/answers/generate${queryString}`;

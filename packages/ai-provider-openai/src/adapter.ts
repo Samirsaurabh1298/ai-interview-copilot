@@ -8,7 +8,7 @@ import { InterviewAnswerSchema } from "@ai-copilot/contracts";
 import type { AIProvider } from "@ai-copilot/ai-core";
 import {
   AIProviderError,
-  SYSTEM_INTERVIEW_COPILOT_PROMPT,
+  getSystemPromptForRequest,
   buildPromptForRequest,
 } from "@ai-copilot/ai-core";
 
@@ -73,11 +73,11 @@ export class OpenAIProvider implements AIProvider {
       const completion = await this.client.chat.completions.create({
         model,
         messages: [
-          { role: "system", content: SYSTEM_INTERVIEW_COPILOT_PROMPT },
+          { role: "system", content: getSystemPromptForRequest(request) },
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.1,
+        temperature: request.policyMode === "flawed_junior" ? 0.5 : 0.1,
       });
 
       const messageContent = completion.choices[0]?.message.content;

@@ -46,6 +46,17 @@ export type TestExecutionLog = z.infer<typeof TestExecutionLogSchema>;
 // Immutable Submission Artifact Schema (Task 14 / AD #9)
 // ==============================================================================
 
+export const DefenseResponseItemSchema = z.object({
+  questionId: z.string(),
+  prompt: z.string(),
+  answer: z.string(),
+  targetFile: z.string().optional(),
+  anchorType: z
+    .enum(["modified_file", "ai_accepted_patch", "test_verification", "edge_case"])
+    .optional(),
+});
+export type DefenseResponseItem = z.infer<typeof DefenseResponseItemSchema>;
+
 export const SubmissionArtifactSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
@@ -78,6 +89,7 @@ export const SubmissionArtifactSchema = z.object({
   serverAcknowledgedRevision: z.number().int().optional(),
   finalizedBy: z.string().optional(),
   multiFileChanges: z.record(z.string(), z.string()).optional(),
+  defenseResponses: z.array(DefenseResponseItemSchema).optional(),
 });
 
 export type SubmissionArtifact = z.infer<typeof SubmissionArtifactSchema>;
@@ -94,6 +106,7 @@ export const SubmitAssessmentRequestSchema = z.object({
     .default("Candidate completed assessment tasks."),
   taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
   finalizedBy: z.string().optional(),
+  defenseResponses: z.array(DefenseResponseItemSchema).optional(),
 });
 
 export type SubmitAssessmentRequest = z.infer<typeof SubmitAssessmentRequestSchema>;

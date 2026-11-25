@@ -9,7 +9,7 @@ import { InterviewAnswerSchema } from "@ai-copilot/contracts";
 import type { AIProvider } from "@ai-copilot/ai-core";
 import {
   AIProviderError,
-  SYSTEM_INTERVIEW_COPILOT_PROMPT,
+  getSystemPromptForRequest,
   buildPromptForRequest,
 } from "@ai-copilot/ai-core";
 
@@ -153,7 +153,7 @@ export class AnthropicProvider implements AIProvider {
       const response = await this.client.messages.create({
         model,
         max_tokens: 4096,
-        system: SYSTEM_INTERVIEW_COPILOT_PROMPT,
+        system: getSystemPromptForRequest(request),
         tools: [INTERVIEW_ANSWER_TOOL_SCHEMA],
         tool_choice: { type: "tool", name: "submit_interview_analysis" },
         messages: [{ role: "user", content: userPrompt }],

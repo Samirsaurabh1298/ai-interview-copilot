@@ -1128,8 +1128,8 @@ export const CompanyAssessmentStudio: React.FC<CompanyAssessmentStudioProps> = (
                           <Bot className="w-3.5 h-3.5 text-indigo-500" />
                           <span>Task-Level AI Policy</span>
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          {(["prohibited", "full_copilot", "restricted_explainer"] as const).map((mode) => (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {(["prohibited", "full_copilot", "restricted_explainer", "flawed_junior"] as const).map((mode) => (
                             <button
                               key={mode}
                               type="button"
@@ -1143,6 +1143,8 @@ export const CompanyAssessmentStudio: React.FC<CompanyAssessmentStudioProps> = (
                                 selectedTask.aiPolicy?.mode === mode
                                   ? mode === "prohibited"
                                     ? "bg-rose-600 text-white"
+                                    : mode === "flawed_junior"
+                                    ? "bg-amber-600 text-white"
                                     : "bg-indigo-600 text-white"
                                   : "bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-300 border border-slate-200 dark:border-gray-700"
                               }`}
@@ -1151,6 +1153,8 @@ export const CompanyAssessmentStudio: React.FC<CompanyAssessmentStudioProps> = (
                                 ? "Prohibited"
                                 : mode === "full_copilot"
                                 ? "Full Copilot"
+                                : mode === "flawed_junior"
+                                ? "Flawed Junior AI"
                                 : "Restricted Explainer"}
                             </button>
                           ))}

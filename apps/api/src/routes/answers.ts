@@ -76,7 +76,11 @@ export const answersRoutes: FastifyPluginAsync<{
       }
     }
 
-    // Task-level AI Policy Enforcement
+    // Task-level AI Policy Enforcement (authoritative server-side policy + model lock)
+    let aiRequestPayload = parseResult.data;
+    let effectiveModel = query?.model;
+    let authoritativePolicyMode = parseResult.data.policyMode;
+
     if (query?.taskId && effectiveSessionId && sessionService && templateService) {
       try {
         const session = sessionService.getSession(effectiveSessionId);
@@ -89,6 +93,21 @@ export const answersRoutes: FastifyPluginAsync<{
             message: task.aiPolicy.disclosureNotice || "AI assistance is strictly prohibited for this task.",
           });
         }
+
+        if (task?.aiPolicy?.mode) {
+          authoritativePolicyMode = task.aiPolicy.mode;
+          aiRequestPayload = {
+            ...parseResult.data,
+            policyMode: task.aiPolicy.mode,
+          };
+
+          if (task.aiPolicy.mode === "flawed_junior") {
+            // Lock model to configured weak/small model so candidate cannot override ?model=gpt-4o
+            effectiveModel = task.aiPolicy.allowedModel || "gpt-4o-mini";
+          } else if (task.aiPolicy.allowedModel) {
+            effectiveModel = task.aiPolicy.allowedModel;
+          }
+        }
       } catch {
         // Fall through if session not yet created
       }
@@ -98,40 +117,49 @@ export const answersRoutes: FastifyPluginAsync<{
 
     try {
       if (gateway && effectiveSessionId) {
-        reservationId = gateway.reserveBudget(effectiveSessionId, query?.model || "default");
+        reservationId = gateway.reserveBudget(effectiveSessionId, effectiveModel || "default");
       }
 
       let response: AIResponse;
       if (!query?.provider) {
         try {
-          response = await orchestrator.generateAnswer(parseResult.data, {
-            modelOverride: query?.model,
+          response = await orchestrator.generateAnswer(aiRequestPayload, {
+            modelOverride: effectiveModel,
           });
         } catch (genErr: unknown) {
           request.log.warn({ genErr }, "Primary default AI provider failed, engaging resilient fallback provider");
-          response = await orchestrator.generateAnswer(parseResult.data, {
+          response = await orchestrator.generateAnswer(aiRequestPayload, {
             providerId: "mock",
+            modelOverride: effectiveModel,
           });
         }
       } else {
-        response = await orchestrator.generateAnswer(parseResult.data, {
+        response = await orchestrator.generateAnswer(aiRequestPayload, {
           providerId: query.provider,
-          modelOverride: query?.model,
+          modelOverride: effectiveModel,
         });
+      }
+
+      if (authoritativePolicyMode === "restricted_explainer") {
+        response = {
+          ...response,
+          code: "",
+          codeChanges: [],
+        };
       }
 
       if (gateway && effectiveSessionId && reservationId) {
         gateway.commitUsage(
           effectiveSessionId,
           reservationId,
-          response.model || query?.model || "default",
+          response.model || effectiveModel || "default",
           response.usage?.inputTokens ?? 250,
           response.usage?.outputTokens ?? 350
         );
       } else if (gateway && effectiveSessionId) {
         gateway.recordUsage(
           effectiveSessionId,
-          response.model || query?.model || "default",
+          response.model || effectiveModel || "default",
           response.usage?.inputTokens ?? 250,
           response.usage?.outputTokens ?? 350
         );

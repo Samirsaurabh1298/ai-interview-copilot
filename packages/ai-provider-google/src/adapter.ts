@@ -8,7 +8,7 @@ import { InterviewAnswerSchema } from "@ai-copilot/contracts";
 import type { AIProvider } from "@ai-copilot/ai-core";
 import {
   AIProviderError,
-  SYSTEM_INTERVIEW_COPILOT_PROMPT,
+  getSystemPromptForRequest,
   buildPromptForRequest,
 } from "@ai-copilot/ai-core";
 
@@ -61,9 +61,9 @@ export class GoogleGeminiProvider implements AIProvider {
         model,
         contents: [userPrompt],
         config: {
-          systemInstruction: SYSTEM_INTERVIEW_COPILOT_PROMPT,
+          systemInstruction: getSystemPromptForRequest(request),
           responseMimeType: "application/json",
-          temperature: 0.1,
+          temperature: request.policyMode === "flawed_junior" ? 0.5 : 0.1,
         },
       });
 

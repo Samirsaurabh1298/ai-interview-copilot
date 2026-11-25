@@ -1,8 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import {
   CreateSessionRequestSchema,
   UpdateWorkspaceRequestSchema,
   SubmitSessionRequestSchema,
+  DefenseResponseItemSchema,
 } from "@ai-copilot/contracts";
 import type { AssessmentSessionService } from "../services/session.js";
 import {
@@ -175,6 +177,18 @@ export const sessionsRoutes: FastifyPluginAsync<{
       });
     }
 
+    let validatedDefenseResponses: z.infer<typeof DefenseResponseItemSchema>[] | undefined;
+    if (rawBody.defenseResponses !== undefined) {
+      const defParse = z.array(DefenseResponseItemSchema).safeParse(rawBody.defenseResponses);
+      if (!defParse.success) {
+        return reply.status(400).send({
+          error: "VALIDATION_FAILED",
+          issues: defParse.error.issues,
+        });
+      }
+      validatedDefenseResponses = defParse.data;
+    }
+
     try {
       const session = sessionService.getSession(sessionId);
       if (authService && request.headers.authorization) {
@@ -188,6 +202,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
           finalCode: parse.data.finalCode,
           technicalExplanation: normalizedBody.explanation,
           taskSubmissions: rawBody.taskSubmissions,
+          ...(validatedDefenseResponses ? { defenseResponses: validatedDefenseResponses } : {}),
         });
 
         return reply.status(200).send({

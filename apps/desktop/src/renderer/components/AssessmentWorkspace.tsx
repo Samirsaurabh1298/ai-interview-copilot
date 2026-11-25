@@ -498,12 +498,89 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
   // Submission & Cryptographic Receipt State (Task 14)
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [explanation, setExplanation] = useState("");
+  const [defenseAnswers, setDefenseAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionReceipt, setSubmissionReceipt] = useState<SubmitAssessmentResponse | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [copiedReceiptFp, setCopiedReceiptFp] = useState(false);
   const [scorecard, setScorecard] = useState<AssessmentScorecard | null>(null);
   const [isScorecardOpen, setIsScorecardOpen] = useState(false);
+
+  // Diff-Anchored Post-Fix Defense Questions (LOOP 11.0.2)
+  const defensePrompts = (() => {
+    const prompts: Array<{
+      questionId: string;
+      prompt: string;
+      targetFile?: string;
+      anchorType: "modified_file" | "ai_accepted_patch" | "test_verification" | "edge_case";
+    }> = [];
+
+    // 1. Anchor to actual modified files in virtual repository or primary file
+    const modifiedFiles: string[] = [];
+    for (const t of tasks) {
+      if (t.type === "repository_task") {
+        const starterMap: Record<string, string> = { ...(t.config?.starterFiles || {}) };
+        if (Array.isArray(t.config?.fileTree)) {
+          for (const f of t.config.fileTree) {
+            starterMap[f.path] = f.content;
+          }
+        }
+        for (const [filePath, currentFile] of Object.entries(repoFiles)) {
+          if (
+            starterMap[filePath] !== undefined &&
+            starterMap[filePath] !== currentFile.content
+          ) {
+            modifiedFiles.push(filePath);
+          }
+        }
+      }
+    }
+
+    const primaryTargetFile =
+      modifiedFiles.length > 0
+        ? modifiedFiles.join(", ")
+        : activeTask?.type === "repository_task"
+          ? activeRepoFilePath
+          : "primary solution";
+
+    prompts.push({
+      questionId: "def_root_cause_diff",
+      targetFile: primaryTargetFile,
+      anchorType: "modified_file",
+      prompt: `You modified [${primaryTargetFile}]. What specific defect or invariant violation did your diff resolve, and how does it avoid unintended side effects on callers?`,
+    });
+
+    // 2. Anchor to AI copilot interactions / patch decisions
+    const acceptedCount = aiHistory.filter((m) => m.patchStatus === "accepted").length;
+    const rejectedCount = aiHistory.filter((m) => m.patchStatus === "rejected").length;
+    const queryCount = aiHistory.filter((m) => m.role === "candidate").length;
+    const isFlawedAi = activeTask?.aiPolicy?.mode === "flawed_junior";
+
+    if (acceptedCount > 0 || rejectedCount > 0 || queryCount > 0 || isFlawedAi) {
+      prompts.push({
+        questionId: "def_ai_critical_eval",
+        anchorType: "ai_accepted_patch",
+        prompt:
+          acceptedCount > 0
+            ? `You accepted ${acceptedCount} AI-proposed patch(es)${isFlawedAi ? " under Flawed Junior AI policy" : ""}. Which assumptions or edge cases in the AI output did you verify or modify manually?`
+            : `You interacted with the AI assistant (${queryCount} prompt(s), ${rejectedCount} rejected patch(es)). What flaw or limitation in the AI guidance led to your final design?`,
+      });
+    }
+
+    // 3. Anchor to test execution status & boundary verification
+    const passedCount = testResult?.tests?.filter((t) => t.passed).length ?? 0;
+    const totalCount = testResult?.tests?.length ?? 0;
+    prompts.push({
+      questionId: "def_edge_verification",
+      anchorType: "test_verification",
+      prompt:
+        totalCount > 0
+          ? `Verification summary: ${passedCount}/${totalCount} tests passing. Which boundary case or failure mode could still break a naive fix, and how does your solution handle it?`
+          : `Automated runner execution was unavailable or not run. How did you manually trace edge cases (empty inputs, undefined fields, tie-breaking, or concurrency) in your changes?`,
+    });
+
+    return prompts;
+  })();
 
   // Poll / Refresh budget helper
   const refreshBudget = async () => {
@@ -898,9 +975,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           language: "typescript",
           responseStyle: "concise",
           context: [{ content: activeTask.description, source: "user" }],
+          ...(activeTask.aiPolicy?.mode ? { policyMode: activeTask.aiPolicy.mode } : {}),
         },
         undefined,
-        sessionId
+        sessionId,
+        activeTask.id
       );
 
       const correctedCode = answer.code;
@@ -980,9 +1059,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           language: "typescript",
           responseStyle: "concise",
           context: [{ content: activeTask.description, source: "user" }],
+          ...(activeTask.aiPolicy?.mode ? { policyMode: activeTask.aiPolicy.mode } : {}),
         },
         undefined,
-        sessionId
+        sessionId,
+        activeTask.id
       );
 
       const correctedCode = answer.code;
@@ -1098,6 +1179,17 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
         }
       }
 
+      // Assemble answered diff-anchored post-fix defense responses (LOOP 11.0.2)
+      const defenseResponsesPayload = defensePrompts
+        .map((dp) => ({
+          questionId: dp.questionId,
+          prompt: dp.prompt,
+          answer: (defenseAnswers[dp.questionId] || "").trim(),
+          ...(dp.targetFile ? { targetFile: dp.targetFile } : {}),
+          anchorType: dp.anchorType,
+        }))
+        .filter((item) => item.answer.length > 0);
+
       // Submit to server-authoritative session record with immutable artifact bundling (Task 14)
       let receipt: any = null;
       try {
@@ -1107,6 +1199,9 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
             finalCode: code,
             technicalExplanation: finalExplanation,
             taskSubmissions,
+            ...(defenseResponsesPayload.length > 0
+              ? { defenseResponses: defenseResponsesPayload }
+              : {}),
           },
           sessionData?.candidateToken
         );
@@ -1611,7 +1706,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
               className={`px-2.5 py-1 rounded-md text-[11px] font-bold border flex items-center gap-1.5 ${
                 activeTask.aiPolicy?.mode === "prohibited"
                   ? "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300"
-                  : activeTask.aiPolicy?.mode === "restricted_explainer"
+                  : activeTask.aiPolicy?.mode === "restricted_explainer" || activeTask.aiPolicy?.mode === "flawed_junior"
                   ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
                   : "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
               }`}
@@ -1620,6 +1715,11 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                 <>
                   <Shield className="w-3 h-3 text-rose-600" />
                   <span>AI Assistance Prohibited</span>
+                </>
+              ) : activeTask.aiPolicy?.mode === "flawed_junior" ? (
+                <>
+                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                  <span>Flawed Junior AI (Verify Outputs)</span>
                 </>
               ) : activeTask.aiPolicy?.mode === "restricted_explainer" ? (
                 <>
@@ -1965,6 +2065,18 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                       <div className="text-[11px] opacity-90 mt-0.5">
                         {activeTask.aiPolicy.candidateDisclosure ||
                           "The company has configured this section to be solved independently without AI generation."}
+                      </div>
+                    </div>
+                  </div>
+                ) : activeTask.aiPolicy?.mode === "flawed_junior" ? (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-300 flex items-start gap-2.5 shrink-0 shadow-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">Unreliable Junior AI Policy Active</div>
+                      <div className="text-[11px] opacity-90 mt-0.5">
+                        {activeTask.aiPolicy.disclosureNotice ||
+                          activeTask.aiPolicy.candidateDisclosure ||
+                          "This section uses an intentionally limited AI assistant that may miss edge cases or suggest incomplete fixes. Verify every change independently."}
                       </div>
                     </div>
                   </div>
@@ -2683,27 +2795,70 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 dark:border-gray-800 dark:bg-[#111827]">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 dark:border-gray-800 dark:bg-[#111827]">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Submit Solution for Interviewer Evaluation
+                Submit Solution & Post-Fix Technical Defense
               </h3>
               <p className="text-xs text-slate-500 dark:text-gray-400">
-                Provide a structured technical explanation. Your response directly feeds the Problem Framing and Technical Explanation rubric dimensions.
+                Explain your root-cause diagnosis and defend the specific code modifications sealed in your submission bundle.
               </p>
             </div>
 
             <div className="space-y-2">
               <label className="block text-xs font-semibold text-slate-700 dark:text-gray-300">
-                Root Cause Analysis & Verification Approach:
+                Overall Root Cause Summary & Verification Approach:
               </label>
               <textarea
-                rows={6}
+                rows={4}
                 value={explanation}
                 onChange={(e) => setExplanation(e.target.value)}
-                placeholder="1. Root cause identified in priority comparator...&#10;2. Fix implemented to prevent in-place array mutation...&#10;3. Verified all 5 test cases pass cleanly..."
+                placeholder="1. Root cause identified in priority comparator...&#10;2. Fix implemented to prevent in-place array mutation...&#10;3. Verified all test cases cleanly..."
                 className="w-full rounded-xl border border-slate-300 bg-slate-50 p-3 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               />
+            </div>
+
+            {/* Diff-Anchored Post-Fix Defense Questions (LOOP 11.0.2) */}
+            <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-gray-800">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Diff-Anchored Comprehension Defense</span>
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Generated from your edited files, AI patch history, and test state
+                </span>
+              </div>
+
+              {defensePrompts.map((dp, idx) => (
+                <div
+                  key={dp.questionId}
+                  className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2 dark:border-gray-800 dark:bg-gray-900/50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-slate-800 dark:text-gray-200">
+                      Q{idx + 1}. {dp.prompt}
+                    </span>
+                    {dp.targetFile && (
+                      <span className="shrink-0 px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-[10px] dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
+                        {dp.targetFile}
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={defenseAnswers[dp.questionId] || ""}
+                    onChange={(e) =>
+                      setDefenseAnswers((prev) => ({
+                        ...prev,
+                        [dp.questionId]: e.target.value,
+                      }))
+                    }
+                    placeholder="Explain the exact behavior, invariants, and trade-offs of your changes..."
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                  />
+                </div>
+              ))}
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-gray-800">

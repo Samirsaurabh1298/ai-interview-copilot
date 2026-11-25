@@ -257,6 +257,7 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
     ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS server_acknowledged_revision INTEGER;
     ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS finalized_by VARCHAR(128);
     ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS multi_file_changes JSONB;
+    ALTER TABLE submission_artifacts ADD COLUMN IF NOT EXISTS defense_responses JSONB;
 
     -- LOOP 10.0.4 Explicit State Machine Migrations
     ALTER TABLE assessment_sessions ADD COLUMN IF NOT EXISTS state_version INTEGER NOT NULL DEFAULT 1;

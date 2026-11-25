@@ -252,6 +252,7 @@ export const submissionArtifacts = pgTable(
     serverAcknowledgedRevision: integer("server_acknowledged_revision"),
     finalizedBy: varchar("finalized_by", { length: 128 }),
     multiFileChanges: jsonb("multi_file_changes"),
+    defenseResponses: jsonb("defense_responses"),
   },
   (table) => [
     index("idx_submissions_org_id").on(table.organizationId),

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TaskTypeSchema } from "./tasks.js";
+import { TaskAIPolicyModeSchema } from "./task.js";
 import { InterviewAnswerSchema } from "./answer.js";
 
 export const ContextSourceSchema = z.enum(["user", "screenshot", "repository"]);
@@ -23,6 +24,7 @@ export const AIRequestSchema = z.object({
   code: z.string().optional(),
   context: z.array(ContextItemSchema).optional().default([]),
   responseStyle: ResponseStyleSchema.optional().default("concise"),
+  policyMode: TaskAIPolicyModeSchema.optional(),
 });
 
 export type AIRequest = z.infer<typeof AIRequestSchema>;

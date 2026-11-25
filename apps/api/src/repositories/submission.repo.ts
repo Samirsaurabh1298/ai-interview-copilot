@@ -29,6 +29,7 @@ export class SubmissionRepository {
         serverAcknowledgedRevision: artifact.serverAcknowledgedRevision ?? null,
         finalizedBy: artifact.finalizedBy ?? null,
         multiFileChanges: artifact.multiFileChanges ?? null,
+        defenseResponses: artifact.defenseResponses ?? null,
       });
       return artifact;
     } catch (err: unknown) {
@@ -86,6 +87,7 @@ export class SubmissionRepository {
           serverAcknowledgedRevision: artifact.serverAcknowledgedRevision ?? null,
           finalizedBy: artifact.finalizedBy ?? null,
           multiFileChanges: artifact.multiFileChanges ?? null,
+          defenseResponses: artifact.defenseResponses ?? null,
         });
 
         // 2. Strictly require status = 'FINALIZING' with OCC version and lease fencing
@@ -194,6 +196,7 @@ export class SubmissionRepository {
       serverAcknowledgedRevision: row.serverAcknowledgedRevision ?? undefined,
       finalizedBy: (row.finalizedBy as any) ?? undefined,
       multiFileChanges: (row.multiFileChanges as any) ?? undefined,
+      defenseResponses: (row.defenseResponses as any) ?? undefined,
     };
   }
 }

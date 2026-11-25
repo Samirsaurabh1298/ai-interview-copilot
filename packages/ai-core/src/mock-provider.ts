@@ -40,6 +40,83 @@ export class MockAIProvider implements AIProvider {
 
     const isDebug = request.task === "debug";
 
+    if (request.policyMode === "flawed_junior") {
+      return {
+        question: request.question,
+        category: isDebug ? "debugging" : "implementation",
+        assumptions: ["Input array can probably be mutated directly for performance"],
+        diagnosis: [
+          "Maybe just sort the array in place using `.sort()` without checking secondary fields",
+        ],
+        approach: [
+          "1. Call `items.sort(...)` directly to keep memory zero",
+          "2. Skip undefined guards assuming callers always pass valid arrays",
+        ],
+        codeChanges: [
+          {
+            path: "solution.ts",
+            description: "Quick in-place sort (Warning: may miss immutability or tie-breaking)",
+          },
+        ],
+        code: `// Naive suggestion (misses immutability & edge cases)\nexport function quickFix(items: any[]) {\n  return items.sort((a, b) => (b.priority > a.priority ? 1 : -1));\n}`,
+        timeComplexity: "O(n log n)",
+        spaceComplexity: "O(1)",
+        tests: [
+          {
+            name: "Happy path basic sort",
+            purpose: "Checks basic ordering only",
+            expectedResult: "sorted array",
+          },
+        ],
+        edgeCases: ["Did not verify immutability or undefined tags"],
+        explanation:
+          "Sorting the array directly avoids creating a copy. That should probably fix the ordering issue, though tie-breakers and mutations weren't checked.",
+        followUpQuestions: ["Does calling `.sort()` directly mutate caller state?"],
+        confidence: 0.62,
+        limitations: ["Flawed Junior AI Mode: Shallow suggestion; verify edge cases independently."],
+        provider: this.id,
+        model: modelOverride ?? "mock-flawed-junior-v1",
+        usage: {
+          inputTokens: 180,
+          outputTokens: 210,
+          estimatedCostUsd: 0,
+        },
+      };
+    }
+
+    if (request.policyMode === "restricted_explainer") {
+      return {
+        question: request.question,
+        category: isDebug ? "debugging" : "implementation",
+        assumptions: ["Code modifications are restricted to candidate authorship"],
+        diagnosis: [
+          "Look closely at reference mutability and multi-key comparator ordering",
+        ],
+        approach: [
+          "1. Avoid mutating shared references passed by callers",
+          "2. Establish deterministic tie-breaking on equal primary keys",
+        ],
+        codeChanges: [],
+        code: "",
+        timeComplexity: "O(n log n)",
+        spaceComplexity: "O(n)",
+        tests: [],
+        edgeCases: ["Empty inputs", "Ties in primary sort key"],
+        explanation:
+          "In JavaScript/TypeScript, `Array.prototype.sort` mutates the receiver in-place. Clone before sorting and chain a deterministic secondary comparison when primary weights match.",
+        followUpQuestions: ["How do you copy an array shallowly before sorting?"],
+        confidence: 0.9,
+        limitations: ["Restricted Explainer Mode: Direct code patches are disabled by policy."],
+        provider: this.id,
+        model: modelOverride ?? this.defaultModel,
+        usage: {
+          inputTokens: 200,
+          outputTokens: 240,
+          estimatedCostUsd: 0,
+        },
+      };
+    }
+
     return {
       question: request.question,
       category: isDebug ? "debugging" : "implementation",

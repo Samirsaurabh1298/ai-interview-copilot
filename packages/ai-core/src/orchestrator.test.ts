@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { AIOrchestrationService } from "./orchestrator.js";
 import { MockAIProvider } from "./mock-provider.js";
 import { AIProviderError } from "./errors.js";
+import {
+  getSystemPromptForRequest,
+  SYSTEM_FLAWED_JUNIOR_PROMPT,
+  SYSTEM_RESTRICTED_EXPLAINER_PROMPT,
+  SYSTEM_INTERVIEW_COPILOT_PROMPT,
+} from "./prompts.js";
 
 describe("AIOrchestrationService", () => {
   let orchestrator: AIOrchestrationService;
@@ -66,6 +72,30 @@ describe("AIOrchestrationService", () => {
         { providerId: "non-existent-provider" }
       )
     ).rejects.toThrow(/not registered/i);
+  });
+
+  it("routes system prompts cleanly for full_copilot, flawed_junior, and restricted_explainer policies", async () => {
+    expect(getSystemPromptForRequest()).toBe(SYSTEM_INTERVIEW_COPILOT_PROMPT);
+    expect(getSystemPromptForRequest({ policyMode: "full_copilot" })).toBe(SYSTEM_INTERVIEW_COPILOT_PROMPT);
+    expect(getSystemPromptForRequest({ policyMode: "flawed_junior" })).toBe(SYSTEM_FLAWED_JUNIOR_PROMPT);
+    expect(getSystemPromptForRequest({ policyMode: "restricted_explainer" })).toBe(SYSTEM_RESTRICTED_EXPLAINER_PROMPT);
+
+    const flawedResp = await orchestrator.generateAnswer({
+      task: "debug",
+      question: "Fix ticket sorting immutability bug",
+      policyMode: "flawed_junior",
+    });
+    expect(flawedResp.confidence).toBeLessThan(0.75);
+    expect(flawedResp.model).toBe("mock-flawed-junior-v1");
+    expect(flawedResp.limitations.join(" ")).toContain("Flawed Junior AI Mode");
+
+    const explainerResp = await orchestrator.generateAnswer({
+      task: "debug",
+      question: "How should I avoid mutating arrays?",
+      policyMode: "restricted_explainer",
+    });
+    expect(explainerResp.code).toBe("");
+    expect(explainerResp.codeChanges).toEqual([]);
   });
 });
 
