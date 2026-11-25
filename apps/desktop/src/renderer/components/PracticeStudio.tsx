@@ -29,6 +29,8 @@ import {
   Upload,
   Image as ImageIcon,
   FileCode,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { ApiClient } from "../services/apiClient.js";
 import type {
@@ -41,6 +43,7 @@ import type {
   CodeValidationResponse,
   AIResponse,
   ExtractedChallengeResponse,
+  TaskAIPolicyMode,
 } from "@ai-copilot/contracts";
 
 interface PracticeStudioProps {
@@ -67,6 +70,12 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
   // Active Workspace State
   const [code, setCode] = useState("");
+  const [repoFiles, setRepoFiles] = useState<Record<string, string>>({});
+  const [activeFilePath, setActiveFilePath] = useState<string>("");
+  const [readOnlyFiles, setReadOnlyFiles] = useState<string[]>([]);
+  const [aiPolicyMode, setAiPolicyMode] = useState<TaskAIPolicyMode>("full_copilot");
+  const [strictExamMode, setStrictExamMode] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [simulatedBudgetUsd, setSimulatedBudgetUsd] = useState(0.25);
@@ -94,6 +103,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   // Submission & Feedback
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [technicalExplanation, setTechnicalExplanation] = useState("");
+  const [defenseAnswer, setDefenseAnswer] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [feedbackCard, setFeedbackCard] = useState<PracticeFeedbackCard | null>(null);
@@ -236,6 +246,25 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     };
   }, [isTimerRunning, activeStage]);
 
+  // Strict Exam Mode automatic cutoff & auto-submit
+  useEffect(() => {
+    if (
+      strictExamMode &&
+      activeStage === "workspace" &&
+      selectedChallenge &&
+      !timedOut &&
+      elapsedSeconds >= selectedChallenge.estimatedMinutes * 60
+    ) {
+      setTimedOut(true);
+      setIsTimerRunning(false);
+      void executePracticeSubmission(true);
+    }
+  }, [strictExamMode, activeStage, selectedChallenge, timedOut, elapsedSeconds]);
+
+  const isMultiFileChallenge = Boolean(
+    selectedChallenge?.starterFiles && Object.keys(selectedChallenge.starterFiles).length > 0
+  );
+
   const loadCatalog = async () => {
     try {
       setIsLoadingChallenges(true);
@@ -253,7 +282,28 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
   const handleStartChallenge = (challenge: PracticeChallenge) => {
     setSelectedChallenge(challenge);
-    setCode(challenge.starterCode);
+    const hasFiles = Boolean(challenge.starterFiles && Object.keys(challenge.starterFiles).length > 0);
+    if (hasFiles && challenge.starterFiles) {
+      setRepoFiles({ ...challenge.starterFiles });
+      const firstPath =
+        challenge.primaryFilePath ||
+        Object.keys(challenge.starterFiles).find((p) => !(challenge.readOnlyFiles || []).includes(p)) ||
+        Object.keys(challenge.starterFiles)[0] ||
+        "";
+      setActiveFilePath(firstPath);
+      setReadOnlyFiles(challenge.readOnlyFiles || []);
+      setCode(challenge.starterFiles[firstPath] ?? challenge.starterCode);
+    } else {
+      setRepoFiles({});
+      setActiveFilePath("");
+      setReadOnlyFiles([]);
+      setCode(challenge.starterCode);
+    }
+    const mode = challenge.aiPolicyMode || "full_copilot";
+    setAiPolicyMode(mode);
+    setTimedOut(false);
+    setDefenseAnswer("");
+    setTechnicalExplanation("");
     setElapsedSeconds(0);
     setIsTimerRunning(true);
     setSimulatedBudgetUsd(challenge.simulatedAiBudgetUsd || 0.25);
@@ -267,7 +317,10 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     setAiMessages([
       {
         role: "assistant",
-        text: `Welcome to the Practice Studio! I am your AI engineering collaborator for "${challenge.title}". You can ask me to explain unfamiliar patterns, trace control flow, or propose minimal bug fixes within your simulated $${challenge.simulatedAiBudgetUsd.toFixed(2)} token budget.`,
+        text:
+          mode === "flawed_junior"
+            ? `Welcome to the Practice Studio! [Flawed Junior AI Mode Active] for "${challenge.title}". My suggestions may be incomplete or contain subtle bugs—verify everything independently against the test suite ($${challenge.simulatedAiBudgetUsd.toFixed(2)} simulated budget).`
+            : `Welcome to the Practice Studio! I am your AI engineering collaborator for "${challenge.title}". You can ask me to explain unfamiliar patterns, trace control flow, or propose minimal bug fixes within your simulated $${challenge.simulatedAiBudgetUsd.toFixed(2)} token budget.`,
       },
     ]);
     setActiveStage("workspace");
@@ -275,14 +328,15 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   };
 
   const handleRunTests = async () => {
-    if (!selectedChallenge) return;
+    if (!selectedChallenge || timedOut) return;
     try {
       setIsRunningTests(true);
       setTestRunsCount((prev) => prev + 1);
       setWorkspaceTab("tests");
       const result = await ApiClient.validateCode({
         language: selectedChallenge.language || "typescript",
-        code,
+        code: isMultiFileChallenge ? "" : code,
+        ...(isMultiFileChallenge ? { files: repoFiles } : {}),
         testCode: selectedChallenge.verificationTestCode,
         timeoutMs: 4000,
         memoryLimitMb: 128,
@@ -314,7 +368,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
   const handleSendAiPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiPromptInput.trim() || !selectedChallenge || isAiGenerating) return;
+    if (!aiPromptInput.trim() || !selectedChallenge || isAiGenerating || timedOut) return;
 
     const remainingBudget = simulatedBudgetUsd - consumedBudgetUsd;
     if (remainingBudget <= 0.01) {
@@ -328,11 +382,24 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     setIsAiGenerating(true);
 
     try {
+      const multiFileContext = isMultiFileChallenge
+        ? Object.entries(repoFiles).map(([p, content]) => ({
+            path: p,
+            content,
+            source: "repository" as const,
+          }))
+        : [];
+
       const resp = await ApiClient.generateAnswer({
         task: "debug",
         question: userText,
-        code,
-        context: [{ content: selectedChallenge.description, source: "user" }],
+        code: isMultiFileChallenge && activeFilePath ? repoFiles[activeFilePath] ?? code : code,
+        language: selectedChallenge.language,
+        policyMode: aiPolicyMode,
+        context: [
+          { content: selectedChallenge.description, source: "user" },
+          ...multiFileContext,
+        ],
         responseStyle: "concise",
       });
 
@@ -370,6 +437,13 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   };
 
   const handleAcceptPatch = (patchCode: string) => {
+    if (isMultiFileChallenge && activeFilePath) {
+      if (readOnlyFiles.includes(activeFilePath)) {
+        alert(`Cannot overwrite read-only file '${activeFilePath}'. Switch to a writable source file first.`);
+        return;
+      }
+      setRepoFiles((prev) => ({ ...prev, [activeFilePath]: patchCode }));
+    }
     setCode(patchCode);
     setPatchesAccepted((prev) => prev + 1);
     setPendingPatchToReview(null);
@@ -380,35 +454,83 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     setPendingPatchToReview(null);
   };
 
-  const handleSubmitPractice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedChallenge) return;
+  const getModifiedPracticeFiles = (): string[] => {
+    if (!isMultiFileChallenge || !selectedChallenge?.starterFiles) return [];
+    return Object.keys(repoFiles).filter(
+      (p) => selectedChallenge.starterFiles?.[p] !== repoFiles[p]
+    );
+  };
+
+  const executePracticeSubmission = async (isAutoTimeout = false) => {
+    if (!selectedChallenge || isEvaluating) return;
     setSubmitError(null);
     try {
       setIsEvaluating(true);
       setIsTimerRunning(false);
 
-      // Final test run verification
       let finalTestRun = testResult;
       if (!finalTestRun) {
-        finalTestRun = await ApiClient.validateCode({
-          language: selectedChallenge.language || "typescript",
-          code,
-          testCode: selectedChallenge.verificationTestCode,
-          timeoutMs: 4000,
-          memoryLimitMb: 128,
-        });
-        setTestResult(finalTestRun);
+        try {
+          finalTestRun = await ApiClient.validateCode({
+            language: selectedChallenge.language || "typescript",
+            code: isMultiFileChallenge ? "" : code,
+            ...(isMultiFileChallenge ? { files: repoFiles } : {}),
+            testCode: selectedChallenge.verificationTestCode,
+            timeoutMs: 4000,
+            memoryLimitMb: 128,
+          });
+          setTestResult(finalTestRun);
+        } catch {
+          finalTestRun = {
+            success: false,
+            passed: false,
+            exitCode: 1,
+            stdout: "",
+            stderr: "Test runner unavailable or disabled",
+            durationMs: 0,
+            tests: [],
+            sandboxed: true,
+          };
+        }
       }
 
       const passedCount = finalTestRun.tests.filter((t) => t.passed).length;
       const totalCount = finalTestRun.tests.length;
-      const explanationText = technicalExplanation.trim() || "Candidate practice solution verified and submitted.";
+      const explanationText =
+        technicalExplanation.trim() ||
+        (isAutoTimeout
+          ? "Auto-submitted upon strict exam countdown expiration."
+          : "Candidate practice solution verified and submitted.");
+
+      const modifiedFiles = getModifiedPracticeFiles();
+      const effectiveCandidateCode = isMultiFileChallenge
+        ? repoFiles[activeFilePath] || Object.values(repoFiles).join("\n") || selectedChallenge.starterCode
+        : code;
+
+      const defensePayload =
+        defenseAnswer.trim().length > 0
+          ? [
+              {
+                questionId: "practice_diff_defense",
+                prompt:
+                  modifiedFiles.length > 0
+                    ? `Explain the root cause fixed across [${modifiedFiles.join(", ")}] and any AI assumptions rejected.`
+                    : "Explain the root cause fixed and how edge cases were verified.",
+                answer: defenseAnswer.trim(),
+                ...(modifiedFiles.length > 0 ? { targetFile: modifiedFiles.join(", ") } : {}),
+                anchorType: "modified_file" as const,
+              },
+            ]
+          : undefined;
 
       const payload: PracticeSubmissionRequest = {
         challengeId: selectedChallenge.id,
-        candidateCode: code,
+        candidateCode: effectiveCandidateCode,
+        ...(isMultiFileChallenge ? { finalFiles: repoFiles } : {}),
         technicalExplanation: explanationText,
+        ...(defensePayload ? { defenseResponses: defensePayload } : {}),
+        strictTimedMode: strictExamMode,
+        timedOut: isAutoTimeout,
         elapsedSeconds,
         aiQueriesCount,
         aiBudgetConsumedUsd: consumedBudgetUsd,
@@ -437,6 +559,11 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  const handleSubmitPractice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executePracticeSubmission(false);
   };
 
   const handleCopy = (text: string, key: string) => {
@@ -911,6 +1038,16 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 font-mono">
                           {chal.language === "cpp" ? "C++" : chal.language || "typescript"}
                         </span>
+                        {(chal.challengeType === "repository_task" || (chal.starterFiles && Object.keys(chal.starterFiles).length > 0)) && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
+                            Multi-File ({Object.keys(chal.starterFiles || {}).length})
+                          </span>
+                        )}
+                        {chal.aiPolicyMode === "flawed_junior" && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+                            Weak Junior AI
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
@@ -963,11 +1100,14 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
   if (activeStage === "workspace" && selectedChallenge) {
     const budgetRemaining = Math.max(0, simulatedBudgetUsd - consumedBudgetUsd);
     const budgetPercent = (consumedBudgetUsd / simulatedBudgetUsd) * 100;
+    const allocatedSeconds = (selectedChallenge.estimatedMinutes || 30) * 60;
+    const remainingSeconds = Math.max(0, allocatedSeconds - elapsedSeconds);
+    const isLowTime = strictExamMode && remainingSeconds <= 120;
 
     return (
       <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-gray-100 overflow-hidden">
         {/* Top Workspace Header */}
-        <div className="border-b border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] px-6 py-3 flex items-center justify-between shrink-0">
+        <div className="border-b border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] px-6 py-3 flex items-center justify-between gap-2 shrink-0 flex-wrap">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setActiveStage("catalog")}
@@ -984,12 +1124,55 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Strict Exam Mode Toggle */}
+            <button
+              type="button"
+              onClick={() => setStrictExamMode((prev) => !prev)}
+              disabled={timedOut}
+              title="Strict Exam Mode locks edits and auto-submits when countdown reaches 00:00"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                strictExamMode
+                  ? "bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300"
+                  : "bg-slate-100 border-slate-200 text-slate-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"
+              }`}
+            >
+              <Clock className="w-3 h-3" />
+              <span>{strictExamMode ? "Strict Exam: ON" : "Strict Exam: OFF"}</span>
+            </button>
+
+            {/* Weak Junior AI Simulation Toggle */}
+            <button
+              type="button"
+              onClick={() =>
+                setAiPolicyMode((prev) =>
+                  prev === "flawed_junior" ? "full_copilot" : "flawed_junior"
+                )
+              }
+              title="Switch between Full Copilot and Weak Junior AI (which makes subtle mistakes you must catch)"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                aiPolicyMode === "flawed_junior"
+                  ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
+                  : "bg-slate-100 border-slate-200 text-slate-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300"
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>{aiPolicyMode === "flawed_junior" ? "Weak AI Mode" : "Standard AI"}</span>
+            </button>
+
             {/* Timer */}
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-100 dark:bg-gray-800 text-xs font-mono font-bold">
-              <Clock className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{formatTimer(elapsedSeconds)}</span>
-              <span className="text-slate-400 font-normal">/ {selectedChallenge.estimatedMinutes}m</span>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-mono font-bold ${
+                isLowTime
+                  ? "bg-rose-100 text-rose-700 border border-rose-300 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800 animate-pulse"
+                  : "bg-slate-100 dark:bg-gray-800"
+              }`}
+            >
+              <Clock className={`w-3.5 h-3.5 ${isLowTime ? "text-rose-600" : "text-indigo-500"}`} />
+              <span>{formatTimer(strictExamMode ? remainingSeconds : elapsedSeconds)}</span>
+              <span className="text-slate-400 font-normal">
+                {strictExamMode ? "left" : `/ ${selectedChallenge.estimatedMinutes}m`}
+              </span>
             </div>
 
             {/* AI Budget */}
@@ -1017,8 +1200,8 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
             <button
               onClick={handleRunTests}
-              disabled={isRunningTests}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs transition-colors"
+              disabled={isRunningTests || timedOut}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-xs transition-colors disabled:opacity-50"
             >
               <Play className={`w-3.5 h-3.5 ${isRunningTests ? "animate-spin" : ""}`} />
               <span>{isRunningTests ? "Running Tests..." : "Run Tests"}</span>
@@ -1026,6 +1209,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
 
             <button
               onClick={() => setIsSubmitModalOpen(true)}
+              disabled={isEvaluating}
               className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-xs transition-colors"
             >
               <Award className="w-3.5 h-3.5" />
@@ -1185,48 +1369,114 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
             </div>
           </div>
 
-          {/* Center Column: Monaco Code Editor */}
+          {/* Center Column: Multi-File / Single-File Code Editor */}
           <div className="flex-1 flex flex-col bg-[#0b0f19] text-slate-200 overflow-hidden">
-            <div className="p-2.5 bg-[#0e1322] border-b border-slate-800 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Code2 className="w-4 h-4 text-indigo-400" />
-                <span className="font-mono text-slate-300 font-semibold">
-                  {selectedChallenge.language === "python"
-                    ? "candidate_solution.py"
-                    : selectedChallenge.language === "go"
-                    ? "candidate_solution.go"
-                    : selectedChallenge.language === "java"
-                    ? "CandidateSolution.java"
-                    : selectedChallenge.language === "cpp"
-                    ? "candidate_solution.cpp"
-                    : selectedChallenge.language === "rust"
-                    ? "candidate_solution.rs"
-                    : selectedChallenge.language === "javascript"
-                    ? "candidateSolution.js"
-                    : "candidateSolution.ts"}
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-950 text-indigo-400 border border-indigo-800/80 font-mono">
-                  {selectedChallenge.language === "cpp" ? "C++" : selectedChallenge.language || "typescript"}
-                </span>
-              </div>
+            <div className="p-2.5 bg-[#0e1322] border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
+              {isMultiFileChallenge ? (
+                <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                  {Object.keys(repoFiles).map((filePath) => {
+                    const isCur = activeFilePath === filePath;
+                    const isRO = readOnlyFiles.includes(filePath);
+                    const isModified =
+                      selectedChallenge.starterFiles?.[filePath] !== undefined &&
+                      selectedChallenge.starterFiles[filePath] !== repoFiles[filePath];
+                    return (
+                      <button
+                        key={filePath}
+                        type="button"
+                        onClick={() => setActiveFilePath(filePath)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-mono text-[11px] transition-all cursor-pointer shrink-0 ${
+                          isCur
+                            ? "bg-indigo-600 text-white font-semibold shadow-xs"
+                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                      >
+                        <FileCode className="w-3 h-3" />
+                        <span>{filePath}</span>
+                        {isRO && <Lock className="w-2.5 h-2.5 text-amber-400" />}
+                        {isModified && !isRO && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="Modified" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-indigo-400" />
+                  <span className="font-mono text-slate-300 font-semibold">
+                    {selectedChallenge.language === "python"
+                      ? "candidate_solution.py"
+                      : selectedChallenge.language === "go"
+                      ? "candidate_solution.go"
+                      : selectedChallenge.language === "java"
+                      ? "CandidateSolution.java"
+                      : selectedChallenge.language === "cpp"
+                      ? "candidate_solution.cpp"
+                      : selectedChallenge.language === "rust"
+                      ? "candidate_solution.rs"
+                      : selectedChallenge.language === "javascript"
+                      ? "candidateSolution.js"
+                      : "candidateSolution.ts"}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-950 text-indigo-400 border border-indigo-800/80 font-mono">
+                    {selectedChallenge.language === "cpp" ? "C++" : selectedChallenge.language || "typescript"}
+                  </span>
+                </div>
+              )}
+
               <button
-                onClick={() => setCode(selectedChallenge.starterCode)}
-                className="text-slate-400 hover:text-slate-200 flex items-center gap-1 text-[11px]"
+                onClick={() => {
+                  if (isMultiFileChallenge && activeFilePath) {
+                    const orig = selectedChallenge.starterFiles?.[activeFilePath] ?? "";
+                    setRepoFiles((prev) => ({ ...prev, [activeFilePath]: orig }));
+                  } else {
+                    setCode(selectedChallenge.starterCode);
+                  }
+                }}
+                disabled={timedOut || (isMultiFileChallenge && readOnlyFiles.includes(activeFilePath))}
+                className="text-slate-400 hover:text-slate-200 flex items-center gap-1 text-[11px] shrink-0 disabled:opacity-40"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Reset to Starter</span>
+                <span>{isMultiFileChallenge ? "Reset File" : "Reset to Starter"}</span>
               </button>
             </div>
 
+            {isMultiFileChallenge && readOnlyFiles.includes(activeFilePath) && (
+              <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 text-[11px] text-amber-300 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  <strong>Read-Only Reference File:</strong> Switch to a writable implementation tab to make changes.
+                </span>
+              </div>
+            )}
+
+            {timedOut && (
+              <div className="bg-rose-500/15 border-b border-rose-500/40 px-4 py-1.5 text-[11px] text-rose-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                <span>
+                  <strong>Strict Exam Time Expired:</strong> Editing locked and submission finalized automatically.
+                </span>
+              </div>
+            )}
+
             <textarea
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              value={isMultiFileChallenge && activeFilePath ? repoFiles[activeFilePath] ?? "" : code}
+              readOnly={timedOut || (isMultiFileChallenge && readOnlyFiles.includes(activeFilePath))}
+              onChange={(e) => {
+                const nextVal = e.target.value;
+                if (isMultiFileChallenge && activeFilePath) {
+                  setRepoFiles((prev) => ({ ...prev, [activeFilePath]: nextVal }));
+                } else {
+                  setCode(nextVal);
+                }
+              }}
               className="flex-1 p-4 bg-[#090d16] font-mono text-xs text-slate-100 resize-none focus:outline-none border-none leading-relaxed select-text"
               spellCheck={false}
             />
 
             {/* Patch Review Notification if AI proposed a patch */}
-            {pendingPatchToReview && (
+            {pendingPatchToReview && !timedOut && (
               <div className="p-3 bg-indigo-950/90 border-t border-indigo-800 flex items-center justify-between text-xs animate-in slide-in-from-bottom-2">
                 <div className="flex items-center gap-2 text-indigo-200">
                   <Sparkles className="w-4 h-4 text-indigo-400" />
@@ -1262,6 +1512,15 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                   {aiQueriesCount} queries asked
                 </span>
               </div>
+
+              {aiPolicyMode === "flawed_junior" && (
+                <div className="mx-3 mt-3 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Flawed Junior AI Mode:</strong> Expect shallow advice or missing edge cases—verify everything against tests.
+                  </span>
+                </div>
+              )}
 
               {/* Message Feed */}
               <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
@@ -1300,12 +1559,12 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                   placeholder="Ask a question about the code..."
                   value={aiPromptInput}
                   onChange={(e) => setAiPromptInput(e.target.value)}
-                  disabled={isAiGenerating || budgetRemaining <= 0.01}
+                  disabled={isAiGenerating || budgetRemaining <= 0.01 || timedOut}
                   className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
                 <button
                   type="submit"
-                  disabled={isAiGenerating || !aiPromptInput.trim() || budgetRemaining <= 0.01}
+                  disabled={isAiGenerating || !aiPromptInput.trim() || budgetRemaining <= 0.01 || timedOut}
                   className="p-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 transition-colors"
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -1347,7 +1606,7 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                     Technical Explanation & Architectural Trade-offs (Required)
                   </label>
                   <textarea
-                    rows={4}
+                    rows={3}
                     required
                     placeholder="Summarize root cause of defect, how you fixed it, and algorithmic time/space complexity..."
                     value={technicalExplanation}
@@ -1355,6 +1614,33 @@ export const PracticeStudio: React.FC<PracticeStudioProps> = ({
                       setTechnicalExplanation(e.target.value);
                       if (submitError) setSubmitError(null);
                     }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                {/* Diff-Anchored Post-Fix Defense (LOOP 11.0.3) */}
+                <div className="p-3 rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-gray-900/40 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5 text-[11px]">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Post-Fix Comprehension Defense</span>
+                    </span>
+                    {isMultiFileChallenge && (
+                      <span className="font-mono text-[10px] text-slate-500">
+                        Modified: {getModifiedPracticeFiles().join(", ") || "none yet"}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-gray-300">
+                    {isMultiFileChallenge
+                      ? `Explain how your edits across [${getModifiedPracticeFiles().join(", ") || activeFilePath}] interact, and identify any flawed AI suggestions you rejected.`
+                      : "Explain one boundary case you verified and any flawed AI assumption you caught."}
+                  </p>
+                  <textarea
+                    rows={2}
+                    placeholder="Defend your exact diff and edge-case handling..."
+                    value={defenseAnswer}
+                    onChange={(e) => setDefenseAnswer(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>

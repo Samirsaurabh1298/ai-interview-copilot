@@ -1061,6 +1061,156 @@ test("EventEmitter once fires exactly once", () => {
         simulatedAiBudgetUsd: 0.2,
         tags: ["javascript", "events", "frontend", "architecture", "reactive"],
       },
+      {
+        id: "chal_multi_file_checkout_triage",
+        slug: "multi-file-checkout-rollback-debug",
+        title: "Multi-File Checkout Pipeline: Inventory Leak & Discount Over-Application",
+        track: "fullstack",
+        difficulty: "senior",
+        language: "typescript",
+        challengeType: "repository_task",
+        estimatedMinutes: 30,
+        primaryFilePath: "src/checkout.ts",
+        readOnlyFiles: ["src/types.ts"],
+        aiPolicyMode: "flawed_junior",
+        description: `### Multi-File Code Comprehension Round (Flawed Junior AI Simulation)
+You are stepping into a 4-file TypeScript checkout service where **3 failing tests** have been reported in production triage:
+1. **Inventory Leak on Coupon Failure (\`src/checkout.ts\`):** \`processCheckout\` reserves stock *before* calculating discounts. When an invalid/expired coupon throws inside \`applyDiscount\`, reserved inventory is never rolled back!
+2. **Off-by-One Stock Boundary (\`src/inventory.ts\`):** \`reserveStock\` rejects exact-match stock orders (\`available <= qty\` instead of \`available < qty\`).
+3. **Unclamped Percentage Discount (\`src/pricing.ts\`):** \`applyDiscount\` allows \`> 100%\` coupons to produce negative totals and leaves unrounded float precision artifacts.
+
+### Environment Constraints
+- **Multi-file Workspace:** Edit \`src/inventory.ts\`, \`src/pricing.ts\`, and \`src/checkout.ts\` (\`src/types.ts\` is read-only).
+- **Flawed Junior AI Active:** Your AI assistant gives shallow, hasty suggestions that often miss edge cases or rollback invariants. Verify every hypothesis with the test suite!
+- **Post-Fix Defense:** Be ready to defend your exact file changes on submission.`,
+        starterCode: `import type { CheckoutOrder, CheckoutResult } from "./types.ts";
+import { reserveStock, releaseStock } from "./inventory.ts";
+import { applyDiscount } from "./pricing.ts";
+
+export function processCheckout(order: CheckoutOrder): CheckoutResult {
+  reserveStock(order.sku, order.quantity);
+  const finalTotal = applyDiscount(order.unitPriceCents * order.quantity, order.couponCode);
+  return {
+    orderId: order.orderId,
+    sku: order.sku,
+    quantity: order.quantity,
+    totalCents: finalTotal,
+  };
+}`,
+        starterFiles: {
+          "src/types.ts": `export interface CheckoutOrder {
+  orderId: string;
+  sku: string;
+  quantity: number;
+  unitPriceCents: number;
+  couponCode?: string;
+}
+
+export interface CheckoutResult {
+  orderId: string;
+  sku: string;
+  quantity: number;
+  totalCents: number;
+}`,
+          "src/inventory.ts": `const stockLedger: Record<string, number> = {
+  "SKU-WIDGET": 5,
+  "SKU-GADGET": 2,
+};
+
+export function getStock(sku: string): number {
+  return stockLedger[sku] ?? 0;
+}
+
+export function resetStockForTest(sku: string, qty: number): void {
+  stockLedger[sku] = qty;
+}
+
+export function reserveStock(sku: string, quantity: number): void {
+  if (quantity <= 0) throw new Error("Quantity must be positive");
+  const available = getStock(sku);
+  // BUG: Rejects exact stock match (available <= quantity)
+  if (available <= quantity) {
+    throw new Error(\`Insufficient stock for \${sku}\`);
+  }
+  stockLedger[sku] = available - quantity;
+}
+
+export function releaseStock(sku: string, quantity: number): void {
+  stockLedger[sku] = getStock(sku) + quantity;
+}`,
+          "src/pricing.ts": `const COUPONS: Record<string, number> = {
+  SAVE20: 20,
+  CLEARANCE120: 120,
+};
+
+export function applyDiscount(subtotalCents: number, couponCode?: string): number {
+  if (!couponCode) return subtotalCents;
+  const pct = COUPONS[couponCode];
+  if (pct === undefined) {
+    throw new Error(\`Invalid coupon code: \${couponCode}\`);
+  }
+  // BUG: Does not clamp discount <= 100% and does not round to integer cents
+  return subtotalCents - (subtotalCents * pct) / 100;
+}`,
+          "src/checkout.ts": `import type { CheckoutOrder, CheckoutResult } from "./types.ts";
+import { reserveStock, releaseStock } from "./inventory.ts";
+import { applyDiscount } from "./pricing.ts";
+
+export function processCheckout(order: CheckoutOrder): CheckoutResult {
+  // BUG: Stock reservation leaks if applyDiscount throws
+  reserveStock(order.sku, order.quantity);
+  const finalTotal = applyDiscount(order.unitPriceCents * order.quantity, order.couponCode);
+  return {
+    orderId: order.orderId,
+    sku: order.sku,
+    quantity: order.quantity,
+    totalCents: finalTotal,
+  };
+}`,
+        },
+        verificationTestCode: `import assert from "node:assert/strict";
+import { processCheckout } from "./src/checkout.ts";
+import { getStock, resetStockForTest } from "./src/inventory.ts";
+import { applyDiscount } from "./src/pricing.ts";
+
+test("reserves exact remaining stock without off-by-one failure", () => {
+  resetStockForTest("SKU-GADGET", 2);
+  const res = processCheckout({
+    orderId: "ord_1",
+    sku: "SKU-GADGET",
+    quantity: 2,
+    unitPriceCents: 1000,
+  });
+  assert.equal(res.totalCents, 2000);
+  assert.equal(getStock("SKU-GADGET"), 0);
+});
+
+test("rolls back reserved inventory when coupon validation throws", () => {
+  resetStockForTest("SKU-WIDGET", 5);
+  assert.throws(() => {
+    processCheckout({
+      orderId: "ord_2",
+      sku: "SKU-WIDGET",
+      quantity: 3,
+      unitPriceCents: 500,
+      couponCode: "EXPIRED_BAD",
+    });
+  }, /Invalid coupon/);
+  assert.equal(getStock("SKU-WIDGET"), 5, "Stock must be released on failure");
+});
+
+test("clamps oversized coupon discounts at 0 cents and rounds integer cents", () => {
+  assert.equal(applyDiscount(1500, "CLEARANCE120"), 0);
+  assert.equal(applyDiscount(999, "SAVE20"), 799);
+});`,
+        hints: [
+          "Inspect the boundary operator in `src/inventory.ts` when `available === quantity`.",
+          "Wrap pricing calculation in `try/catch` inside `src/checkout.ts` and call `releaseStock` on failure.",
+          "In `src/pricing.ts`, clamp `Math.min(100, Math.max(0, pct))` and round cents cleanly with `Math.round`.",
+        ],
+        simulatedAiBudgetUsd: 0.25,
+        tags: ["typescript", "multi-file", "comprehension", "rollback", "weak-ai"],
+      },
     ];
 
     for (const challenge of catalog) {
@@ -1108,7 +1258,10 @@ test("EventEmitter once fires exactly once", () => {
     const compScore = compRating * 25; // 0-100 base
 
     // Dimension 2: Problem Framing & Architecture (Weight: 10%)
-    const explLen = req.technicalExplanation.trim().length;
+    const defenseTextLen = (req.defenseResponses ?? [])
+      .map((d) => d.answer.trim().length)
+      .reduce((acc, len) => acc + len, 0);
+    const explLen = req.technicalExplanation.trim().length + defenseTextLen;
     const frameRating: 1 | 2 | 3 | 4 = explLen > 150 ? 4 : explLen > 60 ? 3 : explLen > 20 ? 2 : 1;
 
     // Dimension 3: AI Collaboration Efficiency (Weight: 15%)
@@ -1300,7 +1453,7 @@ test("EventEmitter once fires exactly once", () => {
         testsPassed: req.testResults.passed,
         testsTotal: req.testResults.total,
       },
-      executiveSummary: `Completed in ${elapsedMinutes}m with ${Math.round(testRate)}% test pass rate. Composite assessment signal: ${compositeScore}/100 pts (${recommendation.replace("_", " ").toUpperCase()}).`,
+      executiveSummary: `${req.strictTimedMode ? "[Strict Exam Mode] " : ""}${req.timedOut ? "Auto-submitted on countdown expiration after " : "Completed in "}${elapsedMinutes}m with ${Math.round(testRate)}% test pass rate. Composite assessment signal: ${compositeScore}/100 pts (${recommendation.replace("_", " ").toUpperCase()}).`,
       actionableTakeaways: [
         testRate < 100
           ? "Prioritize edge cases: review the failing assertions to uncover hidden boundary bugs."

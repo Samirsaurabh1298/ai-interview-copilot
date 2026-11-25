@@ -2,6 +2,8 @@ import { z } from "zod";
 import { RubricDimensionIdSchema, RubricRatingAnchorSchema } from "./assessment.js";
 import { HiringRecommendationSchema } from "./calibration.js";
 import { ProgrammingLanguageSchema } from "./validation.js";
+import { TaskAIPolicyModeSchema } from "./task.js";
+import { DefenseResponseItemSchema } from "./submission.js";
 
 // ==============================================================================
 // Practice Track & Difficulty Schemas
@@ -35,9 +37,14 @@ export const PracticeChallengeSchema = z.object({
   track: PracticeTrackSchema,
   difficulty: PracticeDifficultySchema,
   language: ProgrammingLanguageSchema.default("typescript"),
+  challengeType: z.enum(["coding_challenge", "repository_task"]).default("coding_challenge").optional(),
   estimatedMinutes: z.number().int().min(10).max(180).default(45),
   description: z.string().min(20),
   starterCode: z.string(),
+  starterFiles: z.record(z.string(), z.string()).optional(),
+  readOnlyFiles: z.array(z.string()).optional(),
+  primaryFilePath: z.string().optional(),
+  aiPolicyMode: TaskAIPolicyModeSchema.optional(),
   verificationTestCode: z.string(),
   solutionTemplate: z.string().optional(),
   hints: z.array(z.string()).default([]),
@@ -53,7 +60,11 @@ export type PracticeChallenge = z.infer<typeof PracticeChallengeSchema>;
 export const PracticeSubmissionRequestSchema = z.object({
   challengeId: z.string(),
   candidateCode: z.string().min(1, "Candidate code cannot be empty"),
+  finalFiles: z.record(z.string(), z.string()).optional(),
   technicalExplanation: z.string().min(1, "Technical explanation cannot be empty"),
+  defenseResponses: z.array(DefenseResponseItemSchema).optional(),
+  strictTimedMode: z.boolean().optional(),
+  timedOut: z.boolean().optional(),
   elapsedSeconds: z.number().min(0).default(0),
   aiQueriesCount: z.number().min(0).default(0),
   aiBudgetConsumedUsd: z.number().min(0).default(0),

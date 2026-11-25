@@ -181,4 +181,123 @@ describe("Candidate Practice Studio Routes (Task 21)", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("VALIDATION_ERROR");
   });
+
+  it("LOOP 11.0.3: exposes multi-file Weak-AI practice challenge, executes starter failures vs fixed solution, and evaluates strict timed defense", async () => {
+    const getRes = await app.inject({
+      method: "GET",
+      url: "/api/v1/practice/challenges/chal_multi_file_checkout_triage",
+    });
+    expect(getRes.statusCode).toBe(200);
+    const { challenge } = getRes.json();
+    expect(challenge.challengeType).toBe("repository_task");
+    expect(challenge.aiPolicyMode).toBe("flawed_junior");
+    expect(Object.keys(challenge.starterFiles)).toEqual(
+      expect.arrayContaining(["src/types.ts", "src/inventory.ts", "src/pricing.ts", "src/checkout.ts"])
+    );
+
+    // 1. Starter multi-file workspace fails assertions cleanly
+    const starterValRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/validate",
+      payload: {
+        language: "typescript",
+        code: "",
+        files: challenge.starterFiles,
+        testCode: challenge.verificationTestCode,
+        timeoutMs: 8000,
+        memoryLimitMb: 128,
+      },
+    });
+    expect(starterValRes.statusCode).toBe(200);
+    const starterVal = starterValRes.json();
+    expect(starterVal.passed).toBe(false);
+    expect(starterVal.tests.length).toBe(3);
+    expect(starterVal.tests.every((t: any) => !t.passed)).toBe(true);
+
+    // 2. Fixed multi-file workspace passes all 3 cross-module assertions
+    const fixedFiles = {
+      ...challenge.starterFiles,
+      "src/inventory.ts": challenge.starterFiles["src/inventory.ts"].replace(
+        "if (available <= quantity)",
+        "if (available < quantity)"
+      ),
+      "src/pricing.ts": `const COUPONS: Record<string, number> = { SAVE20: 20, CLEARANCE120: 120 };
+export function applyDiscount(subtotalCents: number, couponCode?: string): number {
+  if (!couponCode) return subtotalCents;
+  const pct = COUPONS[couponCode];
+  if (pct === undefined) throw new Error(\`Invalid coupon code: \${couponCode}\`);
+  const clamped = Math.min(100, Math.max(0, pct));
+  return Math.max(0, Math.round(subtotalCents - (subtotalCents * clamped) / 100));
+}`,
+      "src/checkout.ts": `import type { CheckoutOrder, CheckoutResult } from "./types.ts";
+import { reserveStock, releaseStock } from "./inventory.ts";
+import { applyDiscount } from "./pricing.ts";
+export function processCheckout(order: CheckoutOrder): CheckoutResult {
+  reserveStock(order.sku, order.quantity);
+  try {
+    const finalTotal = applyDiscount(order.unitPriceCents * order.quantity, order.couponCode);
+    return { orderId: order.orderId, sku: order.sku, quantity: order.quantity, totalCents: finalTotal };
+  } catch (err) {
+    releaseStock(order.sku, order.quantity);
+    throw err;
+  }
+}`,
+    };
+
+    const fixedValRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/code/validate",
+      payload: {
+        language: "typescript",
+        code: "",
+        files: fixedFiles,
+        testCode: challenge.verificationTestCode,
+        timeoutMs: 8000,
+        memoryLimitMb: 128,
+      },
+    });
+    expect(fixedValRes.statusCode).toBe(200);
+    const fixedVal = fixedValRes.json();
+    expect(fixedVal.passed).toBe(true);
+    expect(fixedVal.tests.every((t: any) => t.passed)).toBe(true);
+
+    // 3. Evaluate practice submission with multi-file payload, defenseResponses, and strictTimedMode
+    const evalRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/practice/evaluate",
+      payload: {
+        challengeId: challenge.id,
+        candidateCode: fixedFiles["src/checkout.ts"],
+        finalFiles: fixedFiles,
+        technicalExplanation: "Fixed off-by-one stock boundary, clamped coupon percentage, and released reserved stock on pricing error.",
+        defenseResponses: [
+          {
+            questionId: "practice_diff_defense",
+            targetFile: "src/checkout.ts, src/inventory.ts, src/pricing.ts",
+            anchorType: "modified_file",
+            prompt: "Explain how your edits across modules interact.",
+            answer: "processCheckout catches applyDiscount errors and invokes releaseStock to avoid leaking reserved inventory across modules.",
+          },
+        ],
+        strictTimedMode: true,
+        timedOut: false,
+        elapsedSeconds: 900,
+        aiQueriesCount: 2,
+        aiBudgetConsumedUsd: 0.05,
+        patchesAccepted: 1,
+        patchesRejected: 1,
+        testRunsCount: 3,
+        testResults: {
+          passed: 3,
+          total: 3,
+          durationMs: fixedVal.durationMs || 50,
+          tests: fixedVal.tests,
+        },
+      },
+    });
+    expect(evalRes.statusCode).toBe(200);
+    const evalData = evalRes.json();
+    expect(evalData.feedback.executiveSummary).toContain("[Strict Exam Mode]");
+    expect(evalData.feedback.compositeScore).toBeGreaterThanOrEqual(85);
+  }, 20000);
 });
