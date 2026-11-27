@@ -1,11 +1,10 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Architecture & Master Operating Manual
 
-> **System Status:** Production Monorepo  
+> **System Status:** Production Monorepo (`HEAD`: Loop 11.0.3)  
 > **Workspace Topology:** 13 Packages / Services / Applications  
-> **Automated Test Suite:** 219 / 219 Automated Tests Passing across 37 Test Suites (100% Pass Rate)  
-> **Challenge Sandbox Pass Rate:** 5 / 5 Verification Assertions Passing (100%)  
+> **Automated Test Suite:** 307 / 307 Automated Tests Passing across 47 Test Files (11 Tested Workspace Packages, 100% Pass Rate)  
 > **Supported Software Engineering Languages:** TypeScript, JavaScript, Python 3, Go, Java, C++, Rust  
-> **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`) & OpenAI (`gpt-4o-mini`, `gpt-4o`)  
+> **Primary AI Providers:** Groq LPU (`qwen/qwen3.8-27b`, `openai/gpt-oss-120b`), OpenAI (`gpt-4o-mini`, `gpt-4o`), Anthropic (`claude-3-5-sonnet`), Google (`gemini-2.0-flash`)  
 > **Supported Runtime Platforms:** Electron 34 Native Desktop & High-Fidelity Web Browser (`http://localhost:5173`)  
 > **Design Standard:** WCAG 2.2 AA Contrast & Focus Accessibility (Light & Dark Themes)
 
@@ -43,6 +42,9 @@
    - [4.24. Pilot Hardening & Policy Consistency (LOOP 10.0.1)](#424-pilot-hardening--policy-consistency-loop-1001)
    - [4.25. External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2)](#425-external-pilot-launch-gate--delivery-architecture-loop-1002)
    - [4.26. Assessment Lifecycle FSM, Database Deadline Enforcement & Strict Finalization Contracts (LOOP 10.0.4 - 10.0.4.2)](#426-assessment-lifecycle-fsm-database-deadline-enforcement--strict-finalization-contracts-loop-1004---10042)
+   - [4.27. Durable Autosave Idempotency, Revision Authority & Concurrency Guards (LOOP 10.0.4.2.1 - 10.0.4.2.4)](#427-durable-autosave-idempotency-revision-authority--concurrency-guards-loop-100421---100424)
+   - [4.28. Server-Authoritative Expiry Processor & Design Partner Showcase (LOOP 10.0.3 / Showcase)](#428-server-authoritative-expiry-processor--design-partner-showcase-loop-1003--showcase)
+   - [4.29. Multi-File Virtual Sandbox, Weak-AI Simulation (`flawed_junior`) & Diff-Anchored Defense (LOOP 11.0.1 - 11.0.3)](#429-multi-file-virtual-sandbox-weak-ai-simulation-flawed_junior--diff-anchored-defense-loop-1101---1103)
 5. [Complete End-to-End User Workflows (Step-by-Step Guides)](#5-complete-end-to-end-user-workflows-step-by-step-guides)
    - [Workflow 1: Company Admin / Recruiter Setup Guide](#workflow-1-company-admin--recruiter-setup-guide)
    - [Workflow 2: Candidate Assessment Journey Guide](#workflow-2-candidate-assessment-journey-guide)
@@ -138,7 +140,7 @@ c:\samir\ai-interview-copilot/
 │   │   │   ├── routes/                   # API Route Controllers (auth, orgs, studio, proctor, sessions, telemetry, runner)
 │   │   │   ├── services/                 # Business Logic (integrity engine, token budget, sandbox runner, session events)
 │   │   │   └── server.ts                 # Fastify HTTP bootstrap, CORS & provider registration
-│   │   └── test/                         # 20 Test Suites with 127 Integration Tests Passing
+│   │   └── src/                          # 35 Test Suites with 245 Integration & Service Tests Passing
 │   └── desktop/                          # Electron 34 + React 19 Frontend Application
 │       ├── public/
 │       │   └── favicon.svg               # Production Brand SVG Favicon (Terminal/Brain glyph)
@@ -147,12 +149,14 @@ c:\samir\ai-interview-copilot/
 │       │   ├── preload/                  # IPC Context Isolation Bridge
 │       │   └── renderer/                 # React 19 Client UI
 │       │       ├── components/
-│       │       │   ├── AssessmentWorkspace.tsx    # Multi-Task Dynamic Candidate Workspace & Virtual Filesystem
+│       │       │   ├── AssessmentWorkspace.tsx    # Multi-Task Dynamic Candidate Workspace & Defense UI
 │       │       │   ├── CompanyAssessmentStudio.tsx# Recruiter/Hiring Manager Multi-Task Assessment Builder
 │       │       │   ├── CompanyDashboard.tsx       # Enterprise Admin, RBAC, Live Proctor Room & Audit Portal
-│       │       │   ├── CandidateGateway.tsx       # Candidate Onboarding & Integrity Agreement
-│       │       │   ├── PracticeStudio.tsx         # Free Practice Studio & Multimodal Ingest
+│       │       │   ├── CandidateOnboarding.tsx    # Candidate Onboarding & Integrity Agreement
+│       │       │   ├── PracticeStudio.tsx         # Unified Practice Studio (Single & Multi-File, Weak AI, Strict Exam)
+│       │       │   ├── showcase/ProductBentoShowcase.tsx # Interactive Design-Partner Pilot Showcase
 │       │       │   └── ScorecardModal.tsx         # 7-Dimension Reviewer Scorecard Modal
+│       │       ├── hooks/                # useAssessmentLifecycle FSM reducer
 │       │       ├── services/             # Type-Safe ApiClient & Buffered TelemetryClient
 │       │       └── index.css             # WCAG 2.2 AA Contrast Tokens (Tailwind CSS)
 │       └── scripts/
@@ -163,17 +167,21 @@ c:\samir\ai-interview-copilot/
 │   │       ├── answer.ts                 # 15-field InterviewAnswer schema contract
 │   │       ├── assessment.ts             # AssessmentSession, AssessmentTemplate, Scorecard schemas
 │   │       ├── events.ts                 # SessionEvent telemetry schemas & event types
-│   │       ├── integrity.ts              # Real-Time Proctoring, Risk Levels & Incident contracts (LOOP 7)
-│   │       ├── invitations.ts            # CandidateInvitation schemas & 32-byte token contracts
-│   │       ├── organizations.ts          # Multi-tenant Organization & Member schemas
+│   │       ├── integrity.ts              # Real-Time Proctoring & Incident contracts (LOOP 7 / 10.0.1)
+│   │       ├── invitation.ts             # CandidateInvitation schemas & 32-byte token contracts
+│   │       ├── organization.ts           # Multi-tenant Organization & Member schemas
+│   │       ├── practice.ts               # Practice Challenge, Weak-AI & Defense submission contracts
 │   │       ├── provider.ts               # AI Provider capability & model contracts
-│   │       ├── request.ts                # Structured AI query request schemas
-│   │       ├── validation.ts             # Sandboxed code validation request & response schemas
-│   │       └── versions.ts               # Immutable version snapshot & SHA-256 schemas
+│   │       ├── request.ts                # Structured AI query & TaskAIPolicyMode request schemas
+│   │       ├── session-fsm.ts            # 7-State Assessment Lifecycle FSM contract (LOOP 10.0.4)
+│   │       ├── submission.ts             # SubmissionArtifact, TestExecutionStatus & DefenseResponse schemas
+│   │       ├── task.ts                   # Question Set, Coding Challenge, Repository Task & AIPolicy schemas
+│   │       ├── validation.ts             # Multi-file Sandboxed code validation schemas (LOOP 11.0.1)
+│   │       └── version.ts                # Immutable version snapshot & SHA-256 schemas
 │   ├── ai-core/                          # Provider-Agnostic LLM Orchestrator
 │   │   └── src/
 │   │       ├── orchestrator.ts           # Token economy, resilient mock fallback & model router
-│   │       ├── prompts.ts                # System prompts & schema contract boundaries
+│   │       ├── prompts.ts                # Policy-aware prompts (full_copilot, restricted_explainer, flawed_junior)
 │   │       └── errors.ts                 # Typed AIProviderError hierarchy
 │   ├── ai-provider-groq/                 # Ultra-Fast Groq LPU Provider Adapter (Sub-second inference)
 │   ├── ai-provider-openai/               # OpenAI Provider Adapter (gpt-4o-mini, gpt-4o)
@@ -182,9 +190,11 @@ c:\samir\ai-interview-copilot/
 │   ├── context-engine/                   # Context Window Packing, AST Parsing & Token Budgeter
 │   └── scoring-engine/                   # Automated 7-Dimension Rubric Scoring Engine
 ├── services/
-│   └── code-runner/                      # Ephemeral Process Sandboxed Code Execution Service
+│   └── code-runner/                      # Ephemeral Process & OCI/gVisor Code Execution Service
 │       └── src/
-│           └── runner.ts                 # Node 22 Native Type-Stripping Runner & Polyglot Verifier
+│           ├── runner.ts                 # Node 22 Native Type-Stripping, Multi-File Module Runner & Polyglot Verifier
+│           ├── workspace-materializer.ts # Hardened path-traversal & quota-enforced virtual FS materializer
+│           └── providers/oci-gvisor.ts   # Linux gVisor / OCI execution provider
 └── tasks/
     └── frontend-ticket-queue/            # Pilot Assessment Challenge
         └── src/
@@ -734,6 +744,40 @@ LOOP 10.0.4 through 10.0.4.2 replaces all implicit assessment lifecycle behavior
     4. `UNAVAILABLE`: Standalone runner microservice unreachable or infrastructure failure, safely preserving the candidate's complete evidence bundle without dropping the submission.
   - Arbitrary candidate code execution on the host fallback remains strictly disabled. Zero untrusted code runs on the host.
 
+### 4.27. Durable Autosave Idempotency, Revision Authority & Concurrency Guards (LOOP 10.0.4.2.1 - 10.0.4.2.4)
+
+Across LOOP 10.0.4.2.1 through LOOP 10.0.4.2.4, candidate workspace persistence and timer checks were hardened for concurrent requests and network retries:
+
+- **PostgreSQL `clock_timestamp()` Deadline Authority:** All deadline checks and conditional autosave writes compare against database time rather than Node process clocks.
+- **Mandatory `baseRevision` & `clientMutationId`:** Workspace autosave payloads (`PATCH /api/v1/sessions/:sessionId/workspace`) require explicit `baseRevision` and `clientMutationId` (validated by Zod; omission fails with HTTP `400`).
+- **Server-Generated Monotonic Revisions:** Clients cannot inflate `revision`; the server computes monotonic increments atomically inside database transactions.
+- **Canonical Full-Request Hashing & Idempotency Table:** `session_autosave_mutations` enforces `UNIQUE(session_id, client_mutation_id)` paired with SHA-256 `computeCanonicalRequestHash` over normalized code and test results:
+  - Identical network retries return the stored acknowledged revision idempotently without double-incrementing.
+  - Conflicting payloads reusing a `clientMutationId` or stale `baseRevision` values fail cleanly with HTTP `409`.
+  - Verified against concurrent racing requests via dedicated suites (`session-concurrency-edge-cases.test.ts`, `session-autosave-cas.test.ts`, `session-revision-authority.test.ts`, `session-durable-autosave.test.ts`).
+
+### 4.28. Server-Authoritative Expiry Processor & Design Partner Showcase (LOOP 10.0.3 / Showcase)
+
+- **Background Expiry Processor (`SessionExpiryProcessor`):** Periodically sweeps overdue `ACTIVE` / `GRACE_PERIOD` sessions using server deadlines, cleanly transitions expiring sessions, freezes workspace editing when time expires, and prevents timer-restart bugs across reloads (`session-expiry-processor.test.ts`).
+- **Interactive Pilot Showcase (`ProductBentoShowcase.tsx`):** Self-contained interactive walkthrough accessible from the top navigation (`Pilot Showcase`) demonstrating multi-file test verification, live watchdog timer mechanics, factual integrity vs. policy telemetry, and SHA-256 artifact sealing for stakeholder and design-partner demos.
+
+### 4.29. Multi-File Virtual Sandbox, Weak-AI Simulation (`flawed_junior`) & Diff-Anchored Defense (LOOP 11.0.1 - 11.0.3)
+
+LOOP 11 evolves the platform into realistic multi-file repository debugging paired with explicit scrutiny of imperfect AI suggestions:
+
+- **Hardened Multi-File Sandbox Contract & Workspace Materializer (LOOP 11.0.1):**
+  - Extended `CodeValidationRequestSchema` (`packages/contracts/src/validation.ts`) to support virtual `files: Record<string, string>` and `entryTestFile`.
+  - Built `workspace-materializer.ts` (`services/code-runner/src/workspace-materializer.ts`) enforcing strict POSIX path normalization, traversal rejection (`..`, drive letters, backslashes, null bytes), reserved harness filename protection (`runner.ts`, `__sandbox_tests__.ts`, etc.), a 50-file ceiling, and a 512 KB total workspace byte limit.
+  - Wired `repository_task` multi-file workspaces in `AssessmentWorkspace.tsx` and `SubmissionService` directly into `CodeRunnerClient` while maintaining the `RUNNER_EXECUTION_ENABLED` security gate (`auth-magic-link.test.ts`, `runner.test.ts`).
+- **Weak-AI `flawed_junior` Simulation & Diff-Anchored Post-Fix Defense (LOOP 11.0.2):**
+  - Added `flawed_junior` to `TaskAIPolicyModeSchema` (`packages/contracts/src/task.ts`), alongside `prohibited`, `full_copilot`, and `restricted_explainer`.
+  - Enforced server-side policy + model lock in `POST /api/v1/answers/generate` (`apps/api/src/routes/answers.ts`): rejects queries with HTTP `403 AI_PROHIBITED_FOR_TASK` on `prohibited` tasks, strips proposed patches on `restricted_explainer` (`code: ""`, `codeChanges: []`), and locks `flawed_junior` sessions to the configured `allowedModel` so candidates cannot override the model via query parameters.
+  - Added tailored `SYSTEM_FLAWED_JUNIOR_PROMPT` (`packages/ai-core/src/prompts.ts`) and deterministic `MockAIProvider` weak suggestions for testing (`orchestrator.test.ts`).
+  - Added `DefenseResponseItemSchema` (`modified_file`, `ai_accepted_patch`, `test_verification`, `edge_case`) persisted inside PostgreSQL `submission_artifacts` (`defense_responses`) and surfaced to evaluators in `CompanyDashboard.tsx` (`loop-11-weak-ai-defense.test.ts`).
+- **Unified Practice Studio with Multi-File Repo, Weak-AI & Strict Exam Modes (LOOP 11.0.3):**
+  - Upgraded `PracticeStudioService` (`apps/api/src/services/practice.ts`), `PracticeChallengeSchema` (`packages/contracts/src/practice.ts`), and `PracticeStudio.tsx` to support multi-file `repository_task` challenges (including `"Multi-File Checkout Pipeline: Inventory Leak & Discount Over-Application"` across `src/types.ts` [read-only], `src/inventory.ts`, `src/pricing.ts`, and `src/checkout.ts`).
+  - Added interactive candidate toggles for **Weak AI Mode (`flawed_junior`)**, **Strict Exam Mode** (server-style countdown enforcement with auto-submission on timeout), and **Diff-Anchored Post-Fix Defense** prompts (`practice.test.ts`).
+
 ---
 
 ## 5. Complete End-to-End User Workflows (Step-by-Step Guides)
@@ -996,31 +1040,45 @@ Fastify API server (`http://127.0.0.1:4000`):
 
 ## 8. Automated Verification & Test Matrix
 
-All 13 packages maintain **100% passing test suites**:
+All 11 packages containing automated Vitest test suites maintain a **100% pass rate** (`pnpm test`):
 
-| Package / Module | Test Scope | Tests Passed | Status |
-| :--- | :--- | :---: | :---: |
-| `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 | **PASS** |
-| `packages/contracts` | Zod validation contracts (answers, sessions, events, templates, analytics, webhooks, polyglot languages, integrity, runtime policies, zip import) | 4 / 4 | **PASS** |
-| `packages/ai-core` | Model routing, fallback engine, prompt contract injection | 4 / 4 | **PASS** |
-| `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 | **PASS** |
-| `services/code-runner` | Node 22 sandbox, Python 3 execution, Go polyglot static verification, OCI environment probe, polyglot compiler runners, watchdog timeouts, secret scrubbing, socket traps, and mutual token authentication (`/health`, `/environment`, `/validate`) | 24 / 24 (3 Suites) | **PASS** |
-| `packages/ai-provider-groq` | Groq LPU adapter, JSON repair, fallback to GPT-OSS | 3 / 3 | **PASS** |
-| `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 | **PASS** |
-| `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 | **PASS** |
-| `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 | **PASS** |
-| `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 | **PASS** |
-| `apps/api` | Fastify server, auth & RBAC, transactional email delivery (SMTP/Resend/Console/Test), candidate-to-company boundary enforcement, magic link login & rate limiting, organizations, templates & multi-task studio, ZIP archive ingest & penetration suite, versions, sessions & pause-resume audit trail, data deletion endpoint, invitations, telemetry events, submission bundling, proctor controls & factual integrity pipeline, calibration, evidence reports, multi-tenant IDOR attack suite, ATS/HRIS webhooks, AI cost analytics, candidate practice challenges, multimodal screen capture question ingestion, and execution security gate | 173 / 173 (25 Suites) | **PASS** |
-| `apps/desktop` | Electron 34 desktop shell, Vite React renderer, TypeScript strict typecheck, and ErrorBoundary crash protection | Strict TSC | **PASS** |
-| **Total Automated Tests** | **Across Full Enterprise Monorepo** | **219 / 219** | **100% PASS** |
+| Package / Module | Test Scope | Tests Passed | TypeScript Check (`tsc --noEmit`) | Status |
+| :--- | :--- | :---: | :---: | :---: |
+| `tasks/frontend-ticket-queue` | Sorting, priority inversion, React array immutability, undef tags | 4 / 4 (1 File) | Pass | **PASS** |
+| `packages/contracts` | Zod validation contracts (answers, sessions, FSM, events, templates, analytics, webhooks, polyglot languages, integrity, runtime policies, practice, weak-AI defense, zip import) | 4 / 4 (1 File) | Pass | **PASS** |
+| `packages/ai-core` | Model routing, fallback engine, prompt contract injection (`full_copilot`, `restricted_explainer`, `flawed_junior`) | 5 / 5 (1 File) | Pass | **PASS** |
+| `packages/context-engine` | AST context packing, token budgeting, file truncation | 3 / 3 (1 File) | Pass | **PASS** |
+| `services/code-runner` | Node 22 sandbox, multi-file workspace materializer & path guards, Python 3 execution, OCI environment probe, polyglot compiler runners, watchdog timeouts, secret scrubbing, mutual runner auth | 28 / 28 (3 Files) | Pass | **PASS** |
+| `packages/ai-provider-groq` | Groq LPU adapter, JSON repair, fallback to GPT-OSS | 3 / 3 (1 File) | Pass | **PASS** |
+| `packages/ai-provider-openai` | OpenAI GPT-4o adapter, token cost calculation | 3 / 3 (1 File) | Pass | **PASS** |
+| `packages/ai-provider-anthropic` | Anthropic Claude 3.5 Sonnet adapter, tool call parsing | 3 / 3 (1 File) | Pass | **PASS** |
+| `packages/ai-provider-google` | Google Gemini 2.0 adapter, multimodal extraction | 3 / 3 (1 File) | Pass | **PASS** |
+| `packages/scoring-engine` | 7-dimension rubric evaluator, engineering autonomy reward, dynamic N/A weight redistribution, calibration consensus | 6 / 6 (1 File) | Pass | **PASS** |
+| `apps/api` | Fastify server, auth & RBAC, transactional email delivery, candidate-to-company boundaries, magic link auth, orgs, templates & multi-task studio, ZIP ingest, 7-state FSM, expiry sweep, CAS autosave idempotency, pause-resume audit, data erasure, webhooks, AI analytics, `flawed_junior` & defense persistence, practice studio, multimodal capture, runner gate | 245 / 245 (35 Files) | Strict `exactOptionalPropertyTypes` errors remain | **Tests PASS** |
+| `apps/desktop` | Electron 34 desktop shell, Vite React 19 UI, PracticeStudio, AssessmentWorkspace, CompanyDashboard, ProductBentoShowcase | No Vitest suite | Strict `exactOptionalPropertyTypes` errors remain | **Runs via Vite/Electron** |
+| **Total Automated Tests** | **Across 11 Tested Workspace Packages** | **307 / 307 (47 Files)** | **10 / 12 Clean** | **100% Vitest PASS** |
 
 ---
 
 ## 9. Git Commit History & Roadmap Traceability
 
-Every capability has been developed and committed with conventional commit standards on the `main` branch:
+Every capability has been developed and committed on the `main` branch (`https://github.com/Samirsaurabh1298/ai-interview-copilot.git`):
 
-- `HEAD` — **feat(loop-10.0.2):** transactional email delivery, candidate authorization boundaries, pause audit, and tenant isolation
+- `2454bde` — **feat(loop-11.0.3):** unify PracticeStudio onto multi-file workspaces, weak-AI simulation, strict exam mode, and post-fix defense
+- `e730e73` — **feat(loop-11.0.2):** flawed_junior weak-AI policy mode and diff-anchored post-fix defense
+- `44313da` — **feat(loop-11.0.1):** multi-file sandbox contract, hardened workspace materializer, and repository_task test wiring
+- `1cef74c` / `c1761e8` / `20f2714` — **fix(test):** resolve TypeScript type mismatches in session expiry, concurrency, and FSM reliability test suites
+- `c651482` — **feat(loop-10.0.4.2.4):** durable autosave idempotency, database-enforced mutation uniqueness, and canonical request hashing
+- `c0f9f2c` — **feat(loop-10.0.4.2.3):** server revision authority, `clientMutationId`, and autosave idempotency
+- `add10c0` — **feat(loop-10.0.4.2.2):** strict autosave revision CAS and idempotent retry recovery
+- `ef87a33` — **feat(loop-10.0.4.2.1):** database concurrency, `clock_timestamp()` deadline checks, and out-of-order revision guards
+- `7fc552d` — **feat(loop-10.0.4.2):** database deadline enforcement, strict finalization transition, and sandbox result contract
+- `80fb6a5` — **feat(loop-10.0.4.1):** fsm reliability acceptance, lease fencing, atomic autosave guards, and transactional artifact sealing
+- `fa05767` — **feat(loop-10.0.4):** explicit assessment lifecycle state machine, database atomicity, and frontend reducer
+- `d31374e` — **feat(showcase):** add interactive design-partner bento showcase component
+- `26f3e25` — **feat(loop-10.0.3):** server-authoritative assessment expiry, finalization reliability, and stageshow demo skill
+- `e7e4dc4` — **fix(assessment):** auto-close workspace on timeout and prevent timer restart bug
+- `123e280` — **feat(loop-10.0.2):** transactional email delivery, candidate authorization boundaries, pause audit, and tenant isolation
 - `1f1210c` — **fix(desktop):** show Run Tests button only during coding tasks
 - `e9f2913` — **feat(loop-10.0.1):** pilot hardening, proctor score removal, pause authorization, and data deletion mapping
 - `ea88409` — **style(auth):** normalize trailing newlines in magic link service and test suite

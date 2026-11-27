@@ -1,6 +1,6 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-219%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-307%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
 [![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20Drizzle%20ORM-336791.svg)](https://orm.drizzle.team)
@@ -29,13 +29,15 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 8. **Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10):** Production single-use Magic Link authentication with SHA-256 token hashing, 15-minute TTL, anti-enumeration, and rate-limiting (5 requests / 15 min). Authoritative `RUNNER_EXECUTION_ENABLED` security gate preventing bare-metal host execution of untrusted code when container sandboxes are unavailable (returning HTTP 403 `RUNNER_EXECUTION_DISABLED`). Decoupled invitation availability windows (e.g. 48h) from active attempt durations (e.g. 90m), candidate patch review requirement, multi-evaluator blind review with automated variance flags (>15%), and human-in-the-loop hiring decision capture.
 9. **Pilot Hardening & Policy Consistency (LOOP 10.0.1):** Removed all composite 0–100 proctor scores and risk bands in favor of factual technical observations; eliminated keystroke cadence tracking; strictly prohibited magic-link debug tokens in production and pilot; enforced server-authoritative attempt pause authorization (HTTP 401 unauthenticated / 403 candidate rejection); verified candidate data erasure endpoint (`DELETE /api/v1/sessions/:id/data`) with cascade hard-deletion; and isolated the candidate workspace view during timed exams.
 10. **External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2):** Transactional email delivery service supporting pluggable providers (standard socket SMTP with RFC 3207 STARTTLS, Resend REST API, masked console, and in-memory test provider) for recruiter magic links and candidate invitations; universal candidate-to-company authorization boundaries across all templates, invitations, sessions, evaluations, and webhooks (HTTP 403 `FORBIDDEN`); server-authoritative pause audit trails with monotonic `session_paused` and `session_resumed` events; candidate data deletion cascading; and single-header full-viewport candidate workspace UX.
-11. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
-12. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-13. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
-14. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
-15. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-16. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-15. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
+11. **Assessment Lifecycle FSM, Expiry Sweep & Durable Autosave Idempotency (LOOP 10.0.3 – 10.0.4.2.4):** Explicit 7-state server-authoritative FSM (`CREATED`, `ACTIVE`, `PAUSED`, `GRACE_PERIOD`, `FINALIZING`, `SUBMITTED`, `TERMINATED`) with PostgreSQL `clock_timestamp()` deadline enforcement, worker lease fencing, conditional CAS transitions, and `session_autosave_mutations` idempotency (`baseRevision` + `clientMutationId` + SHA-256 request hashing).
+12. **Multi-File Virtual Sandbox, Weak-AI `flawed_junior` Mode & Post-Fix Defense (LOOP 11.0.1 – 11.0.3):** Hardened multi-file workspace materializer (traversal guards, reserved harness protection, 50-file / 512 KB quotas); server-locked `flawed_junior` AI simulation mode and diff-anchored post-fix defense responses sealed into `submission_artifacts`; and unified multi-file + strict timed exam Practice Studio.
+13. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
+14. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
+15. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
+16. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
+17. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
+18. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
+19. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
 
 ---
 
@@ -96,7 +98,7 @@ Open your browser at **`http://localhost:5173`**.
 
 ## Monorepo Testing & Verification
 
-Run the entire 193-test automated verification suite across all 13 workspace packages:
+Run the entire 307-test automated verification suite across all 11 tested workspace packages:
 
 ```bash
 pnpm test
