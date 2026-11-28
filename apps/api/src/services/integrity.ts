@@ -39,7 +39,7 @@ export class IntegrityService {
         if (dur > 0) {
           totalOffScreenDurationSeconds += Math.round(dur / 1000);
         }
-      } else if (evt.type === "paste_detected" || evt.type === "unattributed_paste") {
+      } else if (evt.type === "paste_detected" || (evt.type as string) === "unattributed_paste") {
         const length = (evt.payload?.length as number) || (evt.payload?.charactersInserted as number) || 0;
         const isFromPatch = Boolean(evt.payload?.isFromCopilotPatch);
         if (!isFromPatch && length > 50) {
@@ -123,9 +123,9 @@ export class IntegrityService {
     // Also record as a session event for audit continuity
     this.sessionEventsService.recordEventDirect(
       sessionId,
-      session.organizationId,
       "proctor_flag",
       {
+        organizationId: session.organizationId,
         incidentId: incident.id,
         severity: incident.severity,
         category: incident.category,

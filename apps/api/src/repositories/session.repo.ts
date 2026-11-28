@@ -20,7 +20,7 @@ import {
 
 export function computeCanonicalRequestHash(req: {
   code: string;
-  testResults?: Array<{ name: string; passed: boolean; error?: string | null }>;
+  testResults?: Array<{ name: string; passed: boolean; error?: string | null | undefined }>;
 }): string {
   const normalizedTestResults = req.testResults && req.testResults.length > 0
     ? req.testResults.map((t) => ({
@@ -43,7 +43,7 @@ export interface SaveAutosaveMutationParams {
   clientMutationId: string;
   baseRevision: number;
   code: string;
-  testResults?: SingleTestResult[];
+  testResults?: SingleTestResult[] | undefined;
 }
 
 export interface SaveAutosaveMutationResult {
@@ -228,7 +228,7 @@ export class SessionRepository {
     const db = await this.dbProvider();
     const requestHash = computeCanonicalRequestHash({
       code: params.code,
-      testResults: params.testResults,
+      ...(params.testResults !== undefined ? { testResults: params.testResults } : {}),
     });
 
     // 1. Fast idempotency check before transaction
@@ -301,10 +301,10 @@ export class SessionRepository {
           throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
         }
         if (normStatus === SessionState.FINALIZING) {
-          throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
+          throw new SessionLockedError("Workspace is locked: assessment finalization is currently in progress.");
         }
         if (normStatus === SessionState.SUBMITTED) {
-          throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+          throw new SessionLockedError("Workspace is permanently sealed: assessment has already been submitted.");
         }
         if (normStatus !== SessionState.ACTIVE) {
           throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${current.status}'`);
@@ -362,10 +362,10 @@ export class SessionRepository {
             throw new SessionExpiredError("Assessment duration has elapsed. Workspace modifications are locked during grace period.");
           }
           if (st === SessionState.FINALIZING) {
-            throw new SessionLockedError(SessionState.FINALIZING, "Workspace is locked: assessment finalization is currently in progress.");
+            throw new SessionLockedError("Workspace is locked: assessment finalization is currently in progress.");
           }
           if (st === SessionState.SUBMITTED) {
-            throw new SessionLockedError(SessionState.SUBMITTED, "Workspace is permanently sealed: assessment has already been submitted.");
+            throw new SessionLockedError("Workspace is permanently sealed: assessment has already been submitted.");
           }
           if (st !== SessionState.ACTIVE) {
             throw new SessionInvalidStateError(`Cannot modify workspace: session status in database is '${checkRow.status}'`);
@@ -434,7 +434,7 @@ export class SessionRepository {
     nextState: string,
     patch: Partial<AssessmentSession> = {},
     expectedVersion?: number
-  ): Promise<{ success: boolean; session?: AssessmentSession; conflictSession?: AssessmentSession }> {
+  ): Promise<{ success: boolean; session?: AssessmentSession | undefined; conflictSession?: AssessmentSession | undefined }> {
     const db = await this.dbProvider();
     const normalizedNextState = normalizeSessionState(nextState);
     const normalizedFromStates = allowedFromStates.map((s) => normalizeSessionState(s));
@@ -541,7 +541,7 @@ export class SessionRepository {
     const rows = await db
       .delete(assessmentSessions)
       .where(eq(assessmentSessions.id, id))
-      .returning({ id: assessmentSessions.id });
+      .returning();
     return rows.length > 0;
   }
 

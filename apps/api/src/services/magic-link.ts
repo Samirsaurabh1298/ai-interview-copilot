@@ -128,7 +128,7 @@ export class MagicLinkService {
         to: normalizedEmail,
         recipientName: targetMember.name || normalizedEmail,
         magicLinkUrl,
-        organizationName: org?.name,
+        ...(org?.name ? { organizationName: org.name } : {}),
         expiresInMinutes: Math.floor(this.ttlMs / 60000),
       }).catch((err) => {
         console.error("[MagicLinkService] Transactional email dispatch error:", err);
@@ -150,7 +150,7 @@ export class MagicLinkService {
     return {
       success: true,
       message: standardMessage,
-      debugToken: allowDebugToken ? token : undefined,
+      ...(allowDebugToken ? { debugToken: token } : {}),
       expiresInSeconds,
     };
   }

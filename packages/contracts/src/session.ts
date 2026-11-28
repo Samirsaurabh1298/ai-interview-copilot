@@ -30,6 +30,7 @@ export type AssessmentSessionStatus = AssessmentSessionState;
 
 export const WorkspaceSnapshotSchema = z.object({
   currentCode: z.string(),
+  files: z.record(z.string(), z.string()).optional(),
   lastSavedAt: z.coerce.date().default(() => new Date()),
   lastTestPassedCount: z.number().int().optional(),
   lastTestTotalCount: z.number().int().optional(),

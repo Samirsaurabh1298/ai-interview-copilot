@@ -48,4 +48,8 @@ scratch/
 PowerShell_transcript*
 *.transcript
 
+# Private compliance / employment separation notes (never push externally)
+PRIVATE_COMPLIANCE.md
+
+
 

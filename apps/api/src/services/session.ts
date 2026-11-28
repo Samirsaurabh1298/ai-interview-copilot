@@ -34,7 +34,7 @@ export class AssessmentSessionService {
   // Key: orgId -> Set<sessionId>
   private sessionsByOrg = new Map<string, Set<string>>();
   private repo: SessionRepository;
-  private eventsService?: SessionEventsService;
+  private eventsService?: SessionEventsService | undefined;
 
   constructor(
     private templateService: AssessmentTemplateService,
@@ -312,7 +312,7 @@ export class AssessmentSessionService {
       clientMutationId: req.clientMutationId,
       baseRevision: req.baseRevision,
       code: req.code,
-      testResults: req.testResults,
+      ...(req.testResults !== undefined ? { testResults: req.testResults } : {}),
     });
 
     session.lastPersistedRevision = result.serverRevision;

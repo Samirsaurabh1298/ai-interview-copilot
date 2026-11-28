@@ -1985,11 +1985,11 @@ describe("useDebouncedFetch verification suite", () => {
                               </span>
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                  sess.status === "submitted"
+                                  sess.status === "SUBMITTED"
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
-                                    : sess.status === "expired"
+                                    : sess.status === "GRACE_PERIOD" || sess.status === "TERMINATED"
                                     ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
-                                    : sess.status === "paused"
+                                    : sess.status === "PAUSED"
                                     ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 font-bold"
                                     : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300"
                                 }`}
@@ -2027,7 +2027,7 @@ describe("useDebouncedFetch verification suite", () => {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {selectedSessionForAudit.status === "in_progress" && (
+                            {selectedSessionForAudit.status === "ACTIVE" && (
                               <button
                                 onClick={() => setSessionToPause(selectedSessionForAudit)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 text-xs font-semibold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors shadow-xs"
@@ -2037,7 +2037,7 @@ describe("useDebouncedFetch verification suite", () => {
                                 <span>Pause Session</span>
                               </button>
                             )}
-                            {selectedSessionForAudit.status === "paused" && (
+                            {selectedSessionForAudit.status === "PAUSED" && (
                               <button
                                 onClick={() => handleResumeSession(selectedSessionForAudit.id)}
                                 disabled={isProctorActionInProgress}
@@ -2048,7 +2048,7 @@ describe("useDebouncedFetch verification suite", () => {
                                 <span>Resume Session</span>
                               </button>
                             )}
-                            {selectedSessionForAudit.status === "submitted" && (
+                            {selectedSessionForAudit.status === "SUBMITTED" && (
                               <>
                                 <button
                                   onClick={() => handleInspectSubmission(selectedSessionForAudit.id)}
@@ -2097,7 +2097,7 @@ describe("useDebouncedFetch verification suite", () => {
                       )}
 
                       {/* Proctor Paused Banner */}
-                      {selectedSessionForAudit?.status === "paused" && (
+                      {selectedSessionForAudit?.status === "PAUSED" && (
                         <div className="p-3.5 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50/80 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 flex items-center justify-between text-xs shadow-xs">
                           <div className="flex items-center gap-2.5">
                             <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -2911,11 +2911,11 @@ describe("useDebouncedFetch verification suite", () => {
                               </div>
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                  sess.status === "in_progress"
+                                  sess.status === "ACTIVE"
                                     ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                                    : sess.status === "paused"
+                                    : sess.status === "PAUSED"
                                     ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                                    : sess.status === "submitted"
+                                    : sess.status === "SUBMITTED"
                                     ? "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
                                     : "bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300"
                                 }`}
@@ -3006,7 +3006,7 @@ describe("useDebouncedFetch verification suite", () => {
 
                           {/* Quick Intervention Buttons */}
                           <div className="flex items-center gap-2 shrink-0">
-                            {selectedSessionForProctor.status === "in_progress" ? (
+                            {selectedSessionForProctor.status === "ACTIVE" ? (
                               <button
                                 onClick={() => setSessionToPause(selectedSessionForProctor)}
                                 disabled={isProctorActionInProgress}
@@ -3015,7 +3015,7 @@ describe("useDebouncedFetch verification suite", () => {
                                 <Pause className="w-3.5 h-3.5" />
                                 <span>Pause Session</span>
                               </button>
-                            ) : selectedSessionForProctor.status === "paused" ? (
+                            ) : selectedSessionForProctor.status === "PAUSED" ? (
                               <button
                                 onClick={async () => {
                                   await handleResumeSession(selectedSessionForProctor.id);

@@ -105,6 +105,7 @@ export const SubmitAssessmentRequestSchema = z.object({
     .optional()
     .default("Candidate completed assessment tasks."),
   taskSubmissions: z.record(z.string(), TaskSubmissionResultSchema).optional(),
+  multiFileChanges: z.record(z.string(), z.string()).optional(),
   finalizedBy: z.string().optional(),
   defenseResponses: z.array(DefenseResponseItemSchema).optional(),
 });

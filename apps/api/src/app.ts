@@ -170,17 +170,19 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   // Initialize Transactional Email Delivery Service (LOOP 10.0.2)
   const emailService = new EmailDeliveryService({
     defaultFrom: config.EMAIL_FROM,
-    resendApiKey: config.RESEND_API_KEY,
-    smtpConfig: config.SMTP_HOST
+    ...(config.RESEND_API_KEY ? { resendApiKey: config.RESEND_API_KEY } : {}),
+    ...(config.SMTP_HOST
       ? {
-          host: config.SMTP_HOST,
-          port: config.SMTP_PORT,
-          user: config.SMTP_USER,
-          pass: config.SMTP_PASS,
-          secure: config.SMTP_SECURE,
-          from: config.EMAIL_FROM,
+          smtpConfig: {
+            host: config.SMTP_HOST,
+            port: config.SMTP_PORT,
+            ...(config.SMTP_USER ? { user: config.SMTP_USER } : {}),
+            ...(config.SMTP_PASS ? { pass: config.SMTP_PASS } : {}),
+            secure: config.SMTP_SECURE,
+            from: config.EMAIL_FROM,
+          },
         }
-      : undefined,
+      : {}),
   });
 
   const submissionService = new SubmissionService(

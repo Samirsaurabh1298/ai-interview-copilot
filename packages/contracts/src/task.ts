@@ -200,9 +200,28 @@ export type QuestionAnswerSubmission = z.infer<typeof QuestionAnswerSubmissionSc
 export const TaskSubmissionResultSchema = z.object({
   taskId: z.string(),
   taskType: AssessmentTaskTypeSchema,
+  status: z.enum(["pending", "in_progress", "completed"]).optional(),
   completedAt: z.coerce.date().default(() => new Date()),
-  elapsedSeconds: z.number().int().min(0),
+  elapsedSeconds: z.number().int().min(0).default(0),
+  earnedPoints: z.number().optional(),
+  maxPoints: z.number().optional(),
+  answers: z
+    .record(
+      z.string(),
+      z.object({
+        selectedOptionIds: z.array(z.string()).optional(),
+        textResponse: z.string().optional(),
+      })
+    )
+    .optional(),
   questionAnswers: z.array(QuestionAnswerSubmissionSchema).optional(),
+  codeSubmission: z
+    .object({
+      code: z.string(),
+      language: z.string().optional(),
+      testResults: z.any().optional(),
+    })
+    .optional(),
   finalCode: z.string().optional(),
   finalFiles: z.record(z.string(), z.string()).optional(),
   technicalExplanation: z.string().optional(),

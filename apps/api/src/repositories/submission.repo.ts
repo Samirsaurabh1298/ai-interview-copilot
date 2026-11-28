@@ -4,7 +4,7 @@ import { submissionArtifacts, assessmentSessions } from "../db/schema.js";
 import type { SubmissionArtifact } from "@ai-copilot/contracts";
 
 export class SubmissionRepository {
-  constructor(private dbProvider: () => Promise<AppDatabase> = getDb) {}
+  constructor(private dbProvider: () => Promise<AppDatabase> = getDb) { }
 
   public async create(artifact: SubmissionArtifact): Promise<SubmissionArtifact> {
     const db = await this.dbProvider();
@@ -135,7 +135,7 @@ export class SubmissionRepository {
         return {
           success: false,
           artifact,
-          conflictState: currentRows[0]?.status,
+          ...(currentRows[0]?.status ? { conflictState: currentRows[0].status } : {}),
         };
       }
 

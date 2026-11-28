@@ -10,9 +10,15 @@ export const SessionEventTypeSchema = z.enum([
   "window_blur",
   "window_focus",
   "paste_detected",
+  "proctor_flag",
   "session_submitted",
   "session_paused",
   "session_resumed",
+  "session_soft_expired",
+  "session_finalization_started",
+  "session_auto_finalized_by_server",
+  "session_stuck_finalization_recovered",
+  "session_terminated",
 ]);
 export type SessionEventType = z.infer<typeof SessionEventTypeSchema>;
 

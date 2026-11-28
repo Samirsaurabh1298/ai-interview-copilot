@@ -42,7 +42,7 @@ export class SessionEventsService {
     if (this.sessionService) {
       // Verify session exists and is active/valid
       const session = this.sessionService.getSession(sessionId);
-      if (session.status === "terminated" || session.status === "TERMINATED") {
+      if (session.status === "TERMINATED") {
         throw new Error("Cannot record events: Assessment session has been terminated");
       }
     }

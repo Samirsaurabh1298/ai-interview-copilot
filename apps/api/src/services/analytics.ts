@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
-import type {
-  AiCostAnalytics,
-  ModelCostBreakdown,
-  TrackCostBreakdown,
-  DailyBurnRateItem,
-  CostAnomalyItem,
+import {
+  SessionState,
+  normalizeSessionState,
+  type AiCostAnalytics,
+  type ModelCostBreakdown,
+  type TrackCostBreakdown,
+  type DailyBurnRateItem,
+  type CostAnomalyItem,
 } from "@ai-copilot/contracts";
 import type { UsageLedgerService } from "./ledger.js";
 import type { AssessmentSessionService } from "./session.js";
@@ -194,9 +196,14 @@ export class AICostAnalyticsService {
         ? Math.min(365, Math.floor(remainingBudget / avgDailyBurnUsd))
         : 30;
 
-    const totalSessionsEvaluated = orgSessions.filter(
-      (s) => s.status === "submitted" || s.status === "expired"
-    ).length;
+    const totalSessionsEvaluated = orgSessions.filter((s) => {
+      const st = normalizeSessionState(s.status);
+      return (
+        st === SessionState.SUBMITTED ||
+        st === SessionState.GRACE_PERIOD ||
+        st === SessionState.TERMINATED
+      );
+    }).length;
 
     const avgCostPerSessionUsd =
       totalSessionsEvaluated > 0

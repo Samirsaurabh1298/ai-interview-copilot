@@ -121,7 +121,7 @@ export const HiringDecisionReportSchema = z.object({
     }),
     testsSummary: z.object({
       success: z.boolean(),
-      passed: z.boolean(),
+      passed: z.boolean().nullable().optional(),
       passedCount: z.number().int(),
       totalCount: z.number().int(),
       durationMs: z.number(),

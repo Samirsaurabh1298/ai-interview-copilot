@@ -290,7 +290,9 @@ export class CandidateInvitationService {
 
     const sessionStartedAt = session?.startedAt ? new Date(session.startedAt) : (invitation.startedAt ?? now);
     const sessionExpiresAt = session?.expiresAt ? new Date(session.expiresAt) : new Date(sessionStartedAt.getTime() + durationMinutes * 60 * 1000);
-    const isSubmitted = session?.status === "submitted" || invitation.status === "completed";
+    const isSubmitted = session?.status
+      ? normalizeSessionState(session.status) === SessionState.SUBMITTED
+      : false;
     const remainingSeconds = isSubmitted
       ? 0
       : Math.max(0, Math.ceil((sessionExpiresAt.getTime() - Date.now()) / 1000));

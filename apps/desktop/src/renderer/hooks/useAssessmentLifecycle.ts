@@ -148,7 +148,9 @@ export function assessmentLifecycleReducer(
         inGracePeriod,
         isExpired,
         pauseReason: action.payload.pauseReason || state.pauseReason,
-        serverTimestamp: action.payload.serverTimestamp,
+        ...(action.payload.serverTimestamp !== undefined
+          ? { serverTimestamp: action.payload.serverTimestamp }
+          : {}),
       };
     }
 
@@ -227,12 +229,12 @@ export function assessmentLifecycleReducer(
 }
 
 export function useAssessmentLifecycle(initialConfig: {
-  status?: string;
-  remainingSeconds?: number;
-  expiresAt?: string | Date;
-  isSubmitted?: boolean;
-  isPaused?: boolean;
-  pauseReason?: string | null;
+  status?: string | undefined;
+  remainingSeconds?: number | undefined;
+  expiresAt?: string | Date | undefined;
+  isSubmitted?: boolean | undefined;
+  isPaused?: boolean | undefined;
+  pauseReason?: string | null | undefined;
 }) {
   const initialStatus = initialConfig.isSubmitted
     ? "SUBMITTED"
@@ -251,7 +253,7 @@ export function useAssessmentLifecycle(initialConfig: {
     status: initialStatus,
     timeLeftSeconds: initialSeconds,
     isReadOnly: initialStatus !== "ACTIVE",
-    canSubmit: (initialStatus === "ACTIVE" || initialStatus === "GRACE_PERIOD") && initialStatus !== "SUBMITTED",
+    canSubmit: initialStatus === "ACTIVE" || initialStatus === "GRACE_PERIOD",
     isTerminal: initialStatus === "SUBMITTED" || initialStatus === "TERMINATED",
     isPaused: initialStatus === "PAUSED" || Boolean(initialConfig.isPaused),
     inGracePeriod: initialStatus === "GRACE_PERIOD",

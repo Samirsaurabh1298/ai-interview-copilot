@@ -204,15 +204,15 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     remainingSeconds: sessionData?.remainingSeconds,
     expiresAt: sessionData?.expiresAt,
     isSubmitted: sessionData?.isSubmitted || sessionData?.invitation?.status === "completed",
-    isPaused: Boolean(sessionData?.isPaused || sessionData?.status === "paused"),
-    pauseReason: sessionData?.pauseReason,
+    isPaused: Boolean(
+      (sessionData as { isPaused?: boolean } | null)?.isPaused ||
+        (sessionData?.status ? sessionData.status.toUpperCase() === "PAUSED" : false)
+    ),
+    pauseReason: (sessionData as { pauseReason?: string | null } | null)?.pauseReason,
   });
 
   const timeLeftSeconds = lifecycle.timeLeftSeconds;
-  const sessionStatus: AssessmentSessionStatus =
-    lifecycle.status === "SUBMITTED"
-      ? "submitted"
-      : (lifecycle.status.toLowerCase() as AssessmentSessionStatus);
+  const sessionStatus: AssessmentSessionStatus = lifecycle.status;
   const inGracePeriod = lifecycle.inGracePeriod;
   const isExpired = lifecycle.isExpired;
   const isPaused = lifecycle.isPaused;
@@ -753,9 +753,9 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
             remainingSeconds: hb.remainingSeconds,
             isExpired: hb.isExpired,
             inGracePeriod: hb.inGracePeriod,
-            isPaused: Boolean(hb.isPaused || hb.status === "paused"),
+            isPaused: Boolean(hb.isPaused || hb.status === "PAUSED"),
             pauseReason: hb.pauseReason || null,
-            serverTimestamp: hb.serverTimestamp,
+            ...(hb.serverTimestamp !== undefined ? { serverTimestamp: hb.serverTimestamp } : {}),
           },
         });
 
@@ -785,7 +785,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
     currentCode: string,
     testResults?: CodeValidationResponse["tests"]
   ) => {
-    if (sessionStatus === "submitted" || (isExpired && !inGracePeriod)) return;
+    if (sessionStatus === "SUBMITTED" || (isExpired && !inGracePeriod)) return;
     try {
       setIsAutosaving(true);
       const mutationId = `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -1282,19 +1282,18 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
 
   // Auto-close / auto-submit watchdog: fires when time limit hard expires
   useEffect(() => {
-    if (sessionStatus === "submitted" || isSubmitting) return;
+    if (sessionStatus === "SUBMITTED" || isSubmitting) return;
 
     if ((isExpired && !inGracePeriod) || (timeLeftSeconds <= 0 && !inGracePeriod)) {
       if (!hasAutoSubmittedRef.current) {
         hasAutoSubmittedRef.current = true;
-        setIsExpired(true);
         executeSubmission(true);
       }
     }
   }, [isExpired, inGracePeriod, timeLeftSeconds, sessionStatus, isSubmitting]);
 
   // Dedicated Auto-Closed Assessment View when Submitted
-  if (sessionStatus === "submitted") {
+  if (sessionStatus === "SUBMITTED") {
     return (
       <div className="flex flex-col h-full w-full bg-slate-50 dark:bg-[#090d16] text-slate-900 dark:text-gray-100 items-center justify-center p-6 overflow-y-auto">
         <div className="max-w-xl w-full p-8 rounded-3xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#0d131f] shadow-2xl space-y-6 text-center">
@@ -1387,26 +1386,23 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
               Frontend Engineer Challenge: Support Triage Queue
             </span>
             <span
-              className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${sessionStatus === "submitted"
-                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300"
-                  : isPaused
-                    ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 animate-pulse"
-                    : inGracePeriod
-                      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
-                      : isExpired
-                        ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
-                        : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300"
-                }`}
-            >
-              {sessionStatus === "submitted"
-                ? "Submitted"
-                : isPaused
-                  ? "Session Paused"
+              className={`text-[11px] px-2 py-0.5 rounded-full font-semibold border ${
+                isPaused
+                  ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 animate-pulse"
                   : inGracePeriod
-                    ? "Grace Period Active"
+                    ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300"
                     : isExpired
-                      ? "Time Expired"
-                      : "Session Active"}
+                      ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300"
+                      : "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300"
+              }`}
+            >
+              {isPaused
+                ? "Session Paused"
+                : inGracePeriod
+                  ? "Grace Period Active"
+                  : isExpired
+                    ? "Time Expired"
+                    : "Session Active"}
             </span>
           </div>
 
@@ -1496,35 +1492,19 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           )}
 
           {/* Final Submit Assessment button */}
-          {sessionStatus === "submitted" ? (
-            <button
-              onClick={() => setIsReceiptModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 font-semibold text-xs transition-colors shadow-xs hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-              <span>Receipt (SHA-256)</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsSubmitModalOpen(true)}
-              disabled={isExpired && !inGracePeriod}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Submit Solution</span>
-            </button>
-          )}
+          <button
+            onClick={() => setIsSubmitModalOpen(true)}
+            disabled={isExpired && !inGracePeriod}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Submit Solution</span>
+          </button>
 
           {/* Optional Exit Button */}
           {onExitSession && (
             <button
-              onClick={() => {
-                if (sessionStatus === "submitted") {
-                  onExitSession();
-                } else {
-                  setIsExitModalOpen(true);
-                }
-              }}
+              onClick={() => setIsExitModalOpen(true)}
               title="Exit Assessment Workspace"
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 text-xs transition-colors cursor-pointer"
             >
@@ -1580,7 +1560,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
       )}
 
       {/* Hard Expiration Cutoff Banner */}
-      {isExpired && !inGracePeriod && sessionStatus !== "submitted" && (
+      {isExpired && !inGracePeriod && (
         <div className="bg-rose-50 border-b border-rose-300 px-6 py-2.5 flex items-center justify-between text-rose-900 text-xs dark:bg-rose-950/40 dark:border-rose-700 dark:text-rose-200">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -1595,39 +1575,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
           >
             Submit Final Attempt
           </button>
-        </div>
-      )}
-
-      {/* Submitted Confirmation Banner */}
-      {sessionStatus === "submitted" && (
-        <div className="bg-emerald-50 border-b border-emerald-300 px-6 py-2.5 flex items-center justify-between text-emerald-900 text-xs dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>
-              <strong>Assessment Submitted:</strong> Solution submitted successfully. Official
-              scorecard generated with human-in-the-loop calibration.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {scorecard && (
-              <button
-                onClick={() => setIsScorecardOpen(true)}
-                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded shadow-xs text-xs flex items-center gap-1"
-              >
-                <Award className="w-3.5 h-3.5" />
-                <span>View Scorecard</span>
-              </button>
-            )}
-            {onExitSession && (
-              <button
-                onClick={onExitSession}
-                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded shadow-xs text-xs flex items-center gap-1"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Exit Assessment</span>
-              </button>
-            )}
-          </div>
         </div>
       )}
 
@@ -2196,19 +2143,16 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                       isAskingAI ||
                       budgetStatus.isExhausted ||
                       activeTask.aiPolicy?.mode === "prohibited" ||
-                      isExpired ||
-                      sessionStatus === "submitted"
+                      isExpired
                     }
                     placeholder={
-                      sessionStatus === "submitted"
-                        ? "Assessment is submitted (AI locked)"
-                        : isExpired
-                          ? "Assessment time elapsed — AI assistance is locked"
-                          : activeTask.aiPolicy?.mode === "prohibited"
-                            ? "AI assistance is locked for this section by company policy"
-                            : budgetStatus.isExhausted
-                              ? "AI Quota Exhausted ($0.25 USD limit reached)"
-                              : "Ask AI for explanation, edge cases, or code proposals..."
+                      isExpired
+                        ? "Assessment time elapsed — AI assistance is locked"
+                        : activeTask.aiPolicy?.mode === "prohibited"
+                          ? "AI assistance is locked for this section by company policy"
+                          : budgetStatus.isExhausted
+                            ? "AI Quota Exhausted ($0.25 USD limit reached)"
+                            : "Ask AI for explanation, edge cases, or code proposals..."
                     }
                     className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white disabled:opacity-50"
                   />
@@ -2219,8 +2163,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                       !aiQuestion.trim() ||
                       activeTask.aiPolicy?.mode === "prohibited" ||
                       budgetStatus.isExhausted ||
-                      isExpired ||
-                      sessionStatus === "submitted"
+                      isExpired
                     }
                     className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition-colors disabled:opacity-50 cursor-pointer"
                   >
@@ -2413,8 +2356,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     budgetStatus.isExhausted ||
                     activeTask.aiPolicy?.mode === "prohibited" ||
                     isPaused ||
-                    isExpired ||
-                    sessionStatus === "submitted"
+                    isExpired
                   }
                   className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
                   title="Ask AI for a solution proposal to inspect and review"
@@ -2440,7 +2382,6 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     }
                   }}
                   disabled={
-                    sessionStatus === "submitted" ||
                     isPaused ||
                     (isExpired && !inGracePeriod) ||
                     repoFiles[activeRepoFilePath]?.isReadOnly
@@ -2475,14 +2416,13 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                   }));
                 }}
                 readOnly={
-                  sessionStatus === "submitted" ||
                   isPaused ||
                   (isExpired && !inGracePeriod) ||
                   Boolean(repoFiles[activeRepoFilePath]?.isReadOnly)
                 }
                 spellCheck={false}
                 className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
-                  sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod) || repoFiles[activeRepoFilePath]?.isReadOnly
+                  isPaused || (isExpired && !inGracePeriod) || repoFiles[activeRepoFilePath]?.isReadOnly
                     ? "opacity-75 cursor-not-allowed bg-slate-950/80"
                     : ""
                 }`}
@@ -2568,8 +2508,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                     budgetStatus.isExhausted ||
                     activeTask.aiPolicy?.mode === "prohibited" ||
                     isPaused ||
-                    isExpired ||
-                    sessionStatus === "submitted"
+                    isExpired
                   }
                   className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center gap-1 text-[11px] shadow-xs disabled:opacity-50"
                   title="Ask AI for a solution proposal to inspect and review"
@@ -2588,7 +2527,7 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
                       setTimeout(() => setAppliedNotice(null), 3000);
                     }
                   }}
-                  disabled={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
+                  disabled={isPaused || (isExpired && !inGracePeriod)}
                   className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 text-[11px] disabled:opacity-50"
                 >
                   <RotateCcw className="w-3 h-3" />
@@ -2619,10 +2558,10 @@ export const AssessmentWorkspace: React.FC<AssessmentWorkspaceProps> = ({
               <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                readOnly={sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)}
+                readOnly={isPaused || (isExpired && !inGracePeriod)}
                 spellCheck={false}
                 className={`w-full h-full bg-[#090d16] p-4 font-mono text-xs text-gray-100 resize-none focus:outline-none border border-slate-800 rounded-lg leading-relaxed selection:bg-indigo-600 ${
-                  sessionStatus === "submitted" || isPaused || (isExpired && !inGracePeriod)
+                  isPaused || (isExpired && !inGracePeriod)
                     ? "opacity-75 cursor-not-allowed bg-slate-950/80"
                     : ""
                 }`}

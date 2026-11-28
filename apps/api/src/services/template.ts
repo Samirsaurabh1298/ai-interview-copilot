@@ -1,8 +1,9 @@
-import type {
-  AssessmentTemplate,
-  CreateTemplateRequest,
-  UpdateTemplateRequest,
-  AssessmentTask,
+import {
+  AssessmentTaskSchema,
+  type AssessmentTemplate,
+  type CreateTemplateRequest,
+  type UpdateTemplateRequest,
+  type AssessmentTask,
 } from "@ai-copilot/contracts";
 import { TemplateRepository } from "../repositories/template.repo.js";
 
@@ -154,10 +155,15 @@ export class AssessmentTemplateService {
         description: "Evaluate core React concurrency, async queue lifecycle, and state immutability trade-offs.",
         orderIndex: 0,
         estimatedMinutes: 15,
+        weight: 30,
         points: 30,
         isRequired: true,
         aiPolicy: {
+          enabled: false,
           mode: "prohibited",
+          allowedModel: "gpt-4o-mini",
+          maxBudgetUsd: 0.15,
+          candidateDisclosure: "AI assistance is strictly prohibited during technical architecture questions.",
           disclosureNotice: "AI assistance is strictly prohibited during technical architecture questions.",
         },
         config: {
@@ -209,11 +215,15 @@ export class AssessmentTemplateService {
         description: "Investigate and resolve priority inversion and array mutation defects in the support ticket queue module.",
         orderIndex: 1,
         estimatedMinutes: 45,
+        weight: 70,
         points: 70,
         isRequired: true,
         aiPolicy: {
+          enabled: true,
           mode: "full_copilot",
+          allowedModel: "gpt-4o-mini",
           maxBudgetUsd: 0.25,
+          candidateDisclosure: "Full AI Copilot assistance is enabled for codebase triage ($0.25 budget). Proposed code patches require explicit review.",
           disclosureNotice: "Full AI Copilot assistance is enabled for codebase triage ($0.25 budget). Proposed code patches require explicit review.",
         },
         config: {
@@ -314,7 +324,7 @@ export class AssessmentTemplateService {
     const templateId = "tmpl_" + Math.random().toString(36).substring(2, 9) + "_" + Date.now();
     const now = new Date();
 
-    const tasks = req.tasks && req.tasks.length > 0 ? req.tasks : [
+    const rawTasks = req.tasks && req.tasks.length > 0 ? req.tasks : [
       {
         id: "task_challenge_1",
         type: "coding_challenge" as const,
@@ -322,11 +332,15 @@ export class AssessmentTemplateService {
         description: req.description.trim(),
         orderIndex: 0,
         estimatedMinutes: req.attemptDurationMinutes ?? req.durationMinutes ?? 60,
+        weight: 100,
         points: 100,
         isRequired: true,
         aiPolicy: {
+          enabled: true,
           mode: "full_copilot" as const,
+          allowedModel: "gpt-4o-mini",
           maxBudgetUsd: req.defaultAiBudgetUsd ?? 0.25,
+          candidateDisclosure: "AI assistance is permitted within your allocated budget.",
           disclosureNotice: "AI assistance is permitted within your allocated budget.",
         },
         config: {
@@ -340,6 +354,7 @@ export class AssessmentTemplateService {
         },
       },
     ];
+    const tasks: AssessmentTask[] = rawTasks.map((t) => AssessmentTaskSchema.parse(t));
 
     const template: AssessmentTemplate = {
       id: templateId,
@@ -358,14 +373,14 @@ export class AssessmentTemplateService {
       starterCode: req.starterCode ?? (tasks[0]?.type === "coding_challenge" ? tasks[0].config.starterCode : DEFAULT_FRONTEND_STARTER),
       solutionCode: req.solutionCode,
       verificationTestCode: req.verificationTestCode ?? (tasks[0]?.type === "coding_challenge" ? tasks[0].config.verificationTestCode : DEFAULT_FRONTEND_TESTS),
-      toolPolicy: req.toolPolicy ?? {
-        allowedProvider: "openai",
-        allowedModel: "gpt-4o-mini",
-        maxBudgetUsd: req.defaultAiBudgetUsd ?? 0.25,
-        warningThresholdPercent: 80,
-        timeLimitSeconds: (req.durationMinutes ?? 60) * 60,
-        allowInternetSearch: false,
-        allowDocumentation: true,
+      toolPolicy: {
+        allowedProvider: req.toolPolicy?.allowedProvider ?? "openai",
+        allowedModel: req.toolPolicy?.allowedModel ?? "gpt-4o-mini",
+        maxBudgetUsd: req.toolPolicy?.maxBudgetUsd ?? req.defaultAiBudgetUsd ?? 0.25,
+        warningThresholdPercent: req.toolPolicy?.warningThresholdPercent ?? 80,
+        timeLimitSeconds: req.toolPolicy?.timeLimitSeconds ?? (req.durationMinutes ?? 60) * 60,
+        allowInternetSearch: req.toolPolicy?.allowInternetSearch ?? false,
+        allowDocumentation: req.toolPolicy?.allowDocumentation ?? true,
       },
       rubricDimensionWeights: req.rubricDimensionWeights ?? {
         "code-comprehension": 15,
@@ -431,7 +446,7 @@ export class AssessmentTemplateService {
     if (req.durationMinutes !== undefined) tmpl.durationMinutes = req.durationMinutes;
     if (req.attemptDurationMinutes !== undefined) tmpl.attemptDurationMinutes = req.attemptDurationMinutes;
     if (req.submissionDeadlineDays !== undefined) tmpl.submissionDeadlineDays = req.submissionDeadlineDays;
-    if (req.tasks !== undefined) tmpl.tasks = req.tasks;
+    if (req.tasks !== undefined) tmpl.tasks = req.tasks.map((t) => AssessmentTaskSchema.parse(t));
     if (req.defaultAiBudgetUsd !== undefined) tmpl.defaultAiBudgetUsd = req.defaultAiBudgetUsd;
     if (req.starterCode !== undefined) tmpl.starterCode = req.starterCode;
     if (req.solutionCode !== undefined) tmpl.solutionCode = req.solutionCode;
@@ -439,7 +454,23 @@ export class AssessmentTemplateService {
     if (req.status !== undefined) tmpl.status = req.status;
 
     tmpl.updatedAt = new Date();
-    this.repo.update(orgId, templateId, req).catch((err) => {
+    const dbPatch: Partial<AssessmentTemplate> = {
+      ...(req.title !== undefined ? { title: tmpl.title } : {}),
+      ...(req.description !== undefined ? { description: tmpl.description } : {}),
+      ...(req.targetRole !== undefined ? { targetRole: tmpl.targetRole } : {}),
+      ...(req.difficulty !== undefined ? { difficulty: tmpl.difficulty } : {}),
+      ...(req.language !== undefined ? { language: tmpl.language } : {}),
+      ...(req.durationMinutes !== undefined ? { durationMinutes: tmpl.durationMinutes } : {}),
+      ...(req.attemptDurationMinutes !== undefined ? { attemptDurationMinutes: tmpl.attemptDurationMinutes } : {}),
+      ...(req.submissionDeadlineDays !== undefined ? { submissionDeadlineDays: tmpl.submissionDeadlineDays } : {}),
+      ...(req.tasks !== undefined ? { tasks: tmpl.tasks } : {}),
+      ...(req.defaultAiBudgetUsd !== undefined ? { defaultAiBudgetUsd: tmpl.defaultAiBudgetUsd } : {}),
+      ...(req.starterCode !== undefined ? { starterCode: tmpl.starterCode } : {}),
+      ...(req.solutionCode !== undefined ? { solutionCode: tmpl.solutionCode } : {}),
+      ...(req.verificationTestCode !== undefined ? { verificationTestCode: tmpl.verificationTestCode } : {}),
+      ...(req.status !== undefined ? { status: tmpl.status } : {}),
+    };
+    this.repo.update(orgId, templateId, dbPatch).catch((err) => {
       console.error("[AssessmentTemplateService] DB template update error:", err);
     });
     return tmpl;

@@ -88,6 +88,11 @@ export class ReportService {
         starterCode: template.starterCode,
         codeDiff,
         testExecutionLog: {
+          status:
+            (session.workspaceSnapshot.lastTestPassedCount ?? 0) ===
+            (session.workspaceSnapshot.lastTestTotalCount ?? 1)
+              ? "SUCCESS"
+              : "FAILURE",
           success: (session.workspaceSnapshot.lastTestPassedCount ?? 0) > 0,
           passed: (session.workspaceSnapshot.lastTestPassedCount ?? 0) === (session.workspaceSnapshot.lastTestTotalCount ?? 1),
           passedCount: session.workspaceSnapshot.lastTestPassedCount ?? 0,
@@ -305,7 +310,7 @@ export class ReportService {
     dimensionId: RubricDimensionId,
     submission: {
       codeDiff: { additions: number; deletions: number; totalChanges: number; unifiedDiff: string };
-      testExecutionLog: { passed: boolean; passedCount: number; totalCount: number; durationMs: number; tests: { name: string; passed: boolean; durationMs?: number }[] };
+      testExecutionLog: { passed?: boolean | null | undefined; passedCount: number; totalCount: number; durationMs: number; tests: { name: string; passed: boolean; durationMs?: number | undefined }[] };
       technicalExplanation: string;
       telemetrySummary: {
         aiQueriesCount: number;

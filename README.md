@@ -1,43 +1,33 @@
 # AI Coding Assessment Platform: Enterprise B2B Technical Evaluation System
 
-[![Tests](https://img.shields.io/badge/tests-307%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Tests](https://img.shields.io/badge/tests-311%20passing-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
+[![Typecheck](https://img.shields.io/badge/typecheck-12%2F12%20green-brightgreen.svg)](https://github.com/Samirsaurabh1298/ai-interview-copilot)
 [![Node.js](https://img.shields.io/badge/node-v22.0.0+-blue.svg)](https://nodejs.org)
-[![pnpm](https://img.shields.io/badge/pnpm-v9.0.0+-orange.svg)](https://pnpm.io)
+[![pnpm](https://img.shields.io/badge/pnpm-v12.16.1-orange.svg)](https://pnpm.io)
 [![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20Drizzle%20ORM-336791.svg)](https://orm.drizzle.team)
 [![Accessibility](https://img.shields.io/badge/WCAG-2.2%20AA%20Compliant-purple.svg)](https://www.w3.org/WAI/standards-guidelines/wcag/)
 
-> **A production-grade, Google-bar engineering assessment platform designed to evaluate how software engineers solve real-world problems with managed AI assistance.**
+> **A production-grade engineering assessment platform built to evaluate how software engineers debug real multi-file codebases, critically scrutinize AI assistance, and defend engineering decisions.**
 
 ---
 
-## Complete Documentation & Operating Manual
+## Documentation Map
 
-For the **exhaustive technical specification, feature-by-feature inventory, security invariants, and step-by-step persona workflows**, please read:
-👉 **[PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)**
+- **System Architecture & Subsystem Specs (Single Source of Truth, `HEAD = Loop 11.0.3`):** [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+- **Chronological Release & Loop History:** [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
-## Key Architectural Highlights
+## Core Architectural Highlights
 
-1. **Company Assessment Studio & Multi-Task Authoring (LOOP 6):** Enables recruiters and engineering managers to author role-tailored engineering evaluations spanning **Question Sets** (MCQ single/multi, short text), **Coding Challenges** (polyglot languages, unit tests), and **Repository / Codebase Tasks** (multi-file virtual filesystems, read-only file guards) with per-task time limits and granular AI policies (`prohibited`, `restricted`, `enabled`).
-2. **Production-Grade Persistence (Drizzle ORM + PostgreSQL / PGlite) (LOOP 6.1):** 11 normalized database tables across 10 typed repositories. Features connection pooling (`pg.Pool`), embedded zero-daemon PGlite engine for offline/test environments, graceful shutdown, schema auto-migration, and complete survival across API process restarts.
-3. **Factual Integrity & Proctor Telemetry Pipeline (LOOP 7 / LOOP 10.0.1):** Evidentiary passive observation pipeline featuring transparent behavioral telemetry (focus rate %, off-screen dwell tracking, unattributed external clipboard paste detection $>50$ chars), Company Dashboard live proctor control room with factual status badges, incident logging & resolution, and server-authoritative session pause with automatic technical credit extension. Zero composite 0–100 risk scores, zero risk bands, and zero typing cadence/keystroke monitoring.
-4. **Scoring Fairness & Dynamic N/A Weight Redistribution (LOOP 8 / LOOP 10.0.1):** Overhauled 7-dimension scoring where autonomous candidates who do not query AI receive `isNotApplicable: true` with 0 weight, cleanly redistributing weight across core technical dimensions without fabricating artificial bonus points (Rating 4) or penalizing independent engineering; dynamic weight redistribution across remaining technical dimensions when AI is prohibited or restricted; evidentiary non-punitive proctoring; version-controlled Drizzle migrations (`0001_careless_killraven.sql`); and strict production authentication hardening.
-5. **Decoupled OCI / gVisor Code Execution & Polyglot Compilers (LOOP 9):** Decoupled untrusted candidate code execution from Fastify into a dedicated runner architecture with explicit language runtime profiles (`imageDigest`, CPU quotas, memory limits 128MB–512MB, PID limits 64–128, scratch disk limits, compilation/execution timeouts, and `--network=none` offline policy). Genuine compilation and test execution pipelines for Go (`go test`), Java (`javac`), C++ (`g++`), and Rust (`cargo test`), surfacing actionable compilation diagnostics and compiler presence verification.
-6. **Hardened Streaming ZIP Repository Import (LOOP 9):** Native streaming PKZip parser supporting zip codebase imports in Assessment Studio with strict Zip Slip directory traversal rejection (`../`), absolute/Windows path rejection, symlink rejection (`0o120000`), compression ratio bomb defense (>50:1 ratio, 1MB file limit, 10MB total extraction cap), and automated `.env` / `.git` / `node_modules` filtering.
-7. **Dedicated Linux gVisor Runner & Mutual Token Authentication (LOOP 9.1):** Production-grade Ubuntu 24.04 LTS deployment bundle with rootless Podman/Docker, gVisor (`runsc 20240909.0`), and cgroups v2 resource ceilings. Internal runner daemon endpoints (`/validate`, `/environment`) are protected via mutual token authentication (`CODE_RUNNER_SECRET`), completely isolating Fastify API execution dispatches and ensuring the execution worker has zero access to PostgreSQL database credentials or AI provider API keys.
-8. **Private Company Pilot Readiness, Security Gate & Magic Link Authentication (LOOP 10):** Production single-use Magic Link authentication with SHA-256 token hashing, 15-minute TTL, anti-enumeration, and rate-limiting (5 requests / 15 min). Authoritative `RUNNER_EXECUTION_ENABLED` security gate preventing bare-metal host execution of untrusted code when container sandboxes are unavailable (returning HTTP 403 `RUNNER_EXECUTION_DISABLED`). Decoupled invitation availability windows (e.g. 48h) from active attempt durations (e.g. 90m), candidate patch review requirement, multi-evaluator blind review with automated variance flags (>15%), and human-in-the-loop hiring decision capture.
-9. **Pilot Hardening & Policy Consistency (LOOP 10.0.1):** Removed all composite 0–100 proctor scores and risk bands in favor of factual technical observations; eliminated keystroke cadence tracking; strictly prohibited magic-link debug tokens in production and pilot; enforced server-authoritative attempt pause authorization (HTTP 401 unauthenticated / 403 candidate rejection); verified candidate data erasure endpoint (`DELETE /api/v1/sessions/:id/data`) with cascade hard-deletion; and isolated the candidate workspace view during timed exams.
-10. **External Pilot Launch Gate & Delivery Architecture (LOOP 10.0.2):** Transactional email delivery service supporting pluggable providers (standard socket SMTP with RFC 3207 STARTTLS, Resend REST API, masked console, and in-memory test provider) for recruiter magic links and candidate invitations; universal candidate-to-company authorization boundaries across all templates, invitations, sessions, evaluations, and webhooks (HTTP 403 `FORBIDDEN`); server-authoritative pause audit trails with monotonic `session_paused` and `session_resumed` events; candidate data deletion cascading; and single-header full-viewport candidate workspace UX.
-11. **Assessment Lifecycle FSM, Expiry Sweep & Durable Autosave Idempotency (LOOP 10.0.3 – 10.0.4.2.4):** Explicit 7-state server-authoritative FSM (`CREATED`, `ACTIVE`, `PAUSED`, `GRACE_PERIOD`, `FINALIZING`, `SUBMITTED`, `TERMINATED`) with PostgreSQL `clock_timestamp()` deadline enforcement, worker lease fencing, conditional CAS transitions, and `session_autosave_mutations` idempotency (`baseRevision` + `clientMutationId` + SHA-256 request hashing).
-12. **Multi-File Virtual Sandbox, Weak-AI `flawed_junior` Mode & Post-Fix Defense (LOOP 11.0.1 – 11.0.3):** Hardened multi-file workspace materializer (traversal guards, reserved harness protection, 50-file / 512 KB quotas); server-locked `flawed_junior` AI simulation mode and diff-anchored post-fix defense responses sealed into `submission_artifacts`; and unified multi-file + strict timed exam Practice Studio.
-13. **Company-Managed AI Access:** AI tokens are strictly a financial cost-control metric; LLM usage **never** deflates or inflates candidate scores (AD #4).
-14. **Explicit Candidate Patch Review:** The AI assistant can propose solutions, but can **never** silently mutate candidate code. Candidates review unified diffs and explicitly accept or reject (AD #7).
-15. **Hardened Ephemeral Code Sandbox & Polyglot Execution:** Node 22 native isolation, Python 3 runtime, and intelligent static verification for Go, Java, C++, and Rust (AD #8).
-16. **Entire Software Engineering Domain Support:** Curated challenges, OCR screen capture ingest, dynamic Monaco syntax highlighting, and test harnesses across **TypeScript, JavaScript, Python, Go, Java, C++, and Rust**.
-17. **Cryptographic Immutability:** Canonical SHA-256 fingerprinting for assessment templates, versions, sessions, and submissions (AD #9).
-18. **Human Reviewer Accountability:** AI scorecards and integrity metrics are strictly advisory; final hiring decisions belong to human reviewers (AD #10).
-19. **Anti-IDOR Tenant Boundary & UI Resilience:** Timing-safe JWT HMAC-SHA256 authentication with role-based access control, coupled with top-level React ErrorBoundaries for zero blank-screen crashes.
+1. **Auth, Multi-Tenant RBAC & Passwordless Magic Links:** Timing-safe HMAC-SHA256 JWTs, 32-byte single-use SHA-256 Magic Links (15-min TTL, anti-enumeration, 5/15m rate limits), sole-owner guards, and `assertCompanyMember` boundaries blocking candidate tokens (`403 FORBIDDEN`) across all company routes.
+2. **Company Assessment Studio & ZIP Codebase Authoring:** Visual multi-task builder supporting `question_set`, `coding_challenge`, and multi-file `repository_task` sections, streaming PKZip repository imports (Zip Slip, symlink, and compression-bomb hardened), hidden test scrubbing, immutable SHA-256 versioning, and decoupled invite/attempt deadlines.
+3. **7-State Lifecycle FSM & Durable Autosave Idempotency:** Explicit server-authoritative FSM (`CREATED`, `ACTIVE`, `PAUSED`, `GRACE_PERIOD`, `FINALIZING`, `SUBMITTED`, `TERMINATED`), PostgreSQL `clock_timestamp()` deadlines, lease-fenced crash recovery (`SessionExpiryProcessor`), and `session_autosave_mutations` idempotency (`baseRevision`, `clientMutationId`, SHA-256 request hashing).
+4. **Per-Task AI Policies, Weak-AI Simulation & Diff-Anchored Defense:** Enforces 4 canonical AI modes (`prohibited`, `restricted_explainer`, `full_copilot`, `flawed_junior`) server-side with `allowedModel` locking, mandatory explicit candidate diff review (**AD #7**), XML prompt-injection boundaries, and post-fix comprehension defense prompts sealed into `submission_artifacts`.
+5. **Fail-Closed Sandbox Gate & Linux gVisor Isolation:** `RUNNER_EXECUTION_ENABLED` defaults to `false` outside test mode (returning HTTP `403 RUNNER_EXECUTION_DISABLED` and `NOT_RUN` rather than running untrusted code on bare-metal Windows hosts). Production deploys decoupled worker containers under Ubuntu 24.04 + rootless Podman + gVisor (`runsc`) with mutual `CODE_RUNNER_SECRET` auth, multi-file `workspace-materializer.ts` guards, and polyglot compiler profiles across 7 languages.
+6. **Factual Telemetry & Non-Punitive Proctoring:** Append-only monotonic event streams paired with transparent evidentiary metrics (`focusRatePercent`, off-screen dwell, unattributed external pastes, `reviewStatus`: `verified` | `review_recommended` | `unresolved_incident`) and server-authoritative pause/resume credit extension — **zero** 0–100 proctor scores, risk bands, or keystroke cadence tracking.
+7. **Fair 7-Dimension Scoring & Blind Calibration:** AI token usage stays strictly decoupled from competence scores (**AD #4**); autonomous non-AI candidates and `prohibited` sections receive `isNotApplicable: true` with normalized technical weight redistribution; blind multi-reviewer calibration flags `>15%` variance while human reviewers own hiring decisions (**AD #10**).
+8. **PostgreSQL / PGlite Persistence, Email, Webhooks & Desktop UI Tests:** 13 Drizzle tables across pooled PostgreSQL and embedded PGlite; pluggable transactional email (SMTP STARTTLS, Resend, Console, Test); HMAC-SHA256 ATS/HRIS webhooks; AI cost analytics; multimodal OCR capture; `PracticeStudio` (with Weak-AI & Strict Exam modes); and Vitest + Testing Library smoke integration coverage in `apps/desktop`.
 
 ---
 
@@ -45,83 +35,49 @@ For the **exhaustive technical specification, feature-by-feature inventory, secu
 
 ### 1. Prerequisites
 - **Node.js**: `v22.0.0` or higher
-- **pnpm**: `v9.0.0` or higher
+- **pnpm**: `v9.0.0` or higher (configured at `12.16.1`)
 
-### 2. Install Dependencies
+### 2. Install & Build Contracts
 ```bash
 pnpm install
-```
-
-### 3. Database Setup (PostgreSQL / Drizzle ORM)
-
-The platform supports two persistence modes:
-- **Embedded Zero-Daemon Mode (Default for Dev & Tests):** Uses embedded WebAssembly PostgreSQL 16 (`PGlite`). No external database server required; works completely offline with zero configuration.
-- **Production PostgreSQL:** Provide `DATABASE_URL` in your environment or `.env` file:
-  ```env
-  DATABASE_URL=postgresql://postgres:password@localhost:5432/ai_copilot
-  ```
-
-To generate or run database schema migrations via Drizzle Kit:
-```bash
-# Generate version-controlled SQL migration files
-pnpm --filter @ai-copilot/api exec drizzle-kit generate
-
-# Push schema directly to target database
-pnpm --filter @ai-copilot/api exec drizzle-kit push
-```
-
-### 4. Build Core Packages
-```bash
 pnpm --filter @ai-copilot/contracts build
 pnpm --filter @ai-copilot/code-runner build
 pnpm --filter @ai-copilot/api build
 ```
 
-### 5. Run the Platform
+### 3. Database Modes
+- **Embedded Zero-Daemon Mode (Default):** Runs locally on WebAssembly PostgreSQL 16 (`PGlite`) with automatic DDL init.
+- **Production PostgreSQL:** Set `DATABASE_URL` (e.g. `postgresql://postgres:password@localhost:5432/ai_copilot`) and apply Drizzle migrations (`apps/api/drizzle/`).
 
-In three separate terminal windows:
-
+### 4. Run Locally
 ```bash
-# Terminal 1: Fastify REST API Backend (Port 4000)
-node apps/api/dist/server.js
+# Terminal 1: Fastify API Backend (Port 4000)
+pnpm --filter @ai-copilot/api dev
 
-# Terminal 2: Web Client Dev Server (Port 5173)
+# Terminal 2: Web Renderer (Port 5173)
 pnpm --filter @ai-copilot/desktop dev:renderer --host 0.0.0.0 --port 5173
 
-# Terminal 3: Electron Desktop Client (Optional Native App)
+# Terminal 3: Electron Desktop Client (Optional)
 pnpm --filter @ai-copilot/desktop start
 ```
 
-Open your browser at **`http://localhost:5173`**.
+Open **`http://localhost:5173`**. *(Note: `RUNNER_EXECUTION_ENABLED` defaults to `false` in `development`; set `RUNNER_EXECUTION_ENABLED=true` locally only when testing trusted challenges.)*
 
 ---
 
-## Monorepo Testing & Verification
-
-Run the entire 307-test automated verification suite across all 11 tested workspace packages:
+## Monorepo Verification
 
 ```bash
-pnpm test
-```
-
-Typecheck the entire monorepo:
-
-```bash
-pnpm run typecheck
+pnpm test            # 311 / 311 tests passing across 48 test files (12 packages)
+pnpm run typecheck   # 12 / 12 TypeScript projects passing strict tsc --noEmit
 ```
 
 ---
 
-## Core Personas & Workflows Supported
+## Supported Personas
 
-- **Company Admin / Recruiter:** Set up organizations, manage RBAC, author custom multi-task assessments in **Assessment Studio** (Question Sets, Coding Challenges, Repository Tasks with ZIP codebase import), configure task-level AI policies, lock immutable SHA-256 versions, and issue 32-byte cryptographic candidate invite links.
-- **Candidate:** Open secure invite gateway, review objectives and agree to integrity terms, launch multi-task dynamic workspace, solve questions, navigate multi-file virtual repository projects, collaborate with AI, inspect diffs, run tests, and submit solution with 20-second autosave protection.
-- **Interviewer / Proctor:** Live monitor sessions, inspect real-time 0–100 integrity risk dial, track window blurs, off-screen dwell time, and unattributed external clipboard pastes, record proctor notes, resolve false alarms, and pause/resume sessions with automatic technical credit time extension during incidents.
-- **Reviewer / Hiring Manager:** Inspect candidate code AST diffs, evaluate 7-dimension rubric scores, calibrate anchors, verify cryptographic hashes, and export compliance reports.
-- **Talent Operations / ATS Integration:** Dispatch cryptographically signed HMAC-SHA256 webhook payloads directly to Greenhouse, Lever, Workday, or custom HRIS webhooks with exponential retry backoff (Task 19).
-- **Finance & Engineering Leadership:** Inspect real-time token spend ledgers, 30-day linear burn rate forecasting, unit economics ($/session), and automated runaway prompt anomaly alerts (Task 20).
-
-All **193 automated tests across 13 packages** are passing (100% pass rate).
-
-For in-depth operational instructions, refer to **[PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)**.
-
+- **Company Admin / Recruiter:** Configure tenant RBAC, sign in via Magic Links, author multi-task evaluations + ZIP repositories in Assessment Studio, lock SHA-256 versions, and send tracked email invitations.
+- **Candidate:** Verify onboarding terms, solve question sets and multi-file repositories under server-authoritative deadlines, inspect/review AI diffs critically (including `flawed_junior` sessions), submit post-fix comprehension defenses, or train in Practice Studio.
+- **Interviewer / Proctor:** Inspect factual focus/paste/dwell observations and telemetry timelines, annotate or resolve `proctor_incidents`, and pause/resume sessions with exact millisecond credit extension.
+- **Reviewer / Hiring Manager:** Grade submissions blindly on 7 rubric dimensions, resolve >15% calibration spreads, inspect SHA-256 seals, and export evidence-linked HTML/PDF hiring reports.
+- **Talent Ops & Leadership:** Integrate HMAC-SHA256 ATS webhooks (Greenhouse, Lever, Workday) and monitor token spend, 30-day burn forecasts, and anomaly alerts.

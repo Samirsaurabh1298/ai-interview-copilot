@@ -4,6 +4,8 @@ import {
   type SubmitAssessmentRequest,
   type CodeDiffSummary,
   type TaskSubmissionResult,
+  type SingleTestResult,
+  type ProgrammingLanguage,
   SessionState,
   InvalidStateTransitionError,
   SessionLockedError,
@@ -107,7 +109,7 @@ export class SubmissionService {
   private inFlightSubmissions = new Map<string, Promise<SubmissionArtifact>>();
   private repo: SubmissionRepository;
   private sessionRepo: SessionRepository;
-  private invitationService?: CandidateInvitationService;
+  private invitationService?: CandidateInvitationService | undefined;
 
   constructor(
     private sessionService: AssessmentSessionService,
@@ -129,7 +131,7 @@ export class SubmissionService {
   private async executeSandboxSafely(
     code: string,
     testCode: string,
-    language = "typescript",
+    language: ProgrammingLanguage = "typescript",
     files?: Record<string, string>
   ): Promise<{
     status: "SUCCESS" | "FAILURE" | "NOT_RUN" | "UNAVAILABLE";
@@ -138,7 +140,7 @@ export class SubmissionService {
     passed: boolean | null;
     passedCount: number;
     totalCount: number;
-    tests: Array<{ id: string; name: string; passed: boolean; message?: string }>;
+    tests: SingleTestResult[];
     durationMs: number;
     stdout?: string;
     stderr?: string;
@@ -394,12 +396,12 @@ export class SubmissionService {
             const candidateAns = rawTaskSub.answers?.[q.id];
             if (!candidateAns) continue;
             if (q.format === "mcq_single") {
-              const correctOpt = q.options?.find((o) => o.isCorrect)?.id;
+              const correctOpt = q.options?.find((o: any) => o.isCorrect)?.id;
               if (correctOpt && candidateAns.selectedOptionIds?.[0] === correctOpt) {
                 earned += q.points;
               }
             } else if (q.format === "mcq_multi") {
-              const correctOpts = (q.options?.filter((o) => o.isCorrect).map((o) => o.id) || []).sort();
+              const correctOpts = (q.options?.filter((o: any) => o.isCorrect).map((o: any) => o.id) || []).sort();
               const candOpts = [...(candidateAns.selectedOptionIds || [])].sort();
               if (JSON.stringify(correctOpts) === JSON.stringify(candOpts)) {
                 earned += q.points;
@@ -410,10 +412,11 @@ export class SubmissionService {
               }
             }
           }
+          const taskPoints = taskDef.points ?? taskDef.weight ?? 25;
           evaluatedTaskSubmissions[tId] = {
             ...rawTaskSub,
             earnedPoints: earned,
-            maxPoints: taskDef.points,
+            maxPoints: taskPoints,
             status: "completed",
             completedAt: new Date(),
           };
@@ -424,15 +427,16 @@ export class SubmissionService {
             const taskSandbox = await this.executeSandboxSafely(
               codeToValidate,
               fullTestCode || template.verificationTestCode,
-              taskDef.config.language || template.language || "typescript"
+              (taskDef.config.language || template.language || "typescript") as ProgrammingLanguage
             );
             const pCount = taskSandbox.tests.filter((t) => t.passed).length;
             const tCount = taskSandbox.tests.length;
-            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskDef.points) : 0;
+            const taskPoints = taskDef.points ?? taskDef.weight ?? 25;
+            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskPoints) : 0;
             evaluatedTaskSubmissions[tId] = {
               ...rawTaskSub,
               earnedPoints: earned,
-              maxPoints: taskDef.points,
+              maxPoints: taskPoints,
               status: "completed",
               completedAt: new Date(),
               codeSubmission: {
@@ -459,7 +463,7 @@ export class SubmissionService {
             rawTaskSub.finalFiles[taskDef.config.primaryFilePath || taskDef.config.primaryFileToEdit || "src/index.ts"] ||
             "";
           const repoTests = taskDef.config.verificationTestCode || template.verificationTestCode;
-          const repoLang = taskDef.config.targetLanguage || template.language || "typescript";
+          const repoLang = (taskDef.config.targetLanguage || template.language || "typescript") as ProgrammingLanguage;
           try {
             const taskSandbox = await this.executeSandboxSafely(
               repoCode,
@@ -469,11 +473,12 @@ export class SubmissionService {
             );
             const pCount = taskSandbox.tests.filter((t) => t.passed).length;
             const tCount = taskSandbox.tests.length;
-            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskDef.points) : 0;
+            const taskPoints = taskDef.points ?? taskDef.weight ?? 25;
+            const earned = tCount > 0 ? Math.round((pCount / tCount) * taskPoints) : 0;
             evaluatedTaskSubmissions[tId] = {
               ...rawTaskSub,
               earnedPoints: earned,
-              maxPoints: taskDef.points,
+              maxPoints: taskPoints,
               status: "completed",
               completedAt: new Date(),
               codeSubmission: {

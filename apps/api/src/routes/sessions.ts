@@ -5,6 +5,7 @@ import {
   UpdateWorkspaceRequestSchema,
   SubmitSessionRequestSchema,
   DefenseResponseItemSchema,
+  TaskSubmissionResultSchema,
 } from "@ai-copilot/contracts";
 import type { AssessmentSessionService } from "../services/session.js";
 import {
@@ -189,6 +190,19 @@ export const sessionsRoutes: FastifyPluginAsync<{
       validatedDefenseResponses = defParse.data;
     }
 
+    let validatedTaskSubmissions: Record<string, z.infer<typeof TaskSubmissionResultSchema>> | undefined;
+    if (rawBody.taskSubmissions !== undefined) {
+      const taskParse = z.record(z.string(), TaskSubmissionResultSchema).safeParse(rawBody.taskSubmissions);
+      if (taskParse.success) {
+        validatedTaskSubmissions = taskParse.data;
+      } else {
+        validatedTaskSubmissions = rawBody.taskSubmissions as Record<
+          string,
+          z.infer<typeof TaskSubmissionResultSchema>
+        >;
+      }
+    }
+
     try {
       const session = sessionService.getSession(sessionId);
       if (authService && request.headers.authorization) {
@@ -201,7 +215,7 @@ export const sessionsRoutes: FastifyPluginAsync<{
         const artifact = await submissionService.submitAssessment(sessionId, {
           finalCode: parse.data.finalCode,
           technicalExplanation: normalizedBody.explanation,
-          taskSubmissions: rawBody.taskSubmissions,
+          ...(validatedTaskSubmissions ? { taskSubmissions: validatedTaskSubmissions } : {}),
           ...(validatedDefenseResponses ? { defenseResponses: validatedDefenseResponses } : {}),
         });
 

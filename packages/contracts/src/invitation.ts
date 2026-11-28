@@ -48,6 +48,8 @@ export const VerifyInvitationResponseSchema = z.object({
   targetRole: z.string(),
   difficulty: ChallengeDifficultySchema,
   durationMinutes: z.number(),
+  attemptDurationMinutes: z.number().optional(),
+  submissionDeadlineDays: z.number().optional(),
   tasks: z.array(AssessmentTaskSchema).default([]),
   toolPolicy: ToolPolicySchema,
   organizationName: z.string(),

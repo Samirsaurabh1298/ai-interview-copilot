@@ -89,9 +89,9 @@ export class ConsoleEmailProvider implements EmailProvider {
 export interface SmtpConfig {
   host: string;
   port: number;
-  user?: string;
-  pass?: string;
-  secure?: boolean;
+  user?: string | undefined;
+  pass?: string | undefined;
+  secure?: boolean | undefined;
   from: string;
 }
 
@@ -266,8 +266,8 @@ export interface SendMagicLinkParams {
   to: string;
   recipientName: string;
   magicLinkUrl: string;
-  organizationName?: string;
-  expiresInMinutes?: number;
+  organizationName?: string | undefined;
+  expiresInMinutes?: number | undefined;
 }
 
 export interface SendCandidateInvitationParams {
@@ -289,10 +289,10 @@ export class EmailDeliveryService {
     providerOrOptions?:
       | EmailProvider
       | {
-          provider?: EmailProvider;
-          smtpConfig?: SmtpConfig;
-          resendApiKey?: string;
-          defaultFrom?: string;
+          provider?: EmailProvider | undefined;
+          smtpConfig?: SmtpConfig | undefined;
+          resendApiKey?: string | undefined;
+          defaultFrom?: string | undefined;
         },
     legacyOptions?: { defaultFrom?: string }
   ) {
