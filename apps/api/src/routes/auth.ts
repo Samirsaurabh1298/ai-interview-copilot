@@ -59,8 +59,7 @@ export const authRoutes: FastifyPluginAsync<{
       const record = await magicLinkService.verifyAndConsumeToken(
         parse.data.token
       );
-      const members = orgService.listMembers(record.organizationId);
-      const member = members.find((m) => m.id === record.memberId);
+      const member = await orgService.getMemberByIdFromDb(record.memberId);
 
       if (!member || member.status !== "active") {
         return reply.status(401).send({
@@ -103,7 +102,7 @@ export const authRoutes: FastifyPluginAsync<{
       });
     }
 
-    const org = orgService.getOrganizationById(organizationId);
+    const org = orgService.getOrganizationById(organizationId) || (await orgService.getRepo().findById(organizationId));
     if (!org) {
       return reply.status(404).send({
         error: "ORGANIZATION_NOT_FOUND",
@@ -111,10 +110,14 @@ export const authRoutes: FastifyPluginAsync<{
       });
     }
 
-    const members = orgService.listMembers(organizationId);
-    const member = members.find(
-      (m) => m.email.toLowerCase() === email.toLowerCase().trim() && m.status === "active"
-    );
+    await orgService.flush();
+    const dbMember = await orgService.getRepo().findMemberByEmail(organizationId, email);
+    const member =
+      dbMember && dbMember.status === "active"
+        ? dbMember
+        : orgService
+            .listMembers(organizationId)
+            .find((m) => m.email.toLowerCase() === email.toLowerCase().trim() && m.status === "active");
 
     if (!member) {
       return reply.status(401).send({
@@ -159,14 +162,15 @@ export const authRoutes: FastifyPluginAsync<{
     }
   );
 
-  // 6. Member Logout & Token Invalidation
+  // 6. Member Logout & Server-Side JWT + Magic Link Revocation (LOOP 12.0.1)
   fastify.post(
     "/logout",
     { preHandler: [authService.requireAuth()] },
     async (request, reply) => {
       const auth = (request as any).auth;
       if (auth.memberId) {
-        magicLinkService.revokeAllMemberTokens(auth.memberId);
+        await magicLinkService.revokeAllMemberTokens(auth.memberId);
+        await orgService.incrementMemberTokenVersion(auth.memberId);
       }
       return reply
         .status(200)

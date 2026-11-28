@@ -30,7 +30,7 @@ import { proctorRoutes } from "./routes/proctor.js";
 import { UsageLedgerService } from "./services/ledger.js";
 import { AIUsageGatewayService } from "./services/gateway.js";
 import { OrganizationService } from "./services/organization.js";
-import { AuthService } from "./services/auth.js";
+import { AuthService, TokenRevokedError } from "./services/auth.js";
 import { AssessmentTemplateService } from "./services/template.js";
 import { AssessmentVersioningService } from "./services/versioning.js";
 import { CandidateInvitationService } from "./services/invitation.js";
@@ -152,7 +152,7 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   const orgService = new OrganizationService();
   await orgService.loadFromDatabase();
 
-  const authService = new AuthService(config.JWT_SECRET);
+  const authService = new AuthService(config.JWT_SECRET, orgService);
   const templateService = new AssessmentTemplateService();
   await templateService.loadFromDatabase();
 
@@ -260,6 +260,37 @@ export async function buildApp(config: AppConfig): Promise<FastifyInstance> {
   app.decorate("invitationService", invitationService);
   app.decorate("submissionService", submissionService);
   app.decorate("expiryProcessor", expiryProcessor);
+
+  // Global preHandler enforcing database-backed JWT token_version revocation (LOOP 12.0.1)
+  app.addHook("preHandler", async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) return;
+
+    let authContext;
+    try {
+      authContext = authService.parseAuthHeader(authHeader);
+    } catch {
+      return;
+    }
+
+    try {
+      await authService.verifyTokenNotRevoked(authContext);
+    } catch (err: unknown) {
+      if (
+        err instanceof TokenRevokedError ||
+        (err instanceof Error && err.name === "TokenRevokedError")
+      ) {
+        return reply.status(401).send({
+          error: "TOKEN_REVOKED",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Authentication token has been revoked. Please sign in again.",
+        });
+      }
+      throw err;
+    }
+  });
 
   // Route registration
   await app.register(authRoutes, {

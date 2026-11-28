@@ -40,10 +40,28 @@ export class OrganizationService {
   private orgIdBySlug = new Map<string, string>();
   // Key: orgId -> Map<memberId, OrganizationMember>
   private membersByOrg = new Map<string, Map<string, OrganizationMember>>();
+  private pendingWrites = new Set<Promise<unknown>>();
   private repo: OrganizationRepository;
 
   constructor(repo?: OrganizationRepository) {
     this.repo = repo ?? new OrganizationRepository();
+  }
+
+  public getRepo(): OrganizationRepository {
+    return this.repo;
+  }
+
+  private trackWrite<T>(promise: Promise<T>): Promise<T> {
+    const tracked = promise.finally(() => {
+      this.pendingWrites.delete(tracked);
+    });
+    this.pendingWrites.add(tracked);
+    return tracked;
+  }
+
+  public async flush(): Promise<void> {
+    if (this.pendingWrites.size === 0) return;
+    await Promise.allSettled(Array.from(this.pendingWrites));
   }
 
   public async loadFromDatabase(): Promise<void> {
@@ -55,7 +73,9 @@ export class OrganizationService {
         const members = await this.repo.listMembers(org.id);
         const memberMap = new Map<string, OrganizationMember>();
         for (const m of members) {
-          memberMap.set(m.id, m);
+          if (m.status !== "removed") {
+            memberMap.set(m.id, m);
+          }
         }
         this.membersByOrg.set(org.id, memberMap);
       }
@@ -102,6 +122,7 @@ export class OrganizationService {
       name: req.ownerName.trim(),
       role: "owner",
       status: "active",
+      tokenVersion: 1,
       createdAt: now,
       updatedAt: now,
     };
@@ -113,12 +134,22 @@ export class OrganizationService {
     orgMembers.set(ownerMemberId, ownerMember);
     this.membersByOrg.set(orgId, orgMembers);
 
-    // Durable write-through to PostgreSQL
-    this.repo.create(organization, ownerMember).catch((err) => {
-      console.error("[OrganizationService] DB persistence error:", err);
-    });
+    this.trackWrite(
+      this.repo.create(organization, ownerMember).catch((err) => {
+        console.error("[OrganizationService] DB persistence error:", err);
+      })
+    );
 
     return { organization, ownerMember };
+  }
+
+  public async createOrganizationAsync(req: CreateOrganizationRequest): Promise<{
+    organization: Organization;
+    ownerMember: OrganizationMember;
+  }> {
+    const res = this.createOrganization(req);
+    await this.flush();
+    return res;
   }
 
   public getOrganizationById(orgId: string): Organization | undefined {
@@ -175,7 +206,7 @@ export class OrganizationService {
     const orgMembers = this.membersByOrg.get(orgId) ?? new Map();
 
     for (const existing of orgMembers.values()) {
-      if (existing.email.toLowerCase() === normalizedEmail) {
+      if (existing.email.toLowerCase() === normalizedEmail && existing.status !== "removed") {
         throw new MembershipConflictError(
           `Member with email '${normalizedEmail}' already belongs to organization '${org.name}'`
         );
@@ -194,6 +225,7 @@ export class OrganizationService {
       name: req.name.trim(),
       role: req.role,
       status: "active",
+      tokenVersion: 1,
       invitedByMemberId,
       createdAt: now,
       updatedAt: now,
@@ -202,11 +234,22 @@ export class OrganizationService {
     orgMembers.set(memberId, member);
     this.membersByOrg.set(orgId, orgMembers);
 
-    // Durable write-through to PostgreSQL
-    this.repo.addMember(member).catch((err) => {
-      console.error("[OrganizationService] DB member persistence error:", err);
-    });
+    this.trackWrite(
+      this.repo.addMember(member).catch((err) => {
+        console.error("[OrganizationService] DB member persistence error:", err);
+      })
+    );
 
+    return member;
+  }
+
+  public async inviteMemberAsync(
+    orgId: string,
+    req: InviteMemberRequest,
+    invitedByMemberId?: string
+  ): Promise<OrganizationMember> {
+    const member = this.inviteMember(orgId, req, invitedByMemberId);
+    await this.flush();
     return member;
   }
 
@@ -216,12 +259,50 @@ export class OrganizationService {
       throw new TenantNotFoundError(`Organization '${orgId}' does not exist`);
     }
     const orgMembers = this.membersByOrg.get(orgId);
-    return orgMembers ? Array.from(orgMembers.values()) : [];
+    return orgMembers
+      ? Array.from(orgMembers.values()).filter((m) => m.status !== "removed")
+      : [];
   }
 
   public getMemberById(orgId: string, memberId: string): OrganizationMember | undefined {
     const orgMembers = this.membersByOrg.get(orgId);
-    return orgMembers?.get(memberId);
+    const member = orgMembers?.get(memberId);
+    if (!member || member.status === "removed") return undefined;
+    return member;
+  }
+
+  public async getMemberByIdFromDb(memberId: string): Promise<OrganizationMember | null> {
+    await this.flush();
+    const dbMember = await this.repo.findMemberById(memberId);
+    if (dbMember) {
+      let map = this.membersByOrg.get(dbMember.organizationId);
+      if (!map) {
+        map = new Map();
+        this.membersByOrg.set(dbMember.organizationId, map);
+      }
+      if (dbMember.status === "removed") {
+        map.delete(dbMember.id);
+      } else {
+        map.set(dbMember.id, dbMember);
+      }
+    }
+    return dbMember;
+  }
+
+  public async incrementMemberTokenVersion(memberId: string): Promise<number | null> {
+    await this.flush();
+    const newVersion = await this.repo.incrementTokenVersion(memberId);
+    if (newVersion !== null) {
+      for (const membersMap of this.membersByOrg.values()) {
+        const cached = membersMap.get(memberId);
+        if (cached) {
+          cached.tokenVersion = newVersion;
+          cached.updatedAt = new Date();
+          break;
+        }
+      }
+    }
+    return newVersion;
   }
 
   public updateMemberRole(
@@ -236,13 +317,15 @@ export class OrganizationService {
 
     const orgMembers = this.membersByOrg.get(orgId);
     const member = orgMembers?.get(memberId);
-    if (!member || !orgMembers) {
+    if (!member || !orgMembers || member.status === "removed") {
       throw new MemberNotFoundError(`Member '${memberId}' not found in organization '${orgId}'`);
     }
 
     // Safety check: Prevent demoting the last owner
     if (member.role === "owner" && newRole !== "owner") {
-      const ownerCount = Array.from(orgMembers.values()).filter((m) => m.role === "owner").length;
+      const ownerCount = Array.from(orgMembers.values()).filter(
+        (m) => m.role === "owner" && m.status !== "removed"
+      ).length;
       if (ownerCount <= 1) {
         throw new TenantOperationForbiddenError(
           "Cannot demote the sole remaining owner of an organization"
@@ -251,14 +334,26 @@ export class OrganizationService {
     }
 
     member.role = newRole;
+    member.tokenVersion = (member.tokenVersion ?? 1) + 1;
     member.updatedAt = new Date();
 
-    // Durable write-through to PostgreSQL
-    this.repo.updateMemberRole(orgId, memberId, newRole).catch((err) => {
-      console.error("[OrganizationService] DB member role update error:", err);
-    });
+    this.trackWrite(
+      this.repo.updateMemberRole(orgId, memberId, newRole).catch((err) => {
+        console.error("[OrganizationService] DB member role update error:", err);
+      })
+    );
 
     return member;
+  }
+
+  public async updateMemberRoleAsync(
+    orgId: string,
+    memberId: string,
+    newRole: MembershipRole
+  ): Promise<OrganizationMember> {
+    const updated = this.updateMemberRole(orgId, memberId, newRole);
+    await this.flush();
+    return updated;
   }
 
   public removeMember(orgId: string, memberId: string): void {
@@ -269,13 +364,15 @@ export class OrganizationService {
 
     const orgMembers = this.membersByOrg.get(orgId);
     const member = orgMembers?.get(memberId);
-    if (!member || !orgMembers) {
+    if (!member || !orgMembers || member.status === "removed") {
       throw new MemberNotFoundError(`Member '${memberId}' not found in organization '${orgId}'`);
     }
 
     // Safety check: Prevent removing the last owner
     if (member.role === "owner") {
-      const ownerCount = Array.from(orgMembers.values()).filter((m) => m.role === "owner").length;
+      const ownerCount = Array.from(orgMembers.values()).filter(
+        (m) => m.role === "owner" && m.status !== "removed"
+      ).length;
       if (ownerCount <= 1) {
         throw new TenantOperationForbiddenError(
           "Cannot remove the sole remaining owner of an organization"
@@ -284,6 +381,17 @@ export class OrganizationService {
     }
 
     orgMembers.delete(memberId);
+
+    this.trackWrite(
+      this.repo.removeMember(orgId, memberId).catch((err) => {
+        console.error("[OrganizationService] DB member removal error:", err);
+      })
+    );
+  }
+
+  public async removeMemberAsync(orgId: string, memberId: string): Promise<void> {
+    this.removeMember(orgId, memberId);
+    await this.flush();
   }
 
   private generateSlug(name: string): string {
@@ -294,4 +402,3 @@ export class OrganizationService {
     return base || "org-" + Math.random().toString(36).substring(2, 6);
   }
 }
-

@@ -41,7 +41,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
     }
 
     try {
-      const result = orgService.createOrganization(parse.data);
+      const result = await orgService.createOrganizationAsync(parse.data);
       return reply.status(201).send(result);
     } catch (err) {
       if (err instanceof MembershipConflictError) {
@@ -103,7 +103,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
         }
       }
 
-      const member = orgService.inviteMember(orgId, parse.data);
+      const member = await orgService.inviteMemberAsync(orgId, parse.data);
       return reply.status(201).send(member);
     } catch (err) {
       if (isTenantOrAuthForbiddenError(err)) {
@@ -165,7 +165,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
         }
       }
 
-      const updated = orgService.updateMemberRole(orgId, memberId, parse.data.role);
+      const updated = await orgService.updateMemberRoleAsync(orgId, memberId, parse.data.role);
       return reply.status(200).send(updated);
     } catch (err) {
       if (isTenantOrAuthForbiddenError(err)) {
@@ -199,7 +199,7 @@ export const organizationsRoutes: FastifyPluginAsync<{
         }
       }
 
-      orgService.removeMember(orgId, memberId);
+      await orgService.removeMemberAsync(orgId, memberId);
       return reply.status(204).send();
     } catch (err) {
       if (isTenantOrAuthForbiddenError(err)) {

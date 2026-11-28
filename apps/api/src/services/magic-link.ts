@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import type { OrganizationService } from "./organization.js";
 import type { OrganizationMember } from "@ai-copilot/contracts";
 import type { EmailDeliveryService } from "./email.js";
+import { MagicLinkRepository, type MagicLinkRecord } from "../repositories/magic-link.repo.js";
+import { OrganizationRepository } from "../repositories/organization.repo.js";
 
 export class MagicLinkError extends Error {
   constructor(
@@ -14,18 +16,7 @@ export class MagicLinkError extends Error {
   }
 }
 
-export interface StoredMagicLink {
-  tokenHash: string;
-  email: string;
-  organizationId: string;
-  memberId: string;
-  role: string;
-  name: string;
-  createdAt: number;
-  expiresAt: number;
-  used: boolean;
-  usedAt?: number;
-}
+export type StoredMagicLink = MagicLinkRecord;
 
 export interface MagicLinkResult {
   success: boolean;
@@ -35,22 +26,28 @@ export interface MagicLinkResult {
 }
 
 export class MagicLinkService {
-  private readonly tokensByHash = new Map<string, StoredMagicLink>();
-  private readonly requestCountsByEmail = new Map<string, { count: number; windowStart: number }>();
-  private readonly ttlMs: number = 15 * 60 * 1000; // 15 minutes
+  private readonly repo: MagicLinkRepository;
+  private readonly orgRepo: OrganizationRepository;
+  private readonly ttlSeconds: number = 15 * 60; // 15 minutes
   private readonly maxRequestsPerWindow: number = 5;
-  private readonly windowMs: number = 15 * 60 * 1000;
+  private readonly windowSeconds: number = 15 * 60; // 15 minutes
 
   constructor(
     private readonly orgService: OrganizationService,
     private readonly emailService?: EmailDeliveryService,
-    private readonly baseUrl?: string
-  ) {}
+    private readonly baseUrl?: string,
+    repo?: MagicLinkRepository,
+    orgRepo?: OrganizationRepository
+  ) {
+    this.repo = repo ?? new MagicLinkRepository();
+    this.orgRepo = orgRepo ?? orgService.getRepo();
+  }
 
   /**
    * Request a single-use magic login link.
-   * Anti-enumeration protection: Always returns success message regardless of whether
-   * the email exists in any organization.
+   * Persists both rate limits and SHA-256 hashed tokens in PostgreSQL/PGlite.
+   * Anti-enumeration protection: always returns success message regardless of whether
+   * the email exists in any organization (unless rate limit is exceeded).
    */
   public async requestMagicLink(
     email: string,
@@ -58,40 +55,41 @@ export class MagicLinkService {
   ): Promise<MagicLinkResult> {
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 1. Rate Limiting Check
-    this.checkRateLimit(normalizedEmail);
+    // Ensure pending async member/org writes are committed before DB queries
+    await this.orgService.flush();
 
-    // 2. Locate member across organizations
-    let targetMember: OrganizationMember | undefined;
-    let targetOrgId = organizationId;
-
-    if (organizationId) {
-      const members = this.orgService.listMembers(organizationId);
-      targetMember = members.find(
-        (m) => m.email.toLowerCase() === normalizedEmail && m.status === "active"
+    // 1. Database-Backed Rate Limiting Check (5 requests / 15-minute window)
+    const rateKey = `magic_link:${normalizedEmail}`;
+    const rateStatus = await this.repo.incrementAndCheckRateLimit(
+      rateKey,
+      this.maxRequestsPerWindow,
+      this.windowSeconds
+    );
+    if (!rateStatus.allowed) {
+      throw new MagicLinkError(
+        "RATE_LIMIT_EXCEEDED",
+        "Too many login link requests. Please wait 15 minutes before requesting another link.",
+        429
       );
-    } else {
-      // Find the first active organization where this member exists
-      const orgs = this.orgService.listOrganizations();
-      for (const org of orgs) {
-        const members = this.orgService.listMembers(org.id);
-        const found = members.find(
-          (m) => m.email.toLowerCase() === normalizedEmail && m.status === "active"
-        );
-        if (found) {
-          targetMember = found;
-          targetOrgId = org.id;
-          break;
-        }
-      }
     }
 
-    const expiresInSeconds = Math.floor(this.ttlMs / 1000);
+    // 2. Locate active member directly from PostgreSQL/PGlite (horizontal replica safe)
+    let targetMember: OrganizationMember | null = null;
+    if (organizationId) {
+      const found = await this.orgRepo.findMemberByEmail(organizationId, normalizedEmail);
+      if (found && found.status === "active") {
+        targetMember = found;
+      }
+    } else {
+      targetMember = await this.orgRepo.findActiveMemberByEmailAcrossOrgs(normalizedEmail);
+    }
+
+    const expiresInSeconds = this.ttlSeconds;
     const standardMessage =
       "If an active member account matches this email, a single-use login link has been issued.";
 
     // If member not found, return generic success (anti-enumeration)
-    if (!targetMember || !targetOrgId) {
+    if (!targetMember) {
       return {
         success: true,
         message: standardMessage,
@@ -99,45 +97,42 @@ export class MagicLinkService {
       };
     }
 
-    // 3. Generate high-entropy 32-byte cryptographic token
+    const targetOrgId = targetMember.organizationId;
+
+    // 3. Generate high-entropy 32-byte cryptographic token and store SHA-256 hash in DB
     const token = crypto.randomBytes(32).toString("hex");
     const tokenHash = this.hashToken(token);
-    const now = Date.now();
 
-    const record: StoredMagicLink = {
+    await this.repo.createToken({
       tokenHash,
-      email: normalizedEmail,
-      organizationId: targetOrgId,
       memberId: targetMember.id,
-      role: targetMember.role,
-      name: targetMember.name,
-      createdAt: now,
-      expiresAt: now + this.ttlMs,
-      used: false,
-    };
-
-    this.tokensByHash.set(tokenHash, record);
+      organizationId: targetOrgId,
+      email: normalizedEmail,
+      ttlSeconds: this.ttlSeconds,
+    });
 
     // Dispatch transactional magic link email
     const baseUrl = this.baseUrl || process.env.APP_BASE_URL || "http://localhost:5173";
     const magicLinkUrl = `${baseUrl}/login?token=${token}`;
-    const org = this.orgService.getOrganizationById(targetOrgId);
+    const org =
+      this.orgService.getOrganizationById(targetOrgId) ||
+      (await this.orgRepo.findById(targetOrgId));
 
     if (this.emailService) {
-      await this.emailService.sendMagicLink({
-        to: normalizedEmail,
-        recipientName: targetMember.name || normalizedEmail,
-        magicLinkUrl,
-        ...(org?.name ? { organizationName: org.name } : {}),
-        expiresInMinutes: Math.floor(this.ttlMs / 60000),
-      }).catch((err) => {
-        console.error("[MagicLinkService] Transactional email dispatch error:", err);
-      });
+      await this.emailService
+        .sendMagicLink({
+          to: normalizedEmail,
+          recipientName: targetMember.name || normalizedEmail,
+          magicLinkUrl,
+          ...(org?.name ? { organizationName: org.name } : {}),
+          expiresInMinutes: Math.floor(this.ttlSeconds / 60),
+        })
+        .catch((err) => {
+          console.error("[MagicLinkService] Transactional email dispatch error:", err);
+        });
     }
 
     // 4. Secure Magic-Link Debugging (LOOP 10.0.1 Invariant 3)
-    // Debug tokens are strictly restricted to explicitly enabled test environments or local debug mode.
-    // In production or external pilot configurations, debugToken is strictly undefined and NEVER returned.
     const isProductionOrPilot =
       process.env.NODE_ENV === "production" ||
       process.env.APP_ENV === "pilot" ||
@@ -156,8 +151,8 @@ export class MagicLinkService {
   }
 
   /**
-   * Verify and consume a single-use login token.
-   * Atomically burns the token to prevent replay attacks.
+   * Verify and atomically consume a single-use login token in PostgreSQL.
+   * Only one concurrent caller can claim a tokenHash.
    */
   public async verifyAndConsumeToken(token: string): Promise<StoredMagicLink> {
     if (!token || token.length < 16) {
@@ -169,17 +164,13 @@ export class MagicLinkService {
     }
 
     const tokenHash = this.hashToken(token);
-    const record = this.tokensByHash.get(tokenHash);
+    const result = await this.repo.consumeTokenAtomically(tokenHash);
 
-    if (!record) {
-      throw new MagicLinkError(
-        "INVALID_OR_EXPIRED_TOKEN",
-        "This login link is invalid or has expired. Please request a new login link.",
-        401
-      );
+    if (result.status === "consumed") {
+      return result.record;
     }
 
-    if (record.used) {
+    if (result.status === "already_used") {
       throw new MagicLinkError(
         "TOKEN_ALREADY_USED",
         "This single-use login link has already been used. Please request a new link.",
@@ -187,8 +178,7 @@ export class MagicLinkService {
       );
     }
 
-    if (Date.now() > record.expiresAt) {
-      this.tokensByHash.delete(tokenHash);
+    if (result.status === "expired") {
       throw new MagicLinkError(
         "TOKEN_EXPIRED",
         "This login link has expired. Magic links are valid for 15 minutes.",
@@ -196,48 +186,21 @@ export class MagicLinkService {
       );
     }
 
-    // Atomically burn the token
-    record.used = true;
-    record.usedAt = Date.now();
-    this.tokensByHash.set(tokenHash, record);
-
-    return record;
+    throw new MagicLinkError(
+      "INVALID_OR_EXPIRED_TOKEN",
+      "This login link is invalid or has expired. Please request a new login link.",
+      401
+    );
   }
 
   /**
-   * Invalidate/Revoke all active tokens for a member.
+   * Invalidate all unused magic-link tokens for a member in SQL.
    */
-  public revokeAllMemberTokens(memberId: string): void {
-    for (const [hash, record] of this.tokensByHash.entries()) {
-      if (record.memberId === memberId) {
-        record.used = true;
-        this.tokensByHash.delete(hash);
-      }
-    }
+  public async revokeAllMemberTokens(memberId: string): Promise<void> {
+    await this.repo.revokeAllForMember(memberId);
   }
 
   private hashToken(token: string): string {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
-
-  private checkRateLimit(email: string): void {
-    const now = Date.now();
-    const entry = this.requestCountsByEmail.get(email);
-
-    if (!entry || now - entry.windowStart > this.windowMs) {
-      this.requestCountsByEmail.set(email, { count: 1, windowStart: now });
-      return;
-    }
-
-    if (entry.count >= this.maxRequestsPerWindow) {
-      throw new MagicLinkError(
-        "RATE_LIMIT_EXCEEDED",
-        "Too many login link requests. Please wait 15 minutes before requesting another link.",
-        429
-      );
-    }
-
-    entry.count += 1;
-  }
 }
-

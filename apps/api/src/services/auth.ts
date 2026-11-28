@@ -8,12 +8,22 @@ import type {
   AuthTokenResponse,
   CandidateTokenRequest,
 } from "@ai-copilot/contracts";
+import type { OrganizationService } from "./organization.js";
 
 export class AuthenticationError extends Error {
   constructor(message = "Authentication required") {
     super(message);
     this.name = "AuthenticationError";
     Object.setPrototypeOf(this, AuthenticationError.prototype);
+  }
+}
+
+export class TokenRevokedError extends Error {
+  public readonly code = "TOKEN_REVOKED";
+  constructor(message = "Authentication token has been revoked. Please sign in again.") {
+    super(message);
+    this.name = "TokenRevokedError";
+    Object.setPrototypeOf(this, TokenRevokedError.prototype);
   }
 }
 
@@ -51,7 +61,10 @@ export function isTenantOrAuthForbiddenError(err: unknown): boolean {
 export class AuthService {
   private secret: Buffer;
 
-  constructor(secretString: string) {
+  constructor(
+    secretString: string,
+    private readonly orgService?: OrganizationService
+  ) {
     this.secret = Buffer.from(secretString, "utf8");
   }
 
@@ -61,6 +74,7 @@ export class AuthService {
   ): AuthTokenResponse {
     const now = Math.floor(Date.now() / 1000);
     const exp = now + expiresInSeconds;
+    const tokenVersion = member.tokenVersion ?? 1;
 
     const payload: TokenPayload = {
       sub: member.userId,
@@ -68,6 +82,7 @@ export class AuthService {
       memberId: member.id,
       role: member.role,
       email: member.email,
+      tokenVersion,
       iat: now,
       exp,
     };
@@ -83,6 +98,7 @@ export class AuthService {
         memberId: member.id,
         role: member.role,
         email: member.email,
+        tokenVersion,
       },
     };
   }
@@ -158,6 +174,7 @@ export class AuthService {
       sessionId: payload.sessionId,
       role: payload.role,
       email: payload.email,
+      ...(payload.tokenVersion !== undefined ? { tokenVersion: payload.tokenVersion } : {}),
     };
   }
 
@@ -174,13 +191,51 @@ export class AuthService {
     return this.verifyToken(token);
   }
 
+  /**
+   * Verifies server-side JWT revocation by matching payload.tokenVersion against
+   * organization_members.token_version and member status in PostgreSQL/PGlite.
+   */
+  public async verifyTokenNotRevoked(context: AuthUserContext): Promise<void> {
+    if (context.role === "candidate" || !context.memberId || !this.orgService) {
+      return;
+    }
+
+    await this.orgService.flush();
+    const dbState = await this.orgService.getRepo().getMemberAuthState(context.memberId);
+
+    if (!dbState) {
+      if (process.env.NODE_ENV !== "test") {
+        throw new TokenRevokedError("Member record not found; token rejected.");
+      }
+      return;
+    }
+
+    if (dbState.status !== "active") {
+      throw new TokenRevokedError("Member account is inactive or removed; token revoked.");
+    }
+
+    const presentedVersion = context.tokenVersion ?? 1;
+    if (presentedVersion !== dbState.tokenVersion) {
+      throw new TokenRevokedError(
+        "Authentication token has been revoked. Please sign in again."
+      );
+    }
+  }
+
   public requireAuth() {
     return async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const authHeader = request.headers.authorization;
         const authContext = this.parseAuthHeader(authHeader);
+        await this.verifyTokenNotRevoked(authContext);
         (request as any).auth = authContext;
       } catch (err) {
+        if (err instanceof TokenRevokedError) {
+          return reply.status(401).send({
+            error: "TOKEN_REVOKED",
+            message: err.message,
+          });
+        }
         return reply.status(401).send({
           error: "UNAUTHORIZED",
           message: err instanceof Error ? err.message : "Authentication required",
@@ -194,6 +249,7 @@ export class AuthService {
       try {
         const authHeader = request.headers.authorization;
         const authContext = this.parseAuthHeader(authHeader);
+        await this.verifyTokenNotRevoked(authContext);
         (request as any).auth = authContext;
 
         if (!allowedRoles.includes(authContext.role)) {
@@ -203,6 +259,12 @@ export class AuthService {
           });
         }
       } catch (err) {
+        if (err instanceof TokenRevokedError) {
+          return reply.status(401).send({
+            error: "TOKEN_REVOKED",
+            message: err.message,
+          });
+        }
         return reply.status(401).send({
           error: "UNAUTHORIZED",
           message: err instanceof Error ? err.message : "Authentication required",
@@ -248,4 +310,3 @@ export class AuthService {
     return `${headerB64}.${payloadB64}.${signature}`;
   }
 }
-

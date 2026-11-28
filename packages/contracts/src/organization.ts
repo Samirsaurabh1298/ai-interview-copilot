@@ -12,7 +12,7 @@ export const MembershipRoleSchema = z.enum([
 ]);
 export type MembershipRole = z.infer<typeof MembershipRoleSchema>;
 
-export const MembershipStatusSchema = z.enum(["active", "invited", "suspended"]);
+export const MembershipStatusSchema = z.enum(["active", "invited", "suspended", "removed"]);
 export type MembershipStatus = z.infer<typeof MembershipStatusSchema>;
 
 export const OrganizationSettingsSchema = z.object({
@@ -42,6 +42,7 @@ export const OrganizationMemberSchema = z.object({
   name: z.string().min(1),
   role: MembershipRoleSchema,
   status: MembershipStatusSchema.default("active"),
+  tokenVersion: z.number().int().min(1).optional().default(1),
   invitedByMemberId: z.string().optional(),
   createdAt: z.coerce.date().default(() => new Date()),
   updatedAt: z.coerce.date().default(() => new Date()),

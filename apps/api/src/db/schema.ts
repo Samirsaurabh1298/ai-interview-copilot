@@ -46,6 +46,7 @@ export const organizationMembers = pgTable(
     name: varchar("name", { length: 100 }).notNull(),
     role: varchar("role", { length: 30 }).notNull(),
     status: varchar("status", { length: 20 }).notNull().default("active"),
+    tokenVersion: integer("token_version").notNull().default(1),
     invitedByMemberId: varchar("invited_by_member_id", { length: 128 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -388,6 +389,41 @@ export const sessionAutosaveMutations = pgTable(
     index("idx_session_mutations_session").on(table.sessionId),
   ]
 );
+
+// ==============================================================================
+// 14. Magic Link Tokens Table (LOOP 12.0.1 Horizontal Scaling & Single-Use Auth)
+// ==============================================================================
+export const magicLinkTokens = pgTable(
+  "magic_link_tokens",
+  {
+    tokenHash: varchar("token_hash", { length: 128 }).primaryKey(),
+    memberId: varchar("member_id", { length: 128 })
+      .notNull()
+      .references(() => organizationMembers.id, { onDelete: "cascade" }),
+    orgId: varchar("org_id", { length: 128 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_magic_link_tokens_member").on(table.memberId),
+    index("idx_magic_link_tokens_expires").on(table.expiresAt),
+  ]
+);
+
+// ==============================================================================
+// 15. Auth Rate Limits Table (LOOP 12.0.1 Shared Persistent Rate Limiting)
+// ==============================================================================
+export const authRateLimits = pgTable("auth_rate_limits", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  requestCount: integer("request_count").notNull().default(1),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 
 
 

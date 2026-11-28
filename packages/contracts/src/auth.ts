@@ -8,6 +8,7 @@ export const AuthUserContextSchema = z.object({
   sessionId: z.string().optional(),
   role: MembershipRoleSchema,
   email: z.string().email().optional(),
+  tokenVersion: z.number().int().min(1).optional(),
 });
 export type AuthUserContext = z.infer<typeof AuthUserContextSchema>;
 
@@ -18,6 +19,7 @@ export const TokenPayloadSchema = z.object({
   sessionId: z.string().optional(),
   role: MembershipRoleSchema,
   email: z.string().email().optional(),
+  tokenVersion: z.number().int().min(1).optional(),
   iat: z.number(),
   exp: z.number(),
 });

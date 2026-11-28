@@ -56,13 +56,32 @@ export async function initDatabase(databaseUrl?: string): Promise<AppDatabase> {
         }
       }
 
-      // Ensure all schema tables and indexes exist once per engine lifecycle
+      // Separate production migrations from boot-time DDL (LOOP 12.0.1):
+      // Embedded PGlite / NODE_ENV=test auto-syncs schema on boot; external PostgreSQL in non-test environments
+      // fails fast if Drizzle migrations have not been applied.
       if (!schemaInitialized) {
-        await ensureSchema(dbInstance);
+        const isTestEnv = process.env.NODE_ENV === "test";
+        if (activeEngine === "pglite" || isTestEnv) {
+          await ensureSchema(dbInstance);
+        } else {
+          await verifyProductionSchema(dbInstance);
+        }
         schemaInitialized = true;
       }
 
       return dbInstance;
+    } catch (err) {
+      if (pool) {
+        await pool.end().catch(() => {});
+        pool = null;
+      }
+      if (pgliteInstance) {
+        await pgliteInstance.close().catch(() => {});
+        pgliteInstance = null;
+      }
+      dbInstance = null;
+      schemaInitialized = false;
+      throw err;
     } finally {
       initPromise = null;
     }
@@ -107,6 +126,7 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
       name VARCHAR(100) NOT NULL,
       role VARCHAR(30) NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'active',
+      token_version INTEGER NOT NULL DEFAULT 1,
       invited_by_member_id VARCHAR(128),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -348,12 +368,81 @@ async function ensureSchema(db: AppDatabase): Promise<void> {
 
     CREATE UNIQUE INDEX IF NOT EXISTS uniq_session_mutation ON session_autosave_mutations (session_id, client_mutation_id);
     CREATE INDEX IF NOT EXISTS idx_session_mutations_session ON session_autosave_mutations (session_id);
+
+    -- LOOP 12.0.1 Distributed Auth & Rate Limit Tables + Member JWT Token Version
+    ALTER TABLE organization_members ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+
+    CREATE TABLE IF NOT EXISTS magic_link_tokens (
+      token_hash VARCHAR(128) PRIMARY KEY,
+      member_id VARCHAR(128) NOT NULL REFERENCES organization_members(id) ON DELETE CASCADE,
+      org_id VARCHAR(128) NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      email VARCHAR(255) NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_member ON magic_link_tokens (member_id);
+    CREATE INDEX IF NOT EXISTS idx_magic_link_tokens_expires ON magic_link_tokens (expires_at);
+
+    CREATE TABLE IF NOT EXISTS auth_rate_limits (
+      key VARCHAR(255) PRIMARY KEY,
+      window_start TIMESTAMPTZ NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 1,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `;
 
   if (pgliteInstance) {
     await pgliteInstance.exec(ddlScript);
   } else if (pool) {
     await pool.query(ddlScript);
+  }
+}
+
+/**
+ * Verifies required PostgreSQL schema tables & columns exist without executing DDL mutations on boot.
+ * Used when connecting to an external DATABASE_URL PostgreSQL instance outside NODE_ENV=test.
+ */
+export async function verifyProductionSchema(db: AppDatabase): Promise<void> {
+  const requiredTables = [
+    "organizations",
+    "organization_members",
+    "assessment_templates",
+    "assessment_versions",
+    "candidate_invitations",
+    "assessment_sessions",
+    "session_events",
+    "submission_artifacts",
+    "reviewer_evaluations",
+    "usage_events",
+    "webhook_subscriptions",
+    "proctor_incidents",
+    "session_autosave_mutations",
+    "magic_link_tokens",
+    "auth_rate_limits",
+  ];
+
+  const tablesResult = await db.execute(
+    sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+  );
+  const existingTables = new Set(
+    (tablesResult.rows as Array<{ table_name?: string }>).map((r) => r.table_name)
+  );
+  const missingTables = requiredTables.filter((t) => !existingTables.has(t));
+  if (missingTables.length > 0) {
+    throw new Error(
+      `Database schema migrations have not been applied for external PostgreSQL database (missing tables: ${missingTables.join(", ")}). Run Drizzle migrations ('pnpm --filter @ai-copilot/api exec drizzle-kit migrate') before starting the API server.`
+    );
+  }
+
+  const colResult = await db.execute(
+    sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'organization_members' AND column_name = 'token_version'`
+  );
+  if (colResult.rows.length === 0) {
+    throw new Error(
+      "Database schema migrations have not been applied (missing column 'organization_members.token_version'). Run Drizzle migrations before starting the API server."
+    );
   }
 }
 
